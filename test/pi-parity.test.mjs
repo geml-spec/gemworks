@@ -48,9 +48,10 @@ const sc = loadStatechart(
 
 test("the host is the version this adapter was written against", () => {
   assert.equal(pkg.name, "@earendil-works/pi-coding-agent");
-  // Pinned to the minor, not the patch: 0.x carries no semver promise, and a
-  // minor bump is exactly when to re-read these declarations.
-  assert.match(pkg.version, /^0\.85\./, `Pi is now ${pkg.version}: re-read dist/core/extensions/types.d.ts`);
+  // Pinned to the major: 1.x carries a semver promise, so a major bump is when
+  // to re-read these declarations (written against 1.4.0; the 0.x line, which
+  // had no such promise, was pinned to the minor).
+  assert.match(pkg.version, /^1\./, `Pi is now ${pkg.version}: re-read dist/core/extensions/types.d.ts`);
   assert.equal(pkg.license, "MIT");
 });
 
@@ -83,10 +84,21 @@ test("the gate reads the call's input from the tool_call event, and the bash too
 
 test("a tool's result carries content and details", () => {
   const agentCore = read(rootOf("@earendil-works/pi-agent-core"), "dist/types.d.ts");
-  const result = agentCore.match(/export interface AgentToolResult<T> \{[\s\S]*?\n\}/);
+  // `<T>` in 0.x; 1.x gives T a default (`<T = JsonValue | undefined>`).
+  const result = agentCore.match(/export interface AgentToolResult<T\b[^>]*> \{[\s\S]*?\n\}/);
   assert.ok(result, "AgentToolResult is gone");
   assert.match(result[0], /content:/);
   assert.match(result[0], /details:/);
+});
+
+test("before_agent_start: a run started by a user prompt or by a custom message both carry the system prompt the adapter extends", () => {
+  // Since 1.x the event also fires for `pi.sendMessage(..., { triggerTurn: true })`
+  // runs, as a union on `messageType`. The adapter reads only `systemPrompt`,
+  // which is on the base, and extends it for either kind of run.
+  assert.match(types, /interface BeforeAgentStartEventBase \{\s*type: "before_agent_start";[\s\S]*?readonly systemPrompt: string;/);
+  assert.match(types, /export type BeforeAgentStartEvent = BeforeAgentStartUserEvent \| BeforeAgentStartCustomEvent/);
+  assert.match(types, /interface BeforeAgentStartUserEvent extends BeforeAgentStartEventBase \{\s*messageType: "user";/);
+  assert.match(types, /interface BeforeAgentStartCustomEvent extends BeforeAgentStartEventBase \{\s*messageType: "custom";/);
 });
 
 test("asking a person (spec §5.3 step 6): select is on the UI context, and hasUI says whether anyone can be asked", () => {

@@ -102,7 +102,7 @@ export function fakePi({
     let current = systemPrompt;
     for (const handler of handlers.get("before_agent_start") ?? []) {
       const out = await handler(
-        { type: "before_agent_start", prompt: text, systemPrompt: current, systemPromptOptions: {} },
+        { type: "before_agent_start", messageType: "user", prompt: text, systemPrompt: current, systemPromptOptions: {} },
         ctx,
       );
       if (out?.systemPrompt !== undefined) current = out.systemPrompt;

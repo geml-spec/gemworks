@@ -27,7 +27,7 @@
         customSkillDirs:
           - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('host-skills/', baseUrl))"
 
-    # The supervisor. It attaches per agent at agent/session-start and does
+    # The supervisor. It attaches per agent at agent/created and does
     # nothing at all when the session's working directory holds no workflow —
     # `onMissing: skip` is what keeps this row harmless in a profile that wants
     # only the MCP server and the skills above.

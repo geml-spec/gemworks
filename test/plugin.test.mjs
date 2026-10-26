@@ -192,9 +192,10 @@ test("dispose gives the agent its whole tool set back", async () => {
 
 test("apply(): mounted as a Cordis plugin, an agent is supervised the moment it is published", async () => {
   // The path production takes. Every other test drives `attach` directly; this
-  // one proves the `agent/session-start` listener reaches it — and that it does
-  // so SYNCHRONOUSLY, before the loop could run a step unsupervised (the event
-  // is an `emit`, so nothing awaits our listener).
+  // one proves the `agent/created` listener reaches it — and that it does so
+  // before the loop could run a step unsupervised (the event is serial: the
+  // loop awaits its listeners and holds queued input until they settle, and
+  // ours does its work synchronously anyway).
   const { Context } = await import("@deepseek-ai/cordis");
   const { mountAgentLoopTestDependencies, mountAgentLoopTestHarness } =
     await import("@deepseek-ai/dsh-agent-loop-testkit");

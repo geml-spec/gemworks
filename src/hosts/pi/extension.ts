@@ -277,7 +277,7 @@ export default function gemworks(pi: ExtensionAPI): void {
   pi.on("before_agent_start", (event, ctx) => {
     current = ctx;
     if (!sup) return undefined;
-    // The clock's evidence, once per user turn: a stage held long enough moves on before the model reads it.
+    // The clock's evidence, once per run (a user turn, or a custom message that starts one): a stage held long enough moves on before the model reads it.
     sup.elapse(metaFor(now()));
     const instruction = sup.instruction();
     const body = instruction ? `${instruction}\n\n${sup.context()}` : sup.context();

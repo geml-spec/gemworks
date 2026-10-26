@@ -98,12 +98,14 @@ function exitCodeOf(result: Readonly<ToolExecutionResult>): number {
 export function apply(ctx: Context, config: Config): void {
   /** Every session under supervision, by its id: what the board's routes read. */
   const sessions = new Map<string, Attached>();
-  ctx.on("agent/session-start", ({ agent, source }) => {
-    // Synchronously, on purpose. `agent/session-start` is an `emit`: the loop
-    // does not await its listeners, so an attach that yielded would leave the
-    // first step of the first turn running against the unrestricted tool set.
-    // Nothing in `attach` needs to await - the reads, the parse and the first
-    // journal append are all synchronous - so the window simply does not exist.
+  ctx.on("agent/created", ({ agent, source }) => {
+    // Synchronously, on purpose. `agent/created` is serial: the loop awaits
+    // its listeners and holds the first turn's input until they settle, so an
+    // attach that yielded would be waited for, not raced - but nothing in
+    // `attach` needs to await (the reads, the parse and the first journal
+    // append are all synchronous), so creation is not held up either. The
+    // harness's 0.2 line dropped `agent/session-start`, the veto-less emit
+    // this listened to before; `agent/created` carries the same payload.
     // The project's shared session record, workflow or none.
     try { recordSession(agent); } catch (error: unknown) { ctx.logger(name).warn(error); }
     try {
@@ -275,7 +277,7 @@ export function boardApi(sessions: ReadonlyMap<string, Attached>): (req: Incomin
 /**
  * Put one agent under supervision. Exported so tests can drive it directly:
  * the harness testkit publishes an agent without running a turn, and this is
- * the same entry point `agent/session-start` uses.
+ * the same entry point `agent/created` uses.
  *
  * @returns the live supervision, or null when this agent is left unsupervised
  *   (no workflow, or a journal that does not verify).
