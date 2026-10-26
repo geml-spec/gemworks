@@ -1,0 +1,22 @@
+{
+  "name": "gemworks",
+  "owner": {
+    "name": "geml-spec",
+    "url": "https://github.com/geml-spec"
+  },
+  "description": "Gemworks for Claude Code: a coach for the person and the agent — the work items on the way, the flow each is in, what each still needs.",
+  "allowCrossMarketplaceDependenciesOn": [
+    "geml"
+  ],
+  "plugins": [
+    {
+      "name": "gemworks",
+      "source": {
+        "source": "npm",
+        "package": "gemworks"
+      },
+      "description": "Gemworks: work items, their flows and what each still needs; a band above the prompt and a board; rules a flow may set on its states.",
+      "strict": true
+    }
+  ]
+}
