@@ -43,7 +43,7 @@ import { flowRequest, labelRequest, linkKey, promptId, readFlowDraft, readLabels
 import type { LabelledPrompt } from '../dist/core/corrections.js'
 import { ARTIFACT_TOOL, isMadeForPeople, publishedLink } from '../dist/core/artifact-tool.js'
 import { ASK_PROMPT, ASK_TOOL, askedOf } from '../dist/core/ask-tool.js'
-import { COACH_FLOWS, coachBand, goneOnAfterTurn, holdEvent, itemProgress, pressEvent, readCoachFlow, stripText, turnItem, turnWords, WORK_REMINDER, WORK_TOOL, workContext, workEvents, workItemsOf, workPrompt } from '../dist/hosts/claude-code/coach.js'
+import { closeEvent, COACH_FLOWS, coachBand, goneOnAfterTurn, holdEvent, itemProgress, pressEvent, readCoachFlow, stripText, turnItem, turnWords, WORK_REMINDER, WORK_TOOL, workContext, workEvents, workItemsOf, workPrompt } from '../dist/hosts/claude-code/coach.js'
 import type { CoachFlow, CoachFocus, Doing, GoneOn, WorkGroup, WorkItem } from '../dist/hosts/claude-code/coach.js'
 import { memoryMoveContext, PRACTICE_PROMPT, PRACTICE_TOOL, practiceContext } from '../dist/hosts/claude-code/practice.js'
 import { isNew, newPractices, type Practice } from '../dist/core/practices.js'
@@ -1955,15 +1955,22 @@ async function act($: EngineInterface, action: BoardAction, surface?: string): P
     }
     // A step the person judges, pressed on its row: into this session's record at once; said too when the item is this session's, so the turn hears it.
     case 'work-meet':
-    case 'work-hold': {
+    case 'work-hold':
+    case 'work-take':
+    case 'work-close': {
       const item = (await workItems($)).find((i) => i.id === action.id)
       const flow = (await coachFlowsKept($)).find((f) => f.name === item?.flow)
-      if (item === undefined || flow === undefined) return
+      if (item === undefined || (flow === undefined && action.op === 'work-meet')) return
       const at = await nowIso($)
-      await appendOwn($, (so) => [action.op === 'work-meet' ? pressEvent(item, flow, action.step, action.yes, at, currentTurn(so)) : holdEvent(item, action.held, at, currentTurn(so))])
+      await appendOwn($, (so) => [
+        action.op === 'work-meet' && flow !== undefined ? pressEvent(item, flow, action.step, action.yes, at, currentTurn(so))
+          : action.op === 'work-take' ? closeEvent(item, 'open', at, currentTurn(so))
+          : action.op === 'work-close' ? closeEvent(item, action.status, at, currentTurn(so))
+          : holdEvent(item, action.op === 'work-hold' ? action.held : false, at, currentTurn(so)),
+      ])
       await loadProjectSessions($)
       if (action.op === 'work-meet' && item.session === (await $.session.id().catch(() => ''))) {
-        const step = flow.states.find((s) => s.id === action.step)?.title ?? action.step
+        const step = flow?.states.find((s) => s.id === action.step)?.title ?? action.step
         await act($, { op: 'say', text: `${item.title} · ${step}：${action.label}` }, surface)
       }
       return
@@ -3794,7 +3801,7 @@ export const register: Register = (on) => {
         const own = (((await read($, projectSessionsAtom)) as unknown as SessionSummary[] | null) ?? []).find((x) => x.id === session)
         const line = coachBand(await workItems($), await coachFlowsKept($), session, t, own?.turns.at(-1)?.at, await goneOnKept($), await doingKept($))
         if (line !== undefined) view = { ...view, verb: line.verb, title: line.title, note: line.note, detail: line.detail, actions: line.actions, ...(line.more.count > 0 ? { more: line.more } : {}) }
-        else if (view.title === '') view = { ...view, verb: '', title: t('还没有在路上的工作项') }
+        else if (view.title === '') view = { ...view, verb: '', title: t('空闲') }
       }
       // No shell yet and a start that got no answer: the band says it is trying again, not 启动中… for good.
       if (shell === null && startRetrying && view.tone !== 'error') view = { ...view, note: t('桥接未应答，重试中') }

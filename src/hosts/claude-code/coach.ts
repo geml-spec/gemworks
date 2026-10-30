@@ -250,6 +250,15 @@ export function holdEvent(item: WorkItem, held: boolean, at: string, turn: numbe
 }
 
 /**
+ * The person's word on an item, as this session's event: taken over (`open`: the newest event names the session an
+ * item is on, so it is this one's from now), closed as done, or dropped — another session's too, and one whose session
+ * has ended, which would never close it itself.
+ */
+export function closeEvent(item: WorkItem, status: "open" | "done" | "dropped", at: string, turn: number): ItemEvent {
+  return { ...holdEvent(item, false, at, turn), status, ...(status !== "open" ? { next: "" } : {}) };
+}
+
+/**
  * A question the person has not answered, as a card: its answers its buttons, the recommended first; a press says
  * "question：answer", the band's own words for it, so the turn and the record take it as the band's press.
  */
@@ -288,7 +297,12 @@ export interface WorkRowsOptions {
   doing?: Doing | null;
   /** Every artifact the project's work made: each row's press to its own on the 产物 tab says how many. */
   made?: readonly MadeAllEntry[];
+  /** Now: another session's item whose session has been silent past QUIET_MS says so. */
+  now?: string;
 }
+
+/** How long a session's record stays silent before its items are drawn as left by it (在别的会话里（已结束）). */
+export const QUIET_MS = 86_400_000;
 
 /**
  * A 好，做吧 the person pressed: the item, the next step it said and the item's record it was pressed on, the turn ends
@@ -371,14 +385,22 @@ export function workRows(items: readonly WorkItem[], flows: readonly CoachFlow[]
           { key: `work-no-${i.id}`, label: no, action: { op: "work-meet", id: i.id, step: here.id, yes: false, label: no } },
         );
       } else if (group === "me") {
+        // Another session's item, that session silent for a day: it will not move by itself, which the row says.
+        const quiet = elsewhere && o.now !== undefined && (o.sessions ?? []).some((s) => s.id === i.session && Date.parse(o.now as string) - Date.parse(s.last) > QUIET_MS);
+        const where = quiet ? t("在别的会话里（已结束）") : t("在别的会话里");
         if (i.next !== "") {
           // Pressed already, or the turn running is on it: what became of it, not the button again.
           const pressed = goneOnNote(i, o.gone, t) ?? doingNote(i, o.doing, t);
           detail = pressed ?? t("接下来我去：{0}", i.next);
-          if (elsewhere) detail = `${detail} · ${t("在别的会话里")}`;
+          if (elsewhere) detail = `${detail} · ${where}`;
           else if (pressed === undefined) actions.push({ key: `work-go-on-${i.id}`, label: t("好，做吧"), primary: true, action: { op: "work-go-on", id: i.id, next: i.next, at: i.at } });
-        }
-        actions.push({ key: `work-hold-${i.id}`, label: t("暂缓处理"), action: { op: "work-hold", id: i.id, held: true } });
+        } else if (elsewhere) detail = detail !== "" ? `${detail} · ${where}` : where;
+        // Another session's item is taken over here, and 好，做吧 offered on it then; any is closed by the person's word.
+        if (elsewhere) actions.push({ key: `work-take-${i.id}`, label: t("转到本会话"), primary: true, action: { op: "work-take", id: i.id } });
+        actions.push(
+          { key: `work-done-${i.id}`, label: t("标为完成"), action: { op: "work-close", id: i.id, status: "done" } },
+          { key: `work-hold-${i.id}`, label: t("暂缓处理"), action: { op: "work-hold", id: i.id, held: true } },
+        );
       }
       const cells = flow !== undefined && p !== undefined ? p.cells.map((c) => ({ title: (flow.states.find((s) => s.id === c.id) as CoachState).title, cell: c.cell })) : [];
       const unfolded = o.unfolded === i.id;
@@ -397,7 +419,11 @@ export function workRows(items: readonly WorkItem[], flows: readonly CoachFlow[]
         for (const h of shownNow) rows.push({ kind: "text", text: `${hhmm(h.at)}  ${h.text}`, tone: "dim" });
         if (history.length === 0) rows.push({ kind: "text", text: t("还没有经过"), tone: "dim" });
         if (i.goal !== "") rows.push({ kind: "text", text: t("最后：{0}", i.goal), tone: "dim" });
-        rows.push({ kind: "buttons", items: [{ key: `work-prompts-${i.id}`, label: t("看这件的提示词"), action: { op: "session-item", id: i.id } }, go] });
+        // 放下 under the unfolded row, not on the folded one: given up, it is counted under 放下.
+        rows.push({ kind: "buttons", items: [
+          { key: `work-prompts-${i.id}`, label: t("看这件的提示词"), action: { op: "session-item", id: i.id } }, go,
+          ...(group !== "held" ? [{ key: `work-drop-${i.id}`, label: t("放下"), action: { op: "work-close" as const, id: i.id, status: "dropped" as const } }] : []),
+        ] });
       }
     }
   }

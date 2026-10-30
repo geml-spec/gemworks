@@ -96,6 +96,10 @@ export type BoardAction =
   | { op: "work-meet"; id: string; step: string; yes: boolean; label: string }
   /** A work item put aside by the person, or taken up again. */
   | { op: "work-hold"; id: string; held: boolean }
+  /** 转到本会话: another session's work item taken over by this one, which then offers its 好，做吧. */
+  | { op: "work-take"; id: string }
+  /** 标为完成, 放下: a work item closed by the person's word, any session's. */
+  | { op: "work-close"; id: string; status: "done" | "dropped" }
   /** 好，做吧 on a work item's next step: said into the session, and the button gives way to 排队中/进行中 while the item stands as it was pressed (`at`, its record then). */
   | { op: "work-go-on"; id: string; next: string; at: string }
   /** A flow of the flow tab opened (its practices listed, or a flow with none on the way shown whole), or folded; `*` the practices for every flow. */

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { COACH_FLOWS, coachBand, doingNote, goneOnAfterTurn, goneOnNote, holdEvent, itemHistory, manualRows, turnWords, itemProgress, metOf, pressEvent, readCoachFlow, stripText, turnItem, WORK_SHOWN, workContext, workEvents, workItemsOf, workPrompt, workRows } from "../dist/hosts/claude-code/coach.js";
+import { closeEvent, COACH_FLOWS, coachBand, doingNote, goneOnAfterTurn, goneOnNote, holdEvent, itemHistory, manualRows, turnWords, itemProgress, metOf, pressEvent, readCoachFlow, stripText, turnItem, WORK_SHOWN, workContext, workEvents, workItemsOf, workPrompt, workRows } from "../dist/hosts/claude-code/coach.js";
 import { parseLog, summarize } from "../dist/core/session-log.js";
 import { wordsFor } from "../dist/hosts/claude-code/text.js";
 
@@ -131,9 +131,9 @@ test("the work items tab: items by whose turn it is, each its steps as cells; th
   assert.deepEqual(rows.find((r) => r.key === "work-f2").cells.map((c) => c.cell), ["skipped", "met", "met", "here", "ahead"]);
   assert.equal(rows.find((r) => r.key === "work-f2").detail, "还差：你用过说对", "no needs: the step's own requirement");
   const d3 = rows.find((r) => r.key === "work-d3");
-  assert.deepEqual([d3.detail, d3.actions.map((b) => [b.label, b.action.op])], ["接下来我去：出工作项页样稿", [["好，做吧", "work-go-on"], ["暂缓处理", "work-hold"]]]);
+  assert.deepEqual([d3.detail, d3.actions.map((b) => [b.label, b.action.op])], ["接下来我去：出工作项页样稿", [["好，做吧", "work-go-on"], ["标为完成", "work-close"], ["暂缓处理", "work-hold"]]]);
   const e4 = rows.find((r) => r.key === "work-e4");
-  assert.deepEqual([e4.detail, e4.actions.map((b) => b.label)], ["接下来我去：出样稿 · 在别的会话里", ["暂缓处理"]], "another session's next step: no 好，做吧 here");
+  assert.deepEqual([e4.detail, e4.actions.map((b) => b.label)], ["接下来我去：出样稿 · 在别的会话里", ["转到本会话", "标为完成", "暂缓处理"]], "another session's next step: no 好，做吧 here, but it can be taken over");
   assert.equal(rows.find((r) => r.key === "work-h5"), undefined, "the held group folded");
   const opened = workRows([item({ id: "h5", status: "held" })], flows, t, { open: ["held"] });
   assert.deepEqual(opened.at(-1).actions.map((b) => [b.label, b.action]), [["取消暂缓", { op: "work-hold", id: "h5", held: false }]]);
@@ -142,7 +142,7 @@ test("the work items tab: items by whose turn it is, each its steps as cells; th
 
 test("the work items tab: an item whose flow cannot be read still shows, with no cells; many items list the first few of a group until its heading's press", () => {
   const lost = workRows([item({ flow: "gone" })], flows, t);
-  assert.deepEqual(lost.filter((r) => r.kind === "work").map((r) => [r.title, r.tag, r.cells, r.actions.map((b) => b.label)]), [["导出跳过不留", "gone", [], ["暂缓处理"]]]);
+  assert.deepEqual(lost.filter((r) => r.kind === "work").map((r) => [r.title, r.tag, r.cells, r.actions.map((b) => b.label)]), [["导出跳过不留", "gone", [], ["标为完成", "暂缓处理"]]]);
   const many = Array.from({ length: 60 }, (_, n) => item({ id: `i${n}` }));
   const folded = workRows(many, flows, t);
   assert.equal(folded.filter((r) => r.kind === "work").length, WORK_SHOWN);
@@ -208,7 +208,7 @@ test("好，做吧 pressed gives way to 排队中 behind a running turn, then �
   const queued = coachBand([doing], flows, "s1", t, undefined, pressedBusy);
   assert.deepEqual([queued.note, queued.actions], ["排队中 改一处", []], "no button to press a second time");
   const row = (gone) => workRows([doing], flows, t, { own: "s1", gone }).find((r) => r.key === "work-a1");
-  assert.deepEqual([row(pressedBusy).detail, row(pressedBusy).actions.map((b) => b.label)], ["排队中 改一处", ["暂缓处理"]]);
+  assert.deepEqual([row(pressedBusy).detail, row(pressedBusy).actions.map((b) => b.label)], ["排队中 改一处", ["标为完成", "暂缓处理"]]);
   // The running turn ends: its own turn is under way.
   const under = goneOnAfterTurn(pressedBusy);
   assert.deepEqual(under, [{ id: "a1", next: "改一处", at: doing.at, wait: 1, ends: 1 }]);
@@ -237,8 +237,8 @@ test("the item the person's own turn took up says 我在做 and offers no 好，
   assert.deepEqual([band.note, band.actions], ["我在做：改一处", []], "no button while it is being done");
   const rows = workRows([on, other], flows, t, { own: "s1", doing });
   const row = (id) => rows.find((r) => r.key === `work-${id}`);
-  assert.deepEqual([row("a1").detail, row("a1").actions.map((b) => b.label)], ["我在做：改一处", ["暂缓处理"]]);
-  assert.deepEqual([row("a2").detail, row("a2").actions.map((b) => b.label)], ["接下来我去：对齐中间列", ["好，做吧", "暂缓处理"]], "the other item keeps its button");
+  assert.deepEqual([row("a1").detail, row("a1").actions.map((b) => b.label)], ["我在做：改一处", ["标为完成", "暂缓处理"]]);
+  assert.deepEqual([row("a2").detail, row("a2").actions.map((b) => b.label)], ["接下来我去：对齐中间列", ["好，做吧", "标为完成", "暂缓处理"]], "the other item keeps its button");
   // Reported again during the turn: what it says next is for after this turn, and is offered.
   const again = item({ ...on, next: "跑测试", at: "2026-10-23T10:05:00Z" });
   assert.equal(doingNote(again, doing, t), undefined);
@@ -280,6 +280,27 @@ test("a work item's history across sessions, and what a turn did in words: the s
   const rows = workRows([item({ id: "d1", flow: "design", title: "流程手册", met: [m("discuss")], goal: "一套流程" })], flows, t, { unfolded: "d1", sessions: [one, two] });
   const after = rows.slice(rows.findIndex((r) => r.key === "work-d1") + 1);
   assert.deepEqual(after.filter((r) => r.kind === "text").map((r) => r.text.replace(/^\d\d:\d\d {2}/, "")), ["✓讨论 · 你说「对得上」", "定：进度放在工作项上", "到「出样稿」", "已暂缓", "最后：一套流程"]);
-  assert.deepEqual(after.find((r) => r.kind === "buttons").items.map((b) => [b.label, b.action.op]), [["看这件的提示词", "session-item"], ["看流程", "coach-go"]]);
+  assert.deepEqual(after.find((r) => r.kind === "buttons").items.map((b) => [b.label, b.action.op]), [["看这件的提示词", "session-item"], ["看流程", "coach-go"], ["放下", "work-close"]]);
   assert.deepEqual(rows.find((r) => r.key === "work-d1").open.action, { op: "work-unfold", id: null }, "unfolded: its press folds it");
+});
+
+test("an item of a session that ended is the person's to move: taken over it is this session's and offers 好，做吧; closed it leaves the tab", () => {
+  const other = item({ id: "x9", flow: "design", title: "别处的", met: [m("discuss")], next: "出样稿", session: "s2" });
+  const silent = [{ id: "s2", last: "2026-10-28T00:00:00Z" }];
+  const row = (rows) => rows.find((r) => r.key === "work-x9");
+  assert.equal(row(workRows([other], flows, t, { own: "s1", sessions: silent, now: "2026-10-30T08:00:00Z" })).detail, "接下来我去：出样稿 · 在别的会话里（已结束）");
+  assert.equal(row(workRows([other], flows, t, { own: "s1", sessions: silent, now: "2026-10-28T08:00:00Z" })).detail, "接下来我去：出样稿 · 在别的会话里", "silent less than a day: not said to be over");
+  const taken = row(workRows([other], flows, t, { own: "s1" })).actions[0];
+  assert.deepEqual([taken.label, taken.primary, taken.action], ["转到本会话", true, { op: "work-take", id: "x9" }]);
+  // The press is one event in this session's log: the newest event names the session an item is on.
+  const log = (id, events) => ({ id, host: "claude-code", started: "x", last: "x", turns: [], decisions: [], files: [], commits: [], items: events });
+  const was = workItemsOf([log("s2", [{ ...holdEvent(other, false, "2026-10-26T00:00:00Z", 1), id: "x9" }])], flows)[0];
+  const mine = workItemsOf([log("s2", [holdEvent(was, false, "2026-10-26T00:00:00Z", 1)]), log("s1", [closeEvent(was, "open", "2026-10-30T08:00:00Z", 2)])], flows)[0];
+  assert.deepEqual([mine.session, mine.status, mine.next], ["s1", "open", "出样稿"]);
+  assert.deepEqual(row(workRows([mine], flows, t, { own: "s1" })).actions.map((b) => b.label), ["好，做吧", "标为完成", "暂缓处理"]);
+  for (const status of ["done", "dropped"]) {
+    const closed = workItemsOf([log("s2", [holdEvent(was, false, "2026-10-26T00:00:00Z", 1)]), log("s1", [closeEvent(was, status, "2026-10-30T08:00:00Z", 2)])], flows)[0];
+    assert.deepEqual([closed.status, closed.next], [status, ""]);
+    assert.equal(row(workRows([closed], flows, t, { own: "s1" })), undefined, `${status}: off the tab`);
+  }
 });
