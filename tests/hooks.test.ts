@@ -120,6 +120,8 @@ function world(on: On) {
     timeline: [] as unknown[],
     /** The lessons the bridge was asked to learn, the store, the notifications and the copies, as the hooks module sent them. */
     lessons: [] as unknown[],
+    /** When set, the status answer carries these practices, as the CLI's does. */
+    practices: null as { list: Record<string, unknown>[]; memoryMoved: boolean } | null,
     store: new Map<string, unknown>(),
     notified: [] as string[],
     copied: [] as string[],
@@ -193,6 +195,8 @@ function world(on: On) {
     if (!w.workflow) {
       const none = { status: null, policy: null, contextKey: null, problem: { text: 'no workflow here: run `gemworks init`', quiet: true } }
       if (req.op === 'made') return { v: 1, ok: true, shell: none, made: w.made }
+      // The project's record and its practices come with the status answer whatever the workflow, as the CLI's do.
+      if (req.op === 'status' && (w.practices !== null || w.sessionsDir !== null)) return { v: 1, ok: true, shell: none, ...(w.practices !== null ? { practices: w.practices } : {}), ...(w.sessionsDir !== null ? { sessions: w.sessionsDir } : {}) }
       return ['verb', 'mark', 'advance', 'bind'].includes(req.op) ? { v: 1, ok: false, error: 'no workflow here', shell: none } : { v: 1, ok: true, shell: none }
     }
     if (req.op === 'after' && w.routed !== null) return { v: 1, ok: true, shell: shell(), entered: [], routed: w.routed }
@@ -246,6 +250,7 @@ function world(on: On) {
       return typeof b === 'string' ? { v: 1, ok: false, error: `gemworks: ${b}`, shell: shell() } : { v: 1, ok: true, shell: shell(), backfill: b ?? { id: String(req.id), turns: 0, files: 0, links: 0 } }
     }
     if (req.op === 'refresh') return { v: 1, ok: true, shell: shell(), todo: w.todo }
+    if (req.op === 'status' && w.practices !== null) return { v: 1, ok: true, shell: shell(), practices: w.practices, ...(w.sessionsDir !== null ? { sessions: w.sessionsDir } : {}) }
     if (req.op === 'status' && w.sessionsDir !== null) return { v: 1, ok: true, shell: shell(), sessions: w.sessionsDir }
     if (req.op === 'attention') return { v: 1, ok: true, shell: shell(), attention: { ahead: w.ahead, prs: w.prs, ...(w.unread.length > 0 ? { unread: w.unread } : {}), ...(w.bump !== null ? { bump: w.bump } : {}) }, ...(w.sessionsDir !== null ? { sessions: w.sessionsDir } : {}), host: { name: 'build-box', platform: 'linux', user: 'dev', branch: 'feat/x' } }
     return { v: 1, ok: true, shell: shell(), ...(req.op === 'before' ? { recorded: false } : {}), ...(req.op === 'after' ? handoff(req) : {}) }
@@ -911,6 +916,30 @@ test('a tool no row takes goes through: nobody is asked, nothing waits, nothing 
   const band = await $.ui.mount({ plugin: 'gemworks', surface: 'terminal', component: 'AbovePrompt', props: BAND })
   expect((await band.findAll({ type: 'Button' })).map((b) => b.key)).not.toContain('pending')
   await band.unmount()
+})
+
+test('新学到 n 条 on the band is a press: the flow tab opens with the flows of the practices learned today unfolded', async ($, on) => {
+  const w = world(on)
+  // A project on the light flows, as one with no workflow of its own: the flow tab is their manual, practices under their steps.
+  w.workflow = false
+  w.sessionsDir = LOGS
+  w.files.set(`${ROOT}/.geml/coach/bugfix.geml`, BUGFIX_JUDGED)
+  w.practices = { list: [{ id: 'p1', flow: 'bugfix', step: 'fix', text: '修之前先读引擎契约', why: '', at: new Date().toISOString(), by: 'model', layer: 'personal' }], memoryMoved: true }
+  const clock = await start($, on)
+  // The light flows are read behind the start.
+  await clock.settle()
+  const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  const learned = await band.find({ type: 'Button', key: 'band-learned' })
+  expect(learned?.props?.label).toBe('新学到 1 条')
+  const opened = w.opened
+  await band.press({ key: 'band-learned' })
+  expect(w.opened, 'the press opens the board').toBe(opened + 1)
+  await band.unmount()
+  const pane = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+  const words = shown((await pane.drawn()) as unknown as Drawn).join(' ')
+  expect(words, 'on the flow tab, its flow unfolded: the practice listed under its step').toContain('修之前先读引擎契约')
+  expect(words).toContain('新学到')
+  await pane.unmount()
 })
 
 test('the band offers the board whenever there is a workflow, nothing waiting or not; a press opens it', async ($, on) => {

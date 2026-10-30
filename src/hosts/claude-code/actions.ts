@@ -82,7 +82,8 @@ export type BoardAction =
   /** On the sessions tab: a session's record written as GEML where the press asks — `own`, or another session's id. */
   | { op: "export"; session: string }
   | { op: "dialog"; dialog: Dialog | null }
-  | { op: "open-board"; tab?: BoardTab }
+  /** `expand`: the flows whose practices the flow tab lists as it opens (`*` those for every flow): 新学到 n 条 pressed. */
+  | { op: "open-board"; tab?: BoardTab; expand?: string[] }
   | { op: "use"; workflow: string }
   | { op: "add"; workflow: string }
   /** Write a workflow directory or file from a path into the project's .geml/workflows/. */

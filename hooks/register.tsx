@@ -2385,6 +2385,8 @@ async function act($: EngineInterface, action: BoardAction, surface?: string): P
     case 'dialog': await openDialog($, action.dialog); return
     case 'open-board': {
       $.clock.after(0, () => { void loadMemory($) })
+      const expand = action.expand
+      if (expand !== undefined) await update($, manualExpandedAtom, () => [...expand])
       const opened = await openBoard($, action.tab)
       if (!opened.isPlaced) $.ui.toast(boardText(opened.reason))
       return
@@ -3835,13 +3837,16 @@ export const register: Register = (on) => {
     }
     // Something else leads: the initialization's count stays as the dim words after it.
     if (notice !== null && attentionPresses !== null && view.note === '') view = { ...view, note: notice.text }
-    // What grew, in a few words at the right: the proposals waiting, the practices learned today.
+    // What grew, in a few words at the right: the practices learned today, a press that lists them on the flow tab
+    // (their flows unfolded), and the proposals waiting.
     let aside = ''
+    let learned: Pressable | undefined
     try {
       const nowAt = await nowIso($)
       const waitingProposals = (await proposalsKept($)).filter((p) => p.status === 'open').length + skippedSteps(await workItems($), await coachFlowsKept($), await proposalsKept($)).length
-      const learnedToday = ((await practicesKept($))?.list ?? []).filter((p) => p.deleted !== true && isNew(p, nowAt, 1)).length
-      aside = [learnedToday > 0 ? t('新学到 {0} 条', learnedToday) : '', waitingProposals > 0 ? t('{0} 条提议', waitingProposals) : ''].filter((x) => x !== '').join(SEP)
+      const fresh = ((await practicesKept($))?.list ?? []).filter((p) => p.deleted !== true && isNew(p, nowAt, 1))
+      if (fresh.length > 0) learned = { key: 'band-learned', label: t('新学到 {0} 条', fresh.length), action: { op: 'open-board', tab: 'flow', expand: [...new Set(fresh.map((p) => p.flow))] } }
+      aside = waitingProposals > 0 ? t('{0} 条提议', waitingProposals) : ''
     } catch { /* nothing said of it */ }
     const options: Pressable[] = attentionPresses ?? view.actions
     const tail: Pressable[] = [
@@ -3949,6 +3954,7 @@ export const register: Register = (on) => {
           ? <Box key="band-more">{pressable(b, options.length + i)}{card(view.more.detail, { right: 0 }, columns - 4)}</Box>
           : null)}
         {board !== undefined && <Box key="band-push" flexGrow={1} />}
+        {learned !== undefined && <Button key={learned.key} plain label={learned.label} onPress={press($, learned.action)}><Text {...toneProps('warning')}>{learned.label}</Text></Button>}
         {aside !== '' && <Text key="band-aside" {...toneProps('warning')}>{aside}</Text>}
         {board !== undefined && pressable(board, options.length + tail.indexOf(board))}
       </Box>
