@@ -81,7 +81,7 @@ test("整理: no box until it is pressed; then every turn but the running one ha
   assert.deepEqual([by["prompt-p2"].check, by["prompt-p2"].action], [false, { op: "pick-turn", id: "p2", on: true }], "a message typed mid-turn can be picked on its own");
   assert.deepEqual([by["prompt-p4"].check, by["prompt-p4"].did], [null, "进行中，不能选"], "the turn still running: no box");
   assert.ok(Object.values(by).every((r) => (r.icons ?? []).length === 0 && r.open === false), "no scroll icon, nothing unfolded while picking");
-  const pane = (over) => paneRows({ board: null, problem: null, shell: null, tab: "sessions", columns: 100, maxRows: 40, t, now: NOW, root: "/r", inbox: [], filter: "all", expanded: null, evidence: null, prompts, exportedFor: null, doneOpen: false, droppedOpen: false, sessionFlow: null, sessionRuns: [], flowState: null, switching: false, workflows: null, usage: {}, dismissed: [], toolQuery: "", toolMenu: null, toolNaming: null, toolsOpen: [], exported: null, ...over });
+  const pane = (over) => paneRows({ board: null, problem: null, shell: null, tab: "sessions", columns: 100, maxRows: 40, t, now: NOW, root: "/r", inbox: [], filter: "all", expanded: null, evidence: null, prompts, exportedFor: null, doneOpen: false, droppedOpen: false, sessionItem: null, sessionRuns: [], flowState: null, switching: false, workflows: null, usage: {}, dismissed: [], toolQuery: "", toolMenu: null, toolNaming: null, toolsOpen: [], exported: null, ...over });
   const heading = (rows) => rows.find((r) => r.kind === "section" && r.key === "own");
   const off = heading(pane({}));
   assert.deepEqual([off.actions.map((b) => [b.label, b.action]), off.fold.key], [[["整理", { op: "tidy", on: true }]], "export-own"]);

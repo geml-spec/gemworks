@@ -413,28 +413,26 @@ export function pressablesFor(lead: Lead | null, options: readonly string[], t: 
 }
 
 /**
- * The registered questions a prompt leaves open, for the next reply's band. A line that starts with a question and
- * its colon answers it: a press on the band says that, and the person may paste it back. A question picked on the band
- * is answered. A prompt the person typed that names none answers the one the band was showing, the first open one;
- * the plugin's own prompt (a step pressed) answers only what it names.
+ * The registered questions a prompt leaves open, before any judgement. A line that starts with a question and its
+ * colon answers it: a press on the band says that, and the person may paste it back. A question picked on the band is
+ * answered. Every other question stays open; which of them a typed prompt settles is the turn's judgement (judge.ts).
  */
-export function openAfter(asks: readonly Asked[], picks: readonly (string | null)[], said: string, typed: boolean): Asked[] {
+export function openAfter(asks: readonly Asked[], picks: readonly (string | null)[], said: string): Asked[] {
   const lines = said.split(/\r?\n/).map((l) => l.trim());
-  const unpicked = asks.filter((_, i) => (picks[i] ?? null) === null);
-  const open = unpicked.filter((q) => !lines.some((l) => l.startsWith(`${q.question}：`) || l.startsWith(`${q.question}:`)));
-  return typed && open.length === unpicked.length ? open.slice(1) : open;
+  return asks.filter((q, i) => (picks[i] ?? null) === null && !lines.some((l) => l.startsWith(`${q.question}：`) || l.startsWith(`${q.question}:`)));
 }
 
 /**
- * The one openAfter counts as answered by a typed prompt that names none: the
- * one shown, the first not picked. Whether the prompt does answer it is a
- * judgement (judge.ts); undefined when the prompt was pressed or names one.
+ * The questions the next reply's band asks: the state the turn leaves is the state before it and the turn's change.
+ * Several work items run side by side, each its own state machine with its own open questions; the band leads with
+ * this turn's own questions, then those still open on the item this turn worked on, then the other items'. A question
+ * asked again is asked once, as now worded; one answered while the turn ran is not asked.
  */
-export function shownWhenTyped(asks: readonly Asked[], picks: readonly (string | null)[], said: string, typed: boolean): Asked | undefined {
-  if (!typed) return undefined;
-  const unpicked = asks.filter((_, i) => (picks[i] ?? null) === null);
-  const open = openAfter(asks, picks, said, false);
-  return open.length === unpicked.length ? open[0] : undefined;
+export function asksAfterTurn(fresh: readonly Asked[], carried: readonly Asked[], answered: readonly string[], item?: string): Asked[] {
+  const now = fresh.filter((q) => !answered.includes(q.question));
+  const still = carried.filter((q) => !answered.includes(q.question) && !now.some((x) => x.question === q.question));
+  const here = item === undefined ? still : still.filter((q) => q.item === item);
+  return [...now, ...here, ...still.filter((q) => !here.includes(q))];
 }
 
 /** A step that is a button beside the lead: one the person takes in a press — merge, push, commit, reload. */

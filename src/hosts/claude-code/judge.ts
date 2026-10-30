@@ -72,28 +72,44 @@ export function readJudgement(reply: string, options: readonly JudgeOption[]): {
   return { option, alternatives, sure, why: typeof r["why"] === "string" ? r["why"].trim().slice(0, 80) : "" };
 }
 
-/** The request for the question the band showed: whether a typed message answers it, by one of its answers or in its own words. */
-export function askJudgeRequest(question: string, options: readonly string[], prompt: string): { system: string; prompt: string } {
-  const cut = (s: string): string => (s.length > PROMPT_CHARS ? `${s.slice(0, PROMPT_CHARS)}…` : s);
+/** The most of the person's messages put to the judgement of the open questions, the newest kept. */
+const SAID_ASKED = 12;
+/** Each of those messages, cut to this many characters (the newest gets PROMPT_CHARS). */
+const SAID_CHARS = 300;
+
+/**
+ * The request for every question still open when the person typed: the open questions are state, what the person has
+ * written since they were asked is the change, and the model reads which questions it settles. A question is settled
+ * when a message written after it was asked answers it (by one of its answers or in its own words) or leaves it behind
+ * (decides otherwise, moves the work past it, says it no longer matters); the others still stand. `said` is oldest
+ * first, the newest last; a question with no time was asked before all of them.
+ */
+export function asksJudgeRequest(asks: readonly { question: string; options: readonly string[]; at?: string }[], said: readonly { at: string; text: string }[]): { system: string; prompt: string } {
+  const cut = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n)}…` : s);
+  const kept = said.slice(-SAID_ASKED);
   return {
-    system: "You read one chat message a person sent to a coding assistant, and decide whether it answers a question the assistant had asked them. Reply with one JSON object and nothing else.",
+    system: "You read the messages a person sent to a coding assistant, and decide which of the questions the assistant had asked them are settled. Reply with one JSON object and nothing else.",
     prompt: [
-      `The assistant asked: ${JSON.stringify(question)}`,
-      `Its suggested answers: ${options.map((o) => JSON.stringify(o)).join(", ")}`,
-      `The person now wrote: ${JSON.stringify(cut(prompt))}`,
-      'Does the message answer that question, by choosing one of the suggested answers or by giving an answer of its own? A message about something else does not. Reply {"answers": true} or {"answers": false}.',
+      "The questions still open, oldest first:",
+      ...asks.map((q, i) => `${i + 1}. ${JSON.stringify(q.question)} (asked ${q.at ?? "before these messages"}; suggested answers: ${q.options.map((o) => JSON.stringify(o)).join(", ")})`),
+      "What the person wrote, oldest first, the last just now:",
+      ...kept.map((m, i) => `- ${m.at}: ${JSON.stringify(cut(m.text, i === kept.length - 1 ? PROMPT_CHARS : SAID_CHARS))}`),
+      "A question is settled when a message written after it was asked answers it, by choosing one of its suggested answers or by giving an answer of its own, or leaves it behind: decides the matter otherwise, moves the work past it, or says it no longer matters. A question no message touches still stands, even when the talk is about something else now: it may belong to other work that is waiting.",
+      'Reply {"settled": [the numbers of the settled questions]}, [] when none is.',
     ].join("\n"),
   };
 }
 
-/** The model's reply to askJudgeRequest: whether the message answers the question, or undefined for a reply that is no such answer. */
-export function readAskJudgement(reply: string): boolean | undefined {
+/** The model's reply to asksJudgeRequest: the places (from 0) of the questions it settles, or undefined for a reply that is no such answer. */
+export function readAsksJudgement(reply: string, count: number): number[] | undefined {
   const json = reply.match(/\{[\s\S]*\}/)?.[0];
   if (json === undefined) return undefined;
   try {
     const v = JSON.parse(json) as unknown;
-    const answers = typeof v === "object" && v !== null ? (v as Record<string, unknown>)["answers"] : undefined;
-    return typeof answers === "boolean" ? answers : undefined;
+    const settled = typeof v === "object" && v !== null ? (v as Record<string, unknown>)["settled"] : undefined;
+    if (!Array.isArray(settled)) return undefined;
+    const places = settled.filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= count).map((n) => n - 1);
+    return [...new Set(places)].sort((a, b) => a - b);
   } catch {
     return undefined;
   }

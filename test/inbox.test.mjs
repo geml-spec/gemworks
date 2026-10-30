@@ -83,10 +83,10 @@ test("repeated refusals of one key since the stage was entered are 'stuck': allo
   assert.equal(stuck.since, "2026-10-12T09:11:00Z");
   assert.deepEqual(stuck.actions.map((a) => [a.key, a.label, a.action]), [
     ["pass-Bash(wrangler deploy*--env staging)", "放行一次", { op: "pass-once", keys: ["Bash(wrangler deploy*--env staging)"] }],
-    ["journal-Bash(wrangler deploy*--env staging)", "看记录", { op: "tab", tab: "journal" }],
+    ["journal-Bash(wrangler deploy*--env staging)", "看会话", { op: "tab", tab: "sessions" }],
   ], "a use the workflow fences is not allowed here from the board");
   const denied = items({ timeline: [...TIMELINE.slice(0, 2), refused(1, "2026-10-12T09:18:00Z", "WebFetch", "you denied WebFetch in #review; switching the work item is always allowed: x"), refused(2, "2026-10-12T09:19:00Z", "WebFetch", "you denied WebFetch in #review; switching the work item is always allowed: x")] });
-  assert.deepEqual(denied.find((i) => i.kind === "stuck").actions.map((a) => a.label), ["放行一次", "在 #review 也允许", "看记录"]);
+  assert.deepEqual(denied.find((i) => i.kind === "stuck").actions.map((a) => a.label), ["放行一次", "在 #review 也允许", "看会话"]);
   assert.deepEqual(items({ timeline: [...TIMELINE.slice(0, 2), TIMELINE[2]] }).filter((i) => i.kind === "stuck"), [], "one refusal is not stuck");
   assert.deepEqual(items({ now: "2026-10-12T11:00:00Z" }).filter((i) => i.kind === "stuck"), [], "refusals long ago are not stuck now");
   const earlier = [refused(1, "2026-10-12T08:40:00Z", "WebFetch"), refused(2, "2026-10-12T08:41:00Z", "WebFetch"), ...TIMELINE];

@@ -3,6 +3,7 @@
 // person uses beside an agent (init, use, status, mark, unmark, advance,
 // rollback), and `run`, which is the one verb that reaches outside this
 // package (it starts dsh).
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { exists, readText, realPath } from "./host-fs.js";
@@ -22,6 +23,9 @@ import { installAntigravity, runAntigravity } from "./antigravity.js";
 import { serveMcp } from "./mcp.js";
 import { decodeRequest, type BridgeResponse } from "./hosts/claude-code/protocol.js";
 import { docReader, openWorkspace, resolvePromptRef, resolveWorkflow, type Workspace } from "./workspace.js";
+import { defaultPeriods, LABEL_GUIDE, localDay, parsePeriod, report, reportText, type Period } from "./core/corrections.js";
+import { addLabelled, labelledRows, readLedger, unlabelledPrompts } from "./corrections-store.js";
+import { cellWidth } from "./hosts/claude-code/band.js";
 
 const USAGE = [
   "usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmark|advance|pause|resume|rollback|run|hook|mcp> ...",
@@ -42,6 +46,10 @@ const USAGE = [
   "  codex                                   the Codex hook: one event on stdin, its answer on stdout (exit 0 always)",
   "  antigravity <Event> | install           the Antigravity editor's hook (one event on stdin), or put its hooks and MCP server in place",
   "  mcp [--host h] [--root dir]             the three model tools over stdio MCP (host default: mcp)",
+  "  corrections [--baseline a..b] [--trial a..b] [--since day] [--by work] [--json]",
+  "                                          how often you corrected the agent, per 100 prompts, by kind and by week",
+  "  corrections guide | pending [--limit n] | label [file] [--import]",
+  "                                          the labelling guide; your prompts not labelled yet (JSONL); labels written back",
 ].join("\n");
 
 function flag(args: string[], name: string): string | undefined {
@@ -187,6 +195,63 @@ async function runAntigravityHook(event: string | undefined): Promise<number> {
   } catch (e) {
     process.stderr.write(`gemworks antigravity: ${e instanceof Error ? e.message : String(e)}\n`);
   }
+  return 0;
+}
+
+/**
+ * `gemworks corrections`: the person's ledger of corrections (core/corrections.ts). With no subcommand, the tables:
+ * per 100 prompts, a baseline period against a trial one (default the eight weeks before this one, and this one), by
+ * kind of correction, by week, and with --by work by kind of work. `guide` prints what every label follows; `pending`
+ * the prompts in the host's transcripts with no label yet, one JSON line each; `label` takes those lines back with
+ * kind, sub and work filled in (an agent's labels; `--import` marks ones labelled elsewhere).
+ */
+function corrections(args: string[]): number {
+  const [sub, ...rest] = args;
+  const transcripts = process.env["CLAUDE_CONFIG_DIR"] !== undefined ? join(process.env["CLAUDE_CONFIG_DIR"], "projects") : join(homedir(), ".claude", "projects");
+  if (sub === "guide") {
+    console.log(LABEL_GUIDE);
+    console.log('\nFor each line of `gemworks corrections pending`, keep its fields and add "kind", "sub" (null unless kind is correct) and "work"; give the lines to `gemworks corrections label`.');
+    return 0;
+  }
+  if (sub === "pending") {
+    if (positionals("corrections pending", rest, [], ["--limit", "--since"]).length > 0) fail(USAGE, 2);
+    const limit = Number(flag(rest, "--limit") ?? "200");
+    if (!Number.isInteger(limit) || limit <= 0) fail("--limit needs a whole number", 2);
+    const since = flag(rest, "--since");
+    for (const p of unlabelledPrompts(readLedger(), transcripts, { limit, ...(since !== undefined ? { since } : {}) })) console.log(JSON.stringify(p));
+    return 0;
+  }
+  if (sub === "label") {
+    const files = positionals("corrections label", rest, ["--import"], []);
+    if (files.length > 1) fail(USAGE, 2);
+    const text = files[0] !== undefined ? readOrFail(files[0]) : readFileSync(0, "utf8");
+    const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
+    const parsed: unknown[] = [];
+    for (const [n, l] of lines.entries()) { try { parsed.push(JSON.parse(l)); } catch { fail(`line ${n + 1} is not JSON`, 1); } }
+    const r = labelledRows(parsed, has(rest, "--import") ? "import" : "agent");
+    for (const e of r.errors) console.error(e);
+    const added = addLabelled(r.rows);
+    console.log(`${added} labelled, ${r.rows.length - added} already in the ledger${r.errors.length > 0 ? `, ${r.errors.length} not taken` : ""}`);
+    return r.errors.length > 0 ? 1 : 0;
+  }
+  const all = sub === undefined || sub.startsWith("--") ? args : fail(USAGE, 2);
+  if (positionals("corrections", all, ["--json"], ["--baseline", "--trial", "--since", "--by"]).length > 0) fail(USAGE, 2);
+  const by = flag(all, "--by");
+  if (by !== undefined && by !== "work") fail("--by takes work", 2);
+  const offset = -new Date().getTimezoneOffset();
+  const periods = defaultPeriods(localDay(new Date().toISOString(), offset));
+  const period = (name: string): Period | undefined => {
+    const s = flag(all, name);
+    if (s === undefined) return undefined;
+    return parsePeriod(s) ?? fail(`${name} takes two dates, first..last: 2026-08-30..2026-10-25`, 2);
+  };
+  const since = flag(all, "--since");
+  const ledger = readLedger();
+  const r = report(ledger, { baseline: period("--baseline") ?? periods.baseline, trial: period("--trial") ?? periods.trial, offset, byWork: by === "work", ...(since !== undefined ? { since } : {}) });
+  const waiting = unlabelledPrompts(ledger, transcripts).length;
+  if (has(all, "--json")) console.log(JSON.stringify({ ...r, unlabelled: waiting }, null, 2));
+  else if (r.all.prompts === 0) console.log(`no labelled prompts yet${waiting > 0 ? ` · ${waiting} waiting: gemworks corrections pending` : ""}`);
+  else console.log(reportText(r, cellWidth, waiting));
   return 0;
 }
 
@@ -350,6 +415,8 @@ function main(argv: string[]): number {
       for (const m of moved) console.log(`${shown(m.from)} → ${shown(m.to)}${m.kept ? " (git tracks it: left where it is; remove it with git rm)" : ` (moved to ${m.trashed})`}`);
       return 0;
     }
+    case "corrections":
+      return corrections(rest);
     case "run": {
       const profile = has(rest, "--profile") ? (flag(rest, "--profile") as string) : "headless";
       // Everything that is not the flag or its value is the task. Joined rather

@@ -75,7 +75,7 @@ const buttons = (rows) => rows.flatMap((r) => (r.kind === "button" ? [r] : r.kin
 const widths = (rows) => rows.filter((r) => r.kind === "text" || r.kind === "button").map((r) => cellWidth(r.kind === "text" ? r.text : r.label));
 const pane = (over = {}) => paneRows({
   board: BOARD, problem: null, shell: shell(status()), tab: "flow", columns: 100, maxRows: 20, t: wordsFor("zh"), now: NOW, root: "/w/app",
-  inbox: [], filter: "all", expanded: null, evidence: null, prompts: [], menu: null, sessionFlow: null, sessionRuns: [], doneOpen: false, flowState: null, switching: false, workflows: null,
+  inbox: [], filter: "all", expanded: null, evidence: null, prompts: [], menu: null, sessionItem: null, sessionRuns: [], doneOpen: false, flowState: null, switching: false, workflows: null,
   usage: {}, dismissed: [], toolQuery: "", toolMenu: null, toolNaming: null, toolsOpen: [], ...over,
 });
 /** A work items tab's rows in a line each: a heading, a card, a list entry (→ when it can be pressed), a line, a button. */
@@ -90,10 +90,10 @@ const items = (over = {}) => itemRows({ board: BOARD, status: status(), inbox: [
 test("the board's id, the dialog's, and its five tabs in order, opening on the work items (spec §8.2)", () => {
   assert.equal(BOARD_ID, "gemworks-board");
   assert.equal(DIALOG_ID, "gemworks-dialog");
-  assert.deepEqual(TAB_IDS, ["sessions", "items", "journal", "flow", "tools"]);
+  assert.deepEqual(TAB_IDS, ["sessions", "items", "made", "flow", "tools"], "记录 is gone; 产物 has its own");
   assert.equal(HOME_TAB, "items");
-  assert.deepEqual(tabs().map((x) => [x.id, x.label]), [["sessions", "会话"], ["items", "工作项"], ["journal", "记录"], ["flow", "流程"], ["tools", "工具"]]);
-  assert.deepEqual(tabs(wordsFor("en")).map((x) => x.label), ["Session", "Items", "Journal", "Flow", "Tools"]);
+  assert.deepEqual(tabs().map((x) => [x.id, x.label]), [["sessions", "会话"], ["items", "工作项"], ["made", "产物"], ["flow", "流程"], ["tools", "工具"]]);
+  assert.deepEqual(tabs(wordsFor("en")).map((x) => x.label), ["Session", "Items", "Artifacts", "Flow", "Tools"]);
 });
 
 test("流程: the flow by its title, the picture, a row of its states, and the one picked — its uses and their tools, what it may not use, what runs everywhere", () => {
@@ -117,7 +117,7 @@ test("流程: the flow by its title, the picture, a row of its states, and the o
     : r.kind === "section" ? `§ ${r.text}` : r.kind === "entry" ? `${r.title} | ${r.tag}` : r.kind === "buttons" ? r.items.map((b) => `${b.label}${b.primary ? "*" : ""}`).join(" ")
     : r.kind === "text" ? r.text : r.kind);
   assert.deepEqual(look(rows), [
-    "# 开发流程 (dev) [换一个 ▾]",
+    "# 开发流程 (dev) [添加一类活 ▾]",
     "flow",
     "构建 review* deploy done",
     "# review (此刻在这里)",
@@ -142,7 +142,7 @@ test("流程: the flow by its title, the picture, a row of its states, and the o
 test("流程: switching — the installed workflows to use, the bundled ones to add, a path to import; the suggestions about the flow on top; a person's ticks on the current state", () => {
   const look = (rs) => rs.map((r) => r.kind === "buttons" ? r.items.map((b) => `${b.label}${b.primary ? "*" : ""}`).join(" ") : r.kind === "text" ? r.text : r.kind === "input" ? `[${r.placeholder}]` : r.kind === "heading" ? `# ${r.text} [${r.action?.label}]` : r.kind);
   assert.deepEqual(look(flow({ switching: true, workflows: { bundled: ["dev", "matter", "video"], installed: ["dev", "matter"] } })).slice(0, 4), [
-    "# 开发流程 [收起]", "dev* matter 添加 video", "换了以后，新的工作项走它；已经开始的照旧。", "[导入：流程文件或目录的路径]",
+    "# 开发流程 [收起]", "dev* matter 添加 video", "添加以后，新的工作项走它；已经开始的照旧。", "[导入：流程文件或目录的路径]",
   ]);
   const opened = flow({ switching: true, workflows: { bundled: ["dev", "matter"], installed: ["dev"] } })[1].items.map((b) => b.action);
   assert.deepEqual(opened, [{ op: "use", workflow: "dev" }, { op: "add", workflow: "matter" }]);
@@ -424,9 +424,10 @@ test("the pane: rows for the tab, a problem above them, and the reason when ther
   const at = "2026-10-20T08:00:00Z";
   const one = (id, over = {}) => ({ id, host: "claude-code", started: at, last: at, turns: [], decisions: [], files: [], commits: [], ...over });
   const project = { sessions: [one("me"), one("other", { branch: "feat/y", decisions: [{ turn: 1, at, text: "先跑 CI" }] })], own: "me", open: null };
-  assert.deepEqual(pane({ board: null, tab: "sessions", project }).filter((r) => r.kind === "section").map((r) => r.key), ["own", "others"], "the sessions tab: this session and the others");
-  assert.deepEqual(pane({ tab: "journal", project, memory: { list: { dir: "/h/m", entries: [{ file: "a.md", title: "甲", hook: "一", type: "feedback", at }] }, group: null, menu: null, edit: null, shown: 10 } }).filter((r) => r.kind === "section").map((r) => r.key), ["memory", "decisions"], "the journal: its events, then memory, then decisions, each its own section");
-  assert.deepEqual(pane(), flow());
+  assert.deepEqual(pane({ board: null, tab: "sessions", project }).filter((r) => r.kind === "section").map((r) => r.key), ["own", "others", "decisions"], "the sessions tab: this session, the others, what every session decided");
+  assert.deepEqual(pane({ board: null, tab: "sessions", project, memory: { list: { dir: "/h/m", entries: [{ file: "a.md", title: "甲", hook: "一", type: "feedback", at }] }, group: null, menu: null, edit: null, shown: 10 } }).filter((r) => r.kind === "section").map((r) => r.key), ["own", "others", "memory", "decisions"], "the sessions tab: this session, the others, then memory and decisions, which 记录 had");
+  assert.deepEqual(pane(), flow(), "a host that draws no light flows: the workflow alone");
+  assert.deepEqual(pane({ coach: { items: [], flows: [], focus: null } }).slice(2), [{ kind: "section", key: "strict", text: "严格流程", note: "只能你把事放进去，挂着的规定会真拦" }, ...flow()], "beside the light flows' manual: the project's own workflow under 严格流程");
   assert.deepEqual(pane({ tab: "tools" }), toolRows({ board: BOARD, columns: 100, t: wordsFor("zh"), usage: {}, suggestions: [], query: "", menu: null, naming: null, open: [] }));
   const stale = pane({ problem: "gemworks：桥接没有应答（timed out）", tab: "items", doneOpen: true });
   assert.deepEqual(stale[0], { kind: "text", text: "gemworks：桥接没有应答（timed out）", tone: "error" }, "the last board stays, under why it is not fresh");
@@ -480,22 +481,22 @@ test("记录: what the current work item waits for — put aside, the other done
   assert.deepEqual(shown.find((r) => r.key === "done-m/logo").detail, ["brand/gemworks_mark.svg", "brand/banner.png"], "its evidence, shown on 详情");
 });
 
-test("会话: with turns in more than one flow, a filter by flow; a run of three or more in another flow folds into one line, unfolded on a press", () => {
-  const p = (id, at, flow, itemTitle) => ({ id, at, text: `${id} 的提示词`, flow, itemTitle, tools: 1, refusals: 0, entered: [], signals: [], did: `${id} 做了` });
-  const prompts = [p("a", "2026-10-12T08:00:00Z", "开发流程", "样式"), p("b", "2026-10-12T08:10:00Z", "标志设计", "gemworks 标志"), p("c", "2026-10-12T08:20:00Z", "标志设计", "gemworks 标志"), p("d", "2026-10-12T08:30:00Z", "标志设计", "gemworks 标志"), p("e", "2026-10-12T09:00:00Z", "开发流程", "样式")];
-  const look = (rows) => rows.map((r) => r.kind === "turn" ? `${r.text}${r.did ? ` | ${r.did}` : ""}` : r.kind === "buttons" ? r.items.map((b) => `${b.label}${b.primary ? "*" : ""}`).join(" ") : r.kind === "section" ? `§ ${r.text}` : r.kind);
-  const folded = sessionRows(prompts, [], wordsFor("zh"), 100, NOW, { flow: null, runs: [], current: "开发流程" });
-  assert.deepEqual(look(folded), ["全部* 开发流程 标志设计", "§ 今天", "e 的提示词 | e 做了", "标志设计 · gemworks 标志 · 3 条提示词", "a 的提示词 | a 做了"]);
+test("会话: each turn says what it moved, decided and learned; a run of three or more on another work item folds into one line; one work item's prompts on its own", () => {
+  const p = (id, at) => ({ id, at, text: `${id} 的提示词`, tools: 1, refusals: 0, entered: [], signals: [], did: `${id} 做了` });
+  const prompts = [p("a", "2026-10-12T08:00:00Z"), p("b", "2026-10-12T08:10:00Z"), p("c", "2026-10-12T08:20:00Z"), p("d", "2026-10-12T08:30:00Z"), p("e", "2026-10-12T09:00:00Z"), p("f", "2026-10-12T09:10:00Z")];
+  const logo = { id: "l1", title: "gemworks 标志" };
+  const style = { id: "s1", title: "样式" };
+  const by = { a: [["→ 样式 ✓样稿"], style], b: [["→ gemworks 标志 ✓讨论", "定：海蓝在上"], logo], c: [["→ gemworks 标志 ✓出样稿"], logo], d: [["→ gemworks 标志 到「出样稿」"], logo], e: [["→ 样式 ✓实现"], style], f: [[], undefined] };
+  const moved = (x) => ({ words: by[x.id][0], ...(by[x.id][1] !== undefined ? { item: by[x.id][1] } : {}) });
+  const look = (rows) => rows.map((r) => r.kind === "turn" ? `${r.text}${r.did ? ` | ${r.did}` : ""}` : r.kind === "buttons" ? r.items.map((x) => x.label).join(" ") : r.kind === "section" ? `§ ${r.text}` : r.kind);
+  const folded = sessionRows(prompts, [], wordsFor("zh"), 100, NOW, { runs: [], moved });
+  assert.deepEqual(look(folded), ["§ 今天", "f 的提示词 | f 做了", "e 的提示词 | → 样式 ✓实现", "gemworks 标志 · 3 条提示词", "a 的提示词 | → 样式 ✓样稿"], "no flow filter: the turns by what they moved");
   assert.deepEqual(folded[3].action, { op: "session-run", id: "b", open: true });
-  assert.equal(folded[3].fold, true, "a run folds and unfolds: it says which");
-  const open = sessionRows(prompts, [], wordsFor("zh"), 100, NOW, { flow: null, runs: ["b"], current: "开发流程" });
-  assert.deepEqual(look(open).slice(3, 7), ["标志设计 · gemworks 标志 · 3 条提示词", "d 的提示词 | d 做了", "c 的提示词 | c 做了", "b 的提示词 | b 做了"]);
-  const only = sessionRows(prompts, [], wordsFor("zh"), 100, NOW, { flow: "标志设计", runs: [], current: "开发流程" });
-  assert.deepEqual(look(only).slice(0, 5), ["全部 开发流程 标志设计*", "§ 今天", "d 的提示词 | d 做了", "c 的提示词 | c 做了", "b 的提示词 | b 做了"]);
-  const stale = sessionRows(prompts, [], wordsFor("zh"), 100, NOW, { flow: "早就改名的流程", runs: [], current: "开发流程" });
-  assert.deepEqual(look(stale).slice(0, 3), ["全部* 开发流程 标志设计", "§ 今天", "e 的提示词 | e 做了"], "a filter by a flow no prompt carries shows them all, never only the export");
-  const one = sessionRows(prompts.filter((x) => x.flow === "开发流程"), [], wordsFor("zh"), 100, NOW, { flow: "标志设计", runs: [], current: "开发流程" });
-  assert.deepEqual(look(one).slice(0, 2), ["§ 今天", "e 的提示词 | e 做了"], "with one flow left there is no filter to clear: every prompt shows");
+  const open = sessionRows(prompts, [], wordsFor("zh"), 100, NOW, { runs: ["b"], moved });
+  assert.deepEqual(look(open).slice(3, 7), ["gemworks 标志 · 3 条提示词", "d 的提示词 | → gemworks 标志 到「出样稿」", "c 的提示词 | → gemworks 标志 ✓出样稿", "b 的提示词 | → gemworks 标志 ✓讨论 · 定：海蓝在上"]);
+  const only = sessionRows(prompts, [], wordsFor("zh"), 100, NOW, { item: "l1", runs: [], moved });
+  assert.deepEqual(look(only), ["看全部提示词", "§ 今天", "d 的提示词 | → gemworks 标志 到「出样稿」", "c 的提示词 | → gemworks 标志 ✓出样稿", "b 的提示词 | → gemworks 标志 ✓讨论 · 定：海蓝在上"]);
+  assert.deepEqual(only[0].items[0].action, { op: "session-item", id: null });
 });
 
 test("会话 across the project: the decisions shown whole, newest first; the other sessions after this one's turns, each with its export and a triangle saying whether it is unfolded", async () => {

@@ -51,7 +51,8 @@ export interface BoardQuery {
 const FILTERS: readonly JournalFilter[] = ["all", "artifacts", "evidence", "moves", "refusals", "depends"];
 
 /** The tabs on this host: every tab but the sessions tab. */
-export const DSH_TABS: readonly BoardTab[] = TAB_IDS.filter((id) => id !== "sessions");
+// No sessions tab on this host: its journal is where what happened shows, so it keeps 记录.
+export const DSH_TABS: readonly BoardTab[] = ["items", "journal", "flow", "tools"];
 
 /** The presses this host runs; a button for any other op is not drawn. */
 const HOST_OPS: ReadonlySet<string> = new Set(["advance", "mark", "pause", "resume", "learn", "tab", "filter", "expand", "refresh"]);
@@ -170,11 +171,11 @@ export function boardReply(s: Supervision, q: BoardQuery, now: string, locale?: 
   const inbox = inboxItems({ shell, timeline: board.timeline, problem: null, now, t });
   const rows = paneRows({
     board, problem: null, shell, tab: q.tab, columns: 160, maxRows: 400, t, now, root: s.root, inbox,
-    filter: q.filter, expanded: q.expanded, prompts: [], sessionFlow: null, sessionRuns: [], evidence: q.expanded, doneOpen: true, flowState: null, switching: false, workflows: null,
+    filter: q.filter, expanded: q.expanded, prompts: [], sessionItem: null, sessionRuns: [], evidence: q.expanded, doneOpen: true, flowState: null, switching: false, workflows: null,
     usage: {}, dismissed: [], toolQuery: "", toolMenu: null, toolNaming: null, toolsOpen: ["cli", "file", "mcp", "skill", "web", "model", "other"],
   });
   return {
-    tabs: tabs(t).filter((x) => DSH_TABS.includes(x.id)),
+    tabs: tabs(t, DSH_TABS),
     header: {
       item: s.item, workflow: s.workflow.name,
       ...(status.state !== undefined ? { state: { id: status.state.id, title: status.state.title, rev: status.state.rev, final: status.state.final } } : {}),

@@ -241,3 +241,51 @@ test("what the person gave and what was made for them outside the project: an up
   assert.deepEqual(artifactRows({ item: "feat/x", written: [], commits: [], made: { ...made, docs: [], code: { commits: 0, files: 0 } } }, "feat/x", { t: wordsFor("zh"), columns: 80, menu: null, docsOpen: false })
     .filter((r) => r.kind === "entry" && r.title === "logo.png").map((r) => r.detail.split(" · ")[0]), ["用户提供"]);
 });
+
+test("no workflow: what the turn made goes under the work item it is on — files git ignores, drafts outside, links, uploads; none without one", () => {
+  const root = repo();
+  writeFileSync(join(root, "out", "design.md"), "# design\n");
+  writeFileSync(join(root, "a.md"), "kept by git\n");
+  writeFileSync(join(root, "out", "tool.mjs"), "export {}\n");
+  const scratch = mkdtempSync(join(tmpdir(), "gemworks-scratch-"));
+  writeFileSync(join(scratch, "report.html"), "<title>Report</title>");
+  // On no work item: nothing recorded, and a named artifact says why.
+  assert.equal(hook(root, { op: "artifacts", written: ["out/design.md"] }).ok, true);
+  assert.deepEqual(readArtifactRows(root), [], "no work item: no row");
+  assert.equal(hook(root, { op: "artifact", kind: "link", where: "https://claude.ai/artifact/N" }).ok, false);
+  // On the coach's work item: the ignored file made for a person, the page outside; not the file git keeps, not the script.
+  assert.equal(hook(root, { op: "artifacts", item: "tdka6v0", written: ["out/design.md", "a.md", "out/tool.mjs"], elsewhere: [join(scratch, "report.html")] }).ok, true);
+  const names = readArtifactRows(root).map((r) => [r.item, r.name.split("\\").join("/").replace(/^.*\//, "")]).sort();
+  assert.deepEqual(names, [["tdka6v0", "design.md"], ["tdka6v0", "report.html"]]);
+  const said = hook(root, { op: "artifact", item: "tdka6v0", kind: "link", where: "https://claude.ai/artifact/N", name: "样稿" });
+  assert.equal(said.ok, true, JSON.stringify(said.error));
+  assert.match(said.text, /under tdka6v0/);
+  const png = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
+  assert.match(hook(root, { op: "artifact", item: "tdka6v0", kind: "image", where: "upload", data: png, mediaType: "image/png", name: "shot.png" }).text, /Recorded upload\/shot\.png under tdka6v0/);
+  // A workflow's own work item wins over the one named: its journal is where its work is.
+  withWorkflow(root, WS_DEV, "dev");
+  hook(root, { op: "status" });
+  assert.match(hook(root, { op: "artifact", item: "tdka6v0", kind: "link", where: "https://claude.ai/artifact/W" }).text, /under feat\/x/);
+});
+
+test("made: every artifact in the table, workflow or none, one entry per work item, kind and name, newest first — a link opens its address, a file where it is, an upload its copy", () => {
+  const root = repo();
+  writeFileSync(join(root, "out", "design.md"), "# v1\n");
+  hook(root, { op: "artifacts", item: "a1", written: ["out/design.md"] });
+  writeFileSync(join(root, "out", "design.md"), "# v2\n");
+  later(join(root, "out", "design.md"), 5);
+  hook(root, { op: "artifacts", item: "a1", written: ["out/design.md"] });
+  hook(root, { op: "artifact", item: "b2", kind: "link", where: "https://claude.ai/artifact/L", version: "3", name: "样稿" });
+  const png = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
+  hook(root, { op: "artifact", item: "b2", kind: "image", where: "upload", data: png, mediaType: "image/png", name: "shot.png" });
+  const said = hook(root, { op: "made" });
+  assert.equal(said.ok, true, JSON.stringify(said.error));
+  const entries = said.made.entries;
+  assert.deepEqual(entries.map((e) => [e.item, e.kind, e.name, e.versions]).sort(), [["a1", "file", "out/design.md", 2], ["b2", "image", "shot.png", 1], ["b2", "link", "样稿", 1]]);
+  assert.ok(entries.every((e, n) => n === 0 || entries[n - 1].at >= e.at), "newest first");
+  assert.equal(entries.find((e) => e.kind === "link").open, "https://claude.ai/artifact/L");
+  assert.equal(entries.find((e) => e.kind === "file").open, join(root, "out", "design.md"), "a file opens where it is");
+  const shot = entries.find((e) => e.kind === "image");
+  assert.equal(shot.given, true);
+  assert.ok(shot.open.split("\\").join("/").includes("/.geml/artifacts/"), "an upload opens its copy");
+});

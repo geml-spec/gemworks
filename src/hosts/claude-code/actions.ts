@@ -3,7 +3,7 @@
 // module runs them — through the bridge, the engine's `$`, or its own state.
 import type { Lesson } from "../../core/dictionary.js";
 
-export type BoardTab = "sessions" | "flow" | "items" | "journal" | "tools";
+export type BoardTab = "sessions" | "flow" | "items" | "made" | "journal" | "tools";
 export type JournalFilter = "all" | "artifacts" | "evidence" | "moves" | "refusals" | "depends";
 export type Dialog = "settings" | "upgrade" | "about" | "share";
 /** What the share dialog shares, and how. */
@@ -73,6 +73,10 @@ export type BoardAction =
   | { op: "fold"; what: "done" | "dropped" | "docs" | "held"; open: boolean }
   /** Open the menu under an artifact (`<kind>:<name>`), or close it. */
   | { op: "artifact-menu"; key: string | null }
+  /** The 产物 tab (made.ts): one work item's artifacts alone, there (null: every one's); narrow it to one kind, or every one; list the next page. */
+  | { op: "made-item"; id: string | null }
+  | { op: "made-kind"; kind: "all" | "link" | "doc" | "file" | "image" }
+  | { op: "made-more" }
   /** Close a merged work item: its worktree and its local branch removed, by the model, once the person said yes. */
   | { op: "close-item"; id: string; worktree?: string }
   /** On the sessions tab: a session's record written as GEML where the press asks — `own`, or another session's id. */
@@ -88,6 +92,46 @@ export type BoardAction =
   /** Words sent into the conversation as the person's own, as if typed: an answer on the band, a step it offers; `dismiss` puts its card away first (a branch held back), `toast` says where it went. */
   /** `decisions`: what the press decides, recorded in the session record as the person's own (an answer to a registered question). */
   | { op: "say"; text: string; confirm?: Confirm; dismiss?: string; toast?: string; decisions?: string[] }
+  /** A step of a work item the person judges, pressed (coach.ts pressEvent): `yes` meets it, no takes the item back; `label` the press's words, said when the item is this session's. */
+  | { op: "work-meet"; id: string; step: string; yes: boolean; label: string }
+  /** A work item put aside by the person, or taken up again. */
+  | { op: "work-hold"; id: string; held: boolean }
+  /** 好，做吧 on a work item's next step: said into the session, and the button gives way to 排队中/进行中 while the item stands as it was pressed (`at`, its record then). */
+  | { op: "work-go-on"; id: string; next: string; at: string }
+  /** A flow of the flow tab opened (its practices listed, or a flow with none on the way shown whole), or folded; `*` the practices for every flow. */
+  | { op: "manual-open"; flow: string; open: boolean }
+  /** A practice taken out by the person (kept as a tombstone, so it is not learned again). */
+  | { op: "practice-delete"; id: string }
+  /** A practice moved between the person's layer and the project's. */
+  | { op: "practice-layer"; id: string; layer: "personal" | "project" }
+  /** A proposal answered: accepted (the flow changes, the project's own) or declined (not proposed again). */
+  | { op: "proposal-answer"; id: string; yes: boolean }
+  /** gemworks's proposal to take a skipped step out of a flow, answered. */
+  | { op: "proposal-skip"; flow: string; step: string; yes: boolean }
+  /** 改成规定 on a practice: the model is asked to write the rule (the rule tool), which only that press lets it. */
+  | { op: "practice-rule"; id: string }
+  /** A flow shared with the team: its route (the project's own), its rules and its practices, into the repository's .gemworks/, for the person to commit. */
+  | { op: "flow-share"; flow: string }
+  /** A flow exported as one GEML file (its route, practices and rules), into the project's .geml/exports/. */
+  | { op: "flow-export"; flow: string }
+  /** One practice shared with the team (the repository's .gemworks/practices.geml). */
+  | { op: "practice-share"; id: string }
+  /** A practice for every time, asked to be written into CLAUDE.md, the change shown to the person first. */
+  | { op: "practice-claude-md"; id: string }
+  /** 设为通用做法: a practice hung on every flow and step, as what it asks was said off its step too. */
+  | { op: "practice-everywhere"; id: string }
+  /** 记为做法: a theme of corrections written as a practice, on the step it was said at (or every one), and linked to the theme. */
+  | { op: "practice-from-theme"; theme: string; rule: string; flow: string; step: string; why: string }
+  /** A ledger card put away (忽略, 保留), with what it counted: it comes back two corrections later. */
+  | { op: "ledger-dismiss"; key: string; n: number }
+  /** A reference imported: an exported flow's file, or another project's .gemworks/; its steps the project lacks are offered back. */
+  | { op: "reference-import"; path: string }
+  /** A work item unfolded under its row (its history), or folded (null). */
+  | { op: "work-unfold"; id: string | null }
+  /** The sessions tab showing only the prompts that moved a work item (null: every prompt). */
+  | { op: "session-item"; id: string | null }
+  /** A group of the work items tab listed whole, or folded to its first few. */
+  | { op: "work-fold"; group: "you" | "me" | "wait" | "held"; open: boolean }
   /** One answer of several asked in one reply, the `index`-th: kept until every one is answered, then all said in one prompt. */
   | { op: "pick"; index: number; answer: string }
   /** A slash command run as if the person typed it (`/reload-plugins`), once the session is idle. */

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { answered, asksOf, bandLine, heldSteps, leadOf, newsOf, NO_FACTS, NO_MEMORY, nowRows, openAfter, optionsFor, outcomeOf, picksText, pressablesFor, remember, shownWhenTyped, spokenOf, standingOf, stepPressables, WIDTH } from "../dist/hosts/claude-code/attention.js";
+import { answered, asksAfterTurn, asksOf, bandLine, heldSteps, leadOf, newsOf, NO_FACTS, NO_MEMORY, nowRows, openAfter, optionsFor, outcomeOf, picksText, pressablesFor, remember, spokenOf, standingOf, stepPressables, WIDTH } from "../dist/hosts/claude-code/attention.js";
 
 const NOW = Date.parse("2026-10-18T10:00:00Z");
 const cells = (s) => [...s].reduce((w, c) => w + (/[ᄀ-￿]/.test(c) ? 2 : 1), 0);
@@ -252,25 +252,44 @@ test("an answer to a registered question carries the decision it makes; a deferr
   assert.equal(stepPressables(standingOf("", { ahead: [{ branch: "feat/x", ahead: 1 }], prs: [] }, NOW))[0].action.decisions, undefined);
 });
 
-test("the questions a prompt leaves open: a typed prompt answers the one shown, or the ones its lines name; a pressed step answers only what it names", () => {
+test("the questions a prompt leaves open before any judgement: those its lines name and those picked are answered, every other stays", () => {
   const q = (question) => ({ question, options: ["好", "不好"] });
   const asks = [q("放在哪？"), q("怎么改？"), q("复制吗？")];
-  const left = (picks, said, typed) => openAfter(asks, picks, said, typed).map((x) => x.question);
-  assert.deepEqual(left([], "会话页 决定 前面", true), ["怎么改？", "复制吗？"], "typed, naming none: the one shown is answered");
-  assert.deepEqual(left(["好", null, null], "放在后面吧", true), ["复制吗？"], "the one shown is the first not picked");
-  assert.deepEqual(left([], "放在哪？：前面\n复制吗？：不复制", true), ["怎么改？"], "lines pasted back answer the questions they name");
-  assert.deepEqual(left([], "提交改动", false), ["放在哪？", "怎么改？", "复制吗？"], "a step pressed answers none");
-  assert.deepEqual(left([], "放在哪？：前面", false), ["怎么改？", "复制吗？"], "an answer pressed answers its question");
-  assert.deepEqual(left(["好", "不好", "好"], "放在哪？：好\n怎么改？：不好\n复制吗？：好", false), [], "all picked: none left");
-  assert.deepEqual(openAfter([q("推吗？")], [], "推吗？：推", false), [], "one question, its answer pressed");
+  const left = (picks, said) => openAfter(asks, picks, said).map((x) => x.question);
+  assert.deepEqual(left([], "会话页 决定 前面"), ["放在哪？", "怎么改？", "复制吗？"], "typed, naming none: all stay for the judgement, the one shown too");
+  assert.deepEqual(left(["好", null, null], "放在后面吧"), ["怎么改？", "复制吗？"], "one picked on the band is answered");
+  assert.deepEqual(left([], "放在哪？：前面\n复制吗？：不复制"), ["怎么改？"], "lines pasted back answer the questions they name");
+  assert.deepEqual(left([], "提交改动"), ["放在哪？", "怎么改？", "复制吗？"], "a step pressed answers none");
+  assert.deepEqual(left([], "放在哪？：前面"), ["怎么改？", "复制吗？"], "an answer pressed answers its question");
+  assert.deepEqual(left(["好", "不好", "好"], "放在哪？：好\n怎么改？：不好\n复制吗？：好"), [], "all picked: none left");
+  assert.deepEqual(openAfter([q("推吗？")], [], "推吗？：推"), [], "one question, its answer pressed");
 });
 
-test("the question a typed prompt naming none would answer: the one shown, left for a judgement; none when the prompt was pressed or names one", () => {
-  const q = (question) => ({ question, options: ["好", "不好"] });
-  const asks = [q("放在哪？"), q("怎么改？")];
-  assert.equal(shownWhenTyped(asks, [], "？你不会断句么？", true)?.question, "放在哪？", "typed, naming none: the one shown");
-  assert.equal(shownWhenTyped(asks, ["好", null], "随便", true)?.question, "怎么改？", "the first not picked");
-  assert.equal(shownWhenTyped(asks, [], "怎么改？：好", true), undefined, "naming one: no judgement needed");
-  assert.equal(shownWhenTyped(asks, [], "提交改动", false), undefined, "a pressed step answers none");
-  assert.equal(shownWhenTyped(asks, ["好", "好"], "完了", true), undefined, "all picked");
+test("the questions a turn leaves: its own first, then those still open from before; one asked again once, as now worded; one answered meanwhile not at all", () => {
+  const q = (question, options = ["好", "不好"]) => ({ question, options });
+  const names = (xs) => xs.map((x) => x.question);
+  assert.deepEqual(names(asksAfterTurn([q("初稿哪几句不对？")], [q("三个开头哪个好？")], [])), ["初稿哪几句不对？", "三个开头哪个好？"], "the turn's own first");
+  assert.deepEqual(asksAfterTurn([q("推吗？", ["推", "先不推"])], [q("推吗？")], []), [q("推吗？", ["推", "先不推"])], "asked again: once, as now worded");
+  assert.deepEqual(names(asksAfterTurn([q("推吗？")], [q("合并吗？")], ["推吗？"])), ["合并吗？"], "answered while the turn ran: not asked again");
+  assert.deepEqual(asksAfterTurn([], [], []), [], "none");
+  // Work items side by side, each with its own open questions: the item this turn worked on leads the ones carried.
+  const design = { question: "样稿行吗？", options: ["行", "不行"], item: "design1" };
+  const bug = { question: "修好了吗？", options: ["好了", "没好"], item: "bug1" };
+  const loose = q("要推吗？");
+  assert.deepEqual(names(asksAfterTurn([q("初稿哪几句不对？")], [design, loose, bug], [], "bug1")), ["初稿哪几句不对？", "修好了吗？", "样稿行吗？", "要推吗？"], "the turn's own, then its item's, then the rest in their order");
+  assert.deepEqual(names(asksAfterTurn([], [design, bug], [])), ["样稿行吗？", "修好了吗？"], "no item this turn: carried in their order");
+});
+
+test("a replay of 10-30: a question per turn, each typed answer settling the newest, leaves nothing behind once every turn's change is judged", () => {
+  // Each turn registers one question and the person's next prompt answers it by typing. The judgement settles the
+  // question the prompt answers, wherever it stands; before, typing settled only the oldest and the band ran behind.
+  const turns = ["三个开头读下来，哪个让你想往下读？", "初稿读下来，哪几句读着不对？", "11-26 复测，要我定个提醒吗？"].map((question) => ({ question, options: ["好", "不好"] }));
+  let left = [{ question: "按这个骨架写三个开头给你挑？", options: ["按这个写", "我先补几句原话"] }];
+  for (const asked of turns) {
+    const asks = asksAfterTurn([asked], left, []);
+    const open = openAfter(asks, [], "（打字回答）");
+    const settled = [asked.question, ...(open.length > 1 ? [open[open.length - 1].question] : [])]; // the newest, and the old one the prompt leaves behind
+    left = open.filter((x) => !settled.includes(x.question));
+  }
+  assert.deepEqual(left, [], "the band asks nothing already answered");
 });

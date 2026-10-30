@@ -12,6 +12,8 @@ import type { Suggestion } from "../../project.js";
 import type { AttentionFacts } from "./attention.js";
 import type { HostInfo } from "./env.js";
 import type { MemoryList } from "../../memory-store.js";
+import type { Practice } from "../../core/practices.js";
+import type { LabelledPrompt, LedgerCard, PracticeCount, Theme, ThemeAnswer, WorkKind } from "../../core/corrections.js";
 import type { QueuedMessage } from "../../core/transcript.js";
 import type { Transcript } from "../../core/transcript.js";
 
@@ -61,19 +63,26 @@ export type BridgeOp =
   /** Write a workflow from a path (a directory with flow.geml, or a .geml file) into the project's .geml/workflows/; answers `added`. */
   | { op: "import"; path: string }
   | { op: "board" }
+  /** Every artifact the project's work made, under any work item, workflow or none: answers `made` (MadeAll). */
+  | { op: "made" }
   /**
    * What the repository says for the band (attention.ts): branches ahead of their upstream, open pull requests and their
    * checks; with `session`, that session is marked open and the branches other open sessions work on come back.
    */
   | { op: "attention"; session?: string }
-  /** A turn's end: a version of each file the current work item wrote that git does not keep, when its content changed (artifacts-store.ts). */
-  | { op: "artifacts"; elsewhere?: string[]; notMade?: string[] }
+  /**
+   * A turn's end: a version of each file the current work item wrote that git does not keep, when its content changed
+   * (artifacts-store.ts). With no workflow work item, `item` is the work item the turn is on (the coach's) and `written`
+   * the project paths the turn wrote: no journal has them.
+   */
+  | { op: "artifacts"; elsewhere?: string[]; notMade?: string[]; item?: string; written?: string[] }
   /**
    * An artifact of the current work item gemworks did not see made: a link (a
    * publish tool's result; `page` the published file, whose title names it)
-   * or a file's version (a generated picture). Answers `text`.
+   * or a file's version (a generated picture). Answers `text`. With no
+   * workflow work item, it goes under `item`, the one the turn is on.
    */
-  | { op: "artifact"; kind: "link" | "image" | "file"; where: string; name?: string; version?: string; page?: string; data?: string; mediaType?: string }
+  | { op: "artifact"; kind: "link" | "image" | "file"; where: string; name?: string; version?: string; page?: string; data?: string; mediaType?: string; item?: string }
   /**
    * Write a file under `.geml/exports/`, or `to` where the person said (a
    * folder, or a file ending in the format's extension; `~` the home, a
@@ -99,7 +108,23 @@ export type BridgeOp =
   /** One memory's index line given a new hook. */
   | { op: "memory-set"; file: string; hook: string; transcripts?: string }
   /** One memory moved into gemworks's trash, its index line dropped. */
-  | { op: "memory-delete"; file: string; transcripts?: string };
+  | { op: "memory-delete"; file: string; transcripts?: string }
+  /** Every layer's practices (practice-store.ts). */
+  | { op: "practices" }
+  /** Practices the hooks module checked (core/practices.ts newPractices), written into their layers; `memory` marks the project's memory moved in. */
+  | { op: "practice-add"; practices: Practice[]; memory?: boolean }
+  /** One practice taken out (a tombstone), moved between the person's and the project's layers, or made one for every flow and step (`everywhere`). */
+  | { op: "practice-set"; id: string; deleted?: boolean; layer?: "personal" | "project"; everywhere?: boolean }
+  /** Practices moved into the team's layer: the repository's .gemworks/practices.geml. */
+  | { op: "practice-share"; ids: string[] }
+  /** The ledger of corrections as the flow tab shows it (core/corrections.ts); `toTheme`: what a theme request reads, when `session` holds the claim to put corrections in themes. */
+  | { op: "corrections"; toTheme?: boolean; session?: string }
+  /** Prompts the hooks module labelled, added to the ledger. */
+  | { op: "corrections-add"; prompts: LabelledPrompt[] }
+  /** A theme answer the hooks module read (ids, not handles), applied; `linked` the practices it linked against. */
+  | { op: "corrections-themes"; answer: ThemeAnswer; linked: string }
+  /** A card put away, with what it counted. */
+  | { op: "corrections-dismiss"; key: string; n: number };
 
 /** A transcript the host keeps: its file, the session's id (the file's name), its size. */
 export interface TranscriptFile { file: string; id: string; size: number }
@@ -247,6 +272,16 @@ export interface Made {
 }
 
 /**
+ * One artifact of the project's, whichever work item made it (the work items tab's 全部产物): the item it is under,
+ * its kind, its name (a link's title, a file's path), what opens it (a link's address, else the file where it is, else
+ * its newest copy), how many versions the table has, and the newest one's version and time.
+ */
+export interface MadeAllEntry { item: string; kind: "link" | "doc" | "file" | "image"; name: string; open: string; versions: number; version: string; at: string; /** The person gave it (an upload). */ given?: true }
+
+/** Every artifact the project's work made, newest first: what stays when the work item that made it ends. */
+export interface MadeAll { entries: MadeAllEntry[] }
+
+/**
  * The flow picture (spec §8.2): the chart's topology as the parser lays it
  * out (states by rank, edges by kind), what the runtime lays over it (the
  * current state, which ways out hold, the items per state, a hold, the
@@ -256,6 +291,20 @@ export interface Made {
  * wherever the board is drawn.
  */
 export interface FlowPicture { flow: Flow; overlay: Overlay; svg: string }
+
+/**
+ * The ledger as the flow tab shows it: the cards, each practice's corrections before and after it, the kinds of work
+ * corrected often with no flow; how many corrections wait for a theme, and whether the themes were linked against other
+ * practices than there are now (`stale`). `toTheme` when asked: what a theme request reads.
+ */
+export interface CorrectionsView {
+  cards: LedgerCard[];
+  counts: Record<string, PracticeCount>;
+  flowless: { work: WorkKind; n: number; judgment: number; quotes: { at: string; text: string }[] }[];
+  unthemed: number;
+  stale: boolean;
+  toTheme?: { corrections: LabelledPrompt[]; themes: Theme[]; practices: Practice[] };
+}
 
 export type BridgeResponse =
   | {
@@ -294,6 +343,12 @@ export type BridgeResponse =
       backfill?: Backfill;
       /** memory, memory-set and memory-delete: the project's memory as it now stands. */
       memory?: MemoryList;
+      /** practices, practice-add and practice-set: every layer's practices as they now stand, and whether the project's memory was moved in. */
+      practices?: { list: Practice[]; memoryMoved: boolean };
+      /** made: every artifact the project's work made. */
+      made?: MadeAll;
+      /** corrections and the ops that change the ledger: what the flow tab shows of it. */
+      corrections?: CorrectionsView;
     }
   /** No shell only when the request itself failed — it threw, or did not decode: the hooks module keeps the last shell and shows the error. */
   | { v: 1; ok: false; error: string; shell?: ShellStatus };
@@ -329,7 +384,7 @@ export function unreadableText(exitCode: number, stderr: string, pluginRoot: str
   return `gemworks：桥接的应答无法解析（退出码 ${exitCode}${said ? `：${said}` : ""}）`;
 }
 
-const OPS = new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "turn-ids", "memory", "memory-set", "memory-delete"]);
+const OPS = new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss"]);
 const EXPORT_KINDS = new Set(["journal", "workflow", "text"]);
 const EXPORT_FORMATS = new Set(["geml", "md", "json"]);
 const VERBS = new Set(["status", "move", "set"]);
@@ -362,7 +417,8 @@ export function decodeRequest(text: string): BridgeRequest | { error: string } {
   const op = v["op"];
   if (typeof op !== "string" || !OPS.has(op)) return { error: `unknown op ${String(op)}` };
   const str = (k: string): boolean => typeof v[k] === "string";
-  const obj = (k: string): boolean => typeof v[k] === "object" && v[k] !== null && !Array.isArray(v[k]);
+  const isRecord = (x: unknown): boolean => typeof x === "object" && x !== null && !Array.isArray(x);
+  const obj = (k: string): boolean => isRecord(v[k]);
   const cwd = (): boolean => v["cwd"] === undefined || (str("cwd") && v["cwd"] !== "");
   const fields: Record<string, () => boolean> = {
     before: () => str("tool") && str("callId") && obj("input") && cwd() && (v["waived"] === undefined || (Array.isArray(v["waived"]) && (v["waived"] as unknown[]).every((k) => typeof k === "string"))),
@@ -391,6 +447,13 @@ export function decodeRequest(text: string): BridgeRequest | { error: string } {
     memory: () => v["transcripts"] === undefined || str("transcripts"),
     "memory-set": () => str("file") && v["file"] !== "" && str("hook") && (v["transcripts"] === undefined || str("transcripts")),
     "memory-delete": () => str("file") && v["file"] !== "" && (v["transcripts"] === undefined || str("transcripts")),
+    "practice-add": () => Array.isArray(v["practices"]) && (v["practices"] as unknown[]).every((x) => typeof x === "object" && x !== null && !Array.isArray(x)) && (v["memory"] === undefined || typeof v["memory"] === "boolean"),
+    "practice-share": () => Array.isArray(v["ids"]) && (v["ids"] as unknown[]).every((x) => typeof x === "string"),
+    "practice-set": () => str("id") && v["id"] !== "" && (v["deleted"] === undefined || typeof v["deleted"] === "boolean") && (v["layer"] === undefined || v["layer"] === "personal" || v["layer"] === "project") && (v["everywhere"] === undefined || typeof v["everywhere"] === "boolean"),
+    corrections: () => (v["toTheme"] === undefined || typeof v["toTheme"] === "boolean") && (v["session"] === undefined || str("session")),
+    "corrections-add": () => Array.isArray(v["prompts"]) && (v["prompts"] as unknown[]).every(isRecord),
+    "corrections-themes": () => obj("answer") && Array.isArray((v["answer"] as Record<string, unknown>)["assign"]) && Array.isArray((v["answer"] as Record<string, unknown>)["links"]) && str("linked"),
+    "corrections-dismiss": () => str("key") && v["key"] !== "" && Number.isInteger(v["n"]),
   };
   const check = fields[op];
   if (check !== undefined && !check()) return { error: `op ${op}: missing or mistyped fields` };

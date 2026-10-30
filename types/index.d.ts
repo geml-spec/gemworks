@@ -3,7 +3,7 @@
 // (src/hosts/claude-code/protocol.ts) and the board's (actions.ts, inbox.ts,
 // sessions.ts, settings.ts).
 export type GemworksJson = null | boolean | number | string | readonly GemworksJson[] | { readonly [key: string]: GemworksJson }
-export type GemworksTab = 'sessions' | 'flow' | 'items' | 'journal' | 'tools'
+export type GemworksTab = 'sessions' | 'flow' | 'items' | 'made' | 'journal' | 'tools'
 
 declare module 'claude-code' {
   interface PluginState {
@@ -54,12 +54,18 @@ declare module 'claude-code' {
       artifactMenu: string | null
       /** Whether the work items tab lists every document the work item changed, or the newest two. */
       docsOpen: boolean
+      /** Every artifact the project's work made (the bridge's made answer): the 产物 tab, and each work item's 产物 n. */
+      madeAll: GemworksJson
+      /** The 产物 tab: the kind it is narrowed to, how many it lists, and the one work item it shows alone (null: every one). */
+      madeView: { kind: string; shown: number; item: string | null }
       /** Files made for a person written outside the project this turn (absolute paths): artifacts at the turn's end. */
       madeElsewhere: string[]
+      /** Project paths made for a person written this turn: versioned at the turn's end when no workflow journal names them. */
+      madeHere: string[]
       /** The questions the model registered with the ask tool this turn: the band's at the turn's end. */
-      asked: { question: string; options: string[]; recommended?: string }[]
-      /** The questions the person's last prompt left open: the next reply's band asks them again, before its own. */
-      leftAsks: { question: string; options: string[]; recommended?: string }[]
+      asked: { question: string; options: string[]; recommended?: string; item?: string; at?: string }[]
+      /** The questions the person's last prompt left open: the next reply's band asks them again, after its own. */
+      leftAsks: { question: string; options: string[]; recommended?: string; item?: string; at?: string }[]
       /** The questions answered since the last reply: a reply that registers one again, not having seen the answer, does not ask it again. */
       answered: string[]
       /** Files handed to git commit as its message this turn: not artifacts, taken out again at the turn's end. */
@@ -90,6 +96,8 @@ declare module 'claude-code' {
       passes: GemworksJson
       /** The prompts the person sent this session (PromptRecord[]). */
       prompts: GemworksJson
+      /** The sessions this one carries on, newest first: the app started it from them (a rewind, a fork). Their work items are its own. */
+      sessionLine: string[]
       /** The flow the sessions tab shows (its title), and the runs of another flow's turns unfolded (string[]). */
       sessionFlow: string | null
       sessionRuns: GemworksJson
@@ -152,6 +160,27 @@ declare module 'claude-code' {
       coachFlows: GemworksJson
       /** The work item whose arrow was pressed: { flow, id }, its flow first on the flow tab. */
       coachFocus: GemworksJson
+      /** The work items tab's groups listed whole (coach.ts WorkGroup). */
+      workOpen: string[]
+      /** Every layer's practices (core/practices.ts) and whether the project's memory was moved in; null until read. */
+      practices: GemworksJson
+      /** The person's ledger of corrections as the flow tab shows it (protocol.ts CorrectionsView); null until read. */
+      corrections: GemworksJson
+      /** Whether this session was asked to move the project's memory onto the steps. */
+      memoryAsked: boolean
+      /** The flows of the flow tab whose practices are listed (`*` those for every flow); null: the first flow's. */
+      manualExpanded: string[] | null
+      /** The work item unfolded under its row on the work items tab (its history). */
+      workUnfolded: string | null
+      /** The 好，做吧 the person pressed, on their way until their own turn ends. */
+      goneOn: GemworksJson
+      /** The work item the person's own turn took up (coach.ts Doing), as it stood then; null when no such turn runs. */
+      doing: GemworksJson
+      /** The proposals to change the flows (growth.ts), and the rules: null until read. */
+      proposals: GemworksJson
+      rules: GemworksJson
+      /** The practice whose 改成规定 was pressed: the one practice the rule tool may write a rule for. */
+      pendingRule: string | null
     }
   }
 }

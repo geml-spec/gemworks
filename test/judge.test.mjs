@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { askJudgeRequest, judgementLine, judgeOptions, judgeRequest, readAskJudgement, readJudgement } from "../dist/hosts/claude-code/judge.js";
+import { asksJudgeRequest, judgementLine, judgeOptions, judgeRequest, readAsksJudgement, readJudgement } from "../dist/hosts/claude-code/judge.js";
 import { wordsFor } from "../dist/hosts/claude-code/text.js";
 
 const t = wordsFor("zh");
@@ -62,14 +62,23 @@ test("unsure, the judgement offers up to four picks, the likeliest first, then n
   ]], "an option of the same work item goes by its button's words, another's by both");
 });
 
-test("a question on the band: the request names the question, its answers and the message; the reply is read as yes, no, or no answer", () => {
-  const r = askJudgeRequest("轻流程能跳步吗？", ["能", "不能"], "？你不会断句么？");
-  assert.match(r.system, /answers a question/);
-  assert.match(r.prompt, /"轻流程能跳步吗？"/);
-  assert.match(r.prompt, /"能", "不能"/);
-  assert.match(r.prompt, /"？你不会断句么？"/);
-  assert.equal(readAskJudgement('{"answers": true}'), true);
-  assert.equal(readAskJudgement('它答了：{"answers": false}'), false, "the object found in the reply");
-  assert.equal(readAskJudgement("yes"), undefined, "no object");
-  assert.equal(readAskJudgement('{"answers": "yes"}'), undefined, "not a boolean");
+test("the open questions and what the person wrote since: the request numbers every question with when it was asked and its answers, and lists the messages oldest first; the reply is read as the places it settles", () => {
+  const said = [{ at: "2026-10-30T02:00:00Z", text: "C，A稍差，B最差" }, { at: "2026-10-30T03:00:00Z", text: "？你不会断句么？" }];
+  const r = asksJudgeRequest([{ question: "轻流程能跳步吗？", options: ["能", "不能"] }, { question: "要推吗？", options: ["推", "先不推"], at: "2026-10-30T01:00:00Z" }], said);
+  assert.match(r.system, /which of the questions/);
+  assert.match(r.prompt, /1\. "轻流程能跳步吗？" \(asked before these messages; suggested answers: "能", "不能"\)/);
+  assert.match(r.prompt, /2\. "要推吗？" \(asked 2026-10-30T01:00:00Z;/);
+  assert.match(r.prompt, /- 2026-10-30T02:00:00Z: "C，A稍差，B最差"\n- 2026-10-30T03:00:00Z: "？你不会断句么？"/, "oldest first, the last just now");
+  assert.match(r.prompt, /written after it was asked/, "a message before a question cannot answer it");
+  assert.match(r.prompt, /leaves it behind/, "a question the work moved past is settled too");
+  assert.match(r.prompt, /other work that is waiting/, "talk about something else alone settles nothing");
+  const many = Array.from({ length: 20 }, (_, i) => ({ at: `t${String(i).padStart(2, "0")}`, text: `m${i}` }));
+  const long = asksJudgeRequest([{ question: "q", options: ["a", "b"] }], many).prompt;
+  assert.ok(!long.includes('"m7"') && long.includes('"m8"') && long.includes('"m19"'), "the newest twelve");
+  assert.deepEqual(readAsksJudgement('{"settled": [2]}', 2), [1]);
+  assert.deepEqual(readAsksJudgement('它定了：{"settled": [2, 1, 2]}', 2), [0, 1], "the object found in the reply, each place once, in order");
+  assert.deepEqual(readAsksJudgement('{"settled": []}', 2), [], "none settled: all stand");
+  assert.deepEqual(readAsksJudgement('{"settled": [0, 3, "1"]}', 2), [], "places outside the list or not numbers are dropped");
+  assert.equal(readAsksJudgement("yes", 2), undefined, "no object");
+  assert.equal(readAsksJudgement('{"settled": 1}', 2), undefined, "not a list");
 });

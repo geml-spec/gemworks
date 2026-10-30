@@ -61,6 +61,8 @@ function world(on: On) {
     raw: null as { stdout: string; exitCode: number; stderr: string } | null,
     /** When false, the project has no workflow: every answer is the quiet problem shell, and no board. */
     workflow: true,
+    /** What the made op answers: every artifact the project's work made (全部产物). */
+    made: { entries: [] } as { entries: { item: string; kind: string; name: string; open: string; versions: number; version: string; at: string }[] },
     /** Tools the engine refuses to register, by name, with the refusal. */
     refuse: {} as Record<string, string>,
     /** How many times the board pane was opened. */
@@ -190,6 +192,7 @@ function world(on: On) {
     w.sent.push(req)
     if (!w.workflow) {
       const none = { status: null, policy: null, contextKey: null, problem: { text: 'no workflow here: run `gemworks init`', quiet: true } }
+      if (req.op === 'made') return { v: 1, ok: true, shell: none, made: w.made }
       return ['verb', 'mark', 'advance', 'bind'].includes(req.op) ? { v: 1, ok: false, error: 'no workflow here', shell: none } : { v: 1, ok: true, shell: none }
     }
     if (req.op === 'after' && w.routed !== null) return { v: 1, ok: true, shell: shell(), entered: [], routed: w.routed }
@@ -382,7 +385,7 @@ test('real event order: session start, a test run moves the stage, the board mov
   await start($, on)
   expect(w.sent.map((r) => r.op), 'the board the inbox is built from is read at the start').toEqual(['status', 'refresh', 'board', 'attention'])
   expect(w.sent[0]).toMatchObject({ v: 1, root: ROOT })
-  expect(w.registered).toEqual(['status', 'move', 'set', 'note', 'artifact', 'ask', 'work'])
+  expect(w.registered).toEqual(['status', 'move', 'set', 'note', 'artifact', 'ask', 'work', 'practice', 'propose', 'rule'])
 
   const tests = await $.tool.call({ tool: 'Bash', tool_use_id: 'b1', command: 'npm test' })
   expect(w.sent.at(-1)).toMatchObject({ op: 'after', tool: 'Bash', callId: 'b1', exitCode: 0, isError: false, gitOperation: false, input: { command: 'npm test' } })
@@ -520,15 +523,16 @@ test('no Node: the band says so, tool calls pass untouched, and nothing is sent'
   expect(await band.find({ type: 'Text', text: /找不到 node/ })).toBeDefined()
 })
 
-test('the board draws its header and its five tabs on every surface, opening on the work items', async ($, on) => {
+test('the board draws its header and its four tabs on every surface, opening on the work items', async ($, on) => {
   world(on)
   await start($, on)
   await $.command.run({ command: 'gemworks', args: 'board', origin: COMPOSER, presentation: PRESENTATION })
   for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
     const pane = await $.ui.mount({ plugin: 'gemworks', surface, component: 'Pane', requestId: 'gemworks-board', props: PANE })
-    for (const key of ['tab-sessions', 'tab-flow', 'tab-items', 'tab-journal', 'tab-tools', 'dialog-share', 'dialog-settings', 'dialog-upgrade', 'dialog-about']) {
+    for (const key of ['tab-sessions', 'tab-flow', 'tab-items', 'tab-tools', 'dialog-share', 'dialog-settings', 'dialog-upgrade', 'dialog-about']) {
       expect(await pane.find({ type: 'Button', key })).toBeDefined()
     }
+    expect(await pane.find({ type: 'Button', key: 'tab-journal' }), '记录 is gone').toBeUndefined()
     expect(await pane.find({ type: 'Button', key: 'tab-pending' }), 'what waits is on the work items tab, not a tab of its own').toBeUndefined()
     const texts = async (): Promise<string> => (await pane.findAll({ type: 'Text' })).map((x) => x.text).join(' | ')
     // The mark and the name: characters on the terminal; where the surface draws pictures, the wide lockup says both.
@@ -556,8 +560,6 @@ test('the board draws its header and its five tabs on every surface, opening on 
     expect(await pane.find({ type: 'Button', key: 'open-tool-Bash(npm test)' }), await texts()).toBeDefined()
     expect(await pane.find({ type: 'Text', text: 'npm test' }) ?? await pane.find({ type: 'Button', text: 'npm test' }), 'the name, as words where pictures are drawn').toBeDefined()
     expect(await pane.find({ type: 'Text', text: '跑测试（首选）' }), await texts()).toBeDefined()
-    await pane.press({ key: 'tab-journal' })
-    expect(await pane.find({ type: 'Text', text: '暂无' }), 'the journal says it has nothing, in a word').toBeDefined()
     await pane.press({ key: 'tab-sessions' })
     expect(await pane.find({ type: 'Text', text: /还没有 prompt/ })).toBeDefined()
     await pane.press({ key: 'tab-items' })
@@ -601,7 +603,7 @@ test('a registration the engine refuses: the start goes on, and the band says wh
   w.refuse = { set: 'a tool named set is already registered' }
   await start($, on)
   expect(w.sent.map((r) => r.op)).toEqual(['status', 'refresh', 'board', 'attention'])
-  expect(w.registered).toEqual(['status', 'move', 'note', 'artifact', 'ask', 'work'])
+  expect(w.registered).toEqual(['status', 'move', 'note', 'artifact', 'ask', 'work', 'practice', 'propose', 'rule'])
   expect(await bandText($, 'terminal', 400)).toMatch(/^» gemworks：没有注册上 set（[^（]*already registered[^）]*） \[看板\]$/)
 })
 
@@ -609,7 +611,8 @@ test('a bundle that was never built: the band shows the error line and the build
   const w = world(on)
   w.raw = { stdout: '', exitCode: 1, stderr: "node:internal/modules/cjs/loader:1479\n  throw err;\n\nError: Cannot find module '/p/dist/gemworks.mjs'\n" }
   await start($, on)
-  expect(await bandText($)).toMatch(/^» gemworks：桥接没有构建 — 在 \S+ 运行 npm run build.* \[重试\]$/)
+  // The band names the checkout, and a long one cuts the line short: the whole sentence is the command's, below.
+  expect(await bandText($)).toMatch(/^» gemworks：桥接没有构建 — 在 .+ \[重试\]$/)
   const said = await $.command.run({ command: 'gemworks', args: '', origin: COMPOSER, presentation: PRESENTATION })
   expect(said.text).toMatch(/^gemworks：桥接没有构建 — 在 \S+ 运行 npm run build（Error: Cannot find module '\/p\/dist\/gemworks\.mjs'）$/)
 })
@@ -637,15 +640,14 @@ test('a start that found no Node is tried again by a tool call or a prompt after
   expect(w.sent.filter((r) => r.op === 'status'), 'a start that answered is not tried again').toHaveLength(1)
 })
 
-test('the board in a project with no workflow, or with the bridge down, says why instead of waiting', async ($, on) => {
+test('the board in a project with no workflow of its own opens on the light flows; with the bridge down it says why instead of waiting', async ($, on) => {
   const w = world(on)
   w.workflow = false
   await start($, on)
   const none = await $.command.run({ command: 'gemworks', args: 'board', origin: COMPOSER, presentation: PRESENTATION })
-  expect(none.text).toBe('看板打不开：这个项目还没有流程。用 /gemworks add 选一个内置流程。')
-  expect(w.opened).toBe(0)
+  expect(none.text).toBe('已打开 Gemworks 看板。')
   const pane = await $.ui.mount({ plugin: 'gemworks', surface: 'terminal', component: 'Pane', requestId: 'gemworks-board', props: PANE })
-  expect(await pane.find({ type: 'Text', text: '这个项目还没有流程。用 /gemworks add 选一个内置流程。' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: /这个项目还没有流程/ }), 'no workflow of its own is nothing missing').toBeUndefined()
   expect(await pane.find({ type: 'Text', text: /正在读取/ })).toBeUndefined()
   await pane.unmount()
 
@@ -658,6 +660,36 @@ test('the board in a project with no workflow, or with the bridge down, says why
   await stale.press({ key: 'tab-flow' })
   expect(await stale.find({ type: 'Text', text: /^gemworks：暂时没应答/ })).toBeDefined()
   expect(await stale.find({ type: 'Text', text: /▶ build/ }), 'the last board stays under the reason').toBeDefined()
+})
+
+test('the 产物 tab in a project with no workflow: read when the tab is chosen and listed at once; a press narrows it to a kind and lists more, and the pane stays one the desktop can draw', async ($, on) => {
+  const w = world(on)
+  w.workflow = false
+  const at = (n: number): string => new Date(Date.UTC(2026, 9, 29, 12) - n * 3_600_000).toISOString()
+  w.made = { entries: Array.from({ length: 104 }, (_, n) => n % 10 === 3
+    ? { item: 'main', kind: 'link', name: `样稿 ${n}`, open: `https://claude.ai/artifact/L${n}`, versions: 1, version: '1', at: at(n) }
+    : { item: 'main', kind: 'file', name: `.geml/design/f${n}.html`, open: `${ROOT}/.geml/design/f${n}.html`, versions: 1, version: '1', at: at(n) }) }
+  const clock = await start($, on)
+  await $.command.run({ command: 'gemworks', args: 'board', origin: COMPOSER, presentation: PRESENTATION })
+  const mount = () => $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: { ...PANE, bodyColumns: 120 } })
+  let pane = await mount()
+  await pane.press({ key: 'tab-made' })
+  await clock.settle()
+  expect(w.sent.some((r) => r.op === 'made'), 'read behind the tab: no workflow has no board read to bring it').toBe(true)
+  await pane.unmount()
+  pane = await mount()
+  expect(await pane.find({ type: 'Text', text: 'f0.html' }), 'the newest, at once: nothing to unfold').toBeDefined()
+  expect(await pane.find({ type: 'Text', text: /^工作项之前 · \d\d:\d\d$/ }), 'what no work item made says so').toBeDefined()
+  for (let n = 0; n < 5; n++) { await pane.press({ key: 'made-more' }); await pane.unmount(); pane = await mount() }
+  const count = (el: Drawn | string): number => (typeof el === 'string' ? 1 : 1 + (el.children ?? []).reduce((n, c) => n + count(c), 0))
+  expect(count((await pane.drawn()) as unknown as Drawn), 'sixty at most, whatever was pressed').toBeLessThan(1_100)
+  expect(await pane.find({ type: 'Button', key: 'made-newest' }), 'the newest folded away, a press back').toBeDefined()
+  await pane.press({ key: 'made-kind-link' })
+  await pane.unmount()
+  pane = await mount()
+  expect(await pane.find({ type: 'Text', text: 'f0.html' }), 'narrowed to links: no file').toBeUndefined()
+  expect(await pane.find({ type: 'Text', text: '样稿 3' }), 'the links').toBeDefined()
+  await pane.unmount()
 })
 
 test('a shell the band or the board cannot draw: one line says so', async ($, on) => {
@@ -851,7 +883,7 @@ test('a model stuck on one fenced key: the inbox says so, "allow once" lets the 
   expect(await pane.find({ type: 'Text', text: 'Bash(wrangler deploy)' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '3 分钟内 3 次' })).toBeDefined()
   expect(await pane.find({ type: 'Button', key: 'journal-Bash(wrangler deploy)' }), 'and where the refusals are recorded').toBeDefined()
-  expect(await bandText($), 'the band leads with it').toBe('» 被拦 Bash(wrangler deploy) [放行一次] [看记录] [看板]')
+  expect(await bandText($), 'the band leads with it').toBe('» 被拦 Bash(wrangler deploy) [放行一次] [看会话] [看板]')
   await pane.press({ key: 'pass-Bash(wrangler deploy)' })
   await pane.unmount()
   const passed = await $.tool.call({ tool: 'Bash', tool_use_id: 'd2', command: 'npx wrangler deploy' })
@@ -1628,6 +1660,8 @@ test('the project record: a prompt opens a turn in this session\'s log, the mode
   ])
 })
 
+/** The same flow with who judges each step, as the shipped flows say it (a test world has no plugin files to inherit from). */
+const BUGFIX_JUDGED = '=== meta\ntitle = "bugfix"\nprofile = "geml-statechart/v1"\n===\n\n=== diagram {#flow format=geml-statechart caption="bugfix"}\n{"initial":"reproduce","states":{"reproduce":{"title":"复现","description":"版本已确认","judge":"model"},"fix":{"title":"修","description":"一个猜测一版","judge":"model"},"confirm":{"title":"你确认","description":"你按过说对","judge":"you"},"done":{"title":"完成","final":true}},"transitions":[{"from":"reproduce","to":"fix"},{"from":"fix","to":"confirm"},{"from":"confirm","to":"done"},{"from":"confirm","to":"reproduce","guard":"你说没好"}]}\n===\n'
 const BUGFIX = '=== meta\ntitle = "bugfix"\nprofile = "geml-statechart/v1"\n===\n\n=== diagram {#flow format=geml-statechart caption="bugfix"}\n{"initial":"reproduce","states":{"reproduce":{"title":"复现","description":"版本已确认"},"fix":{"title":"修","description":"一个猜测一版"},"confirm":{"title":"你确认","description":"你按过说对"},"done":{"title":"完成","final":true}},"transitions":[{"from":"reproduce","to":"fix"},{"from":"fix","to":"confirm"},{"from":"confirm","to":"done"},{"from":"confirm","to":"reproduce","guard":"你说没好"}]}\n===\n'
 
 test('a turn that changed things and reported no work item goes back once, at its stop, to report it; the stop after ends it; a turn that reported, or changed nothing, ends', async ($, on) => {
@@ -1682,53 +1716,151 @@ test('the questions the person has not answered stand on the work items tab: one
   await pane.unmount()
 })
 
-test('the coach: the model reports the turn\'s work items with the work tool; the work items tab lists each with the arrow to its flow, the flow tab draws its flow with the item on it, and the band names it', async ($, on) => {
+test('the coach: the model reports the steps met with the work tool; the work items tab draws them as cells with the person\'s presses, the flow tab is its manual, the band names it', async ($, on) => {
   const w = world(on)
   w.sessionsDir = LOGS
   // The project's own bugfix flow, beside its sessions, before the one the plugin ships.
-  w.files.set(`${ROOT}/.geml/coach/bugfix.geml`, BUGFIX)
+  w.files.set(`${ROOT}/.geml/coach/bugfix.geml`, BUGFIX_JUDGED)
   const contexts: (readonly string[] | undefined)[] = []
-  on('prompt.submit', ($, e) => { contexts.push(e.context); return { text: e.text } })
+  const said: string[] = []
+  on('prompt.submit', ($, e) => { contexts.push(e.context); said.push(e.text); return { text: e.text } })
   on('turn.complete', ($, e) => ({ text: e.answer }))
   const clock = await start($, on)
   await clock.advance(1)
   await $.prompt.submit({ text: '导出跳过还是存了', wait: false, origin: COMPOSER })
-  expect((contexts.at(-1) ?? []).some((x) => x.includes('`work` tool') && x.includes('bugfix bugfix: reproduce 复现 → fix 修 → confirm 你确认 → done 完成')), 'told once, with the flows').toBe(true)
-  const bad = await $.tool.call({ tool: 'mcp__gemworks__work', tool_use_id: 'w0', items: [{ title: 'x', flow: 'bugfix', state: 'nowhere' }] })
-  expect(String(bad.text ?? bad.result)).toMatch(/^Nothing recorded: item 1: bugfix has no state "nowhere"/)
-  const said = await $.tool.call({ tool: 'mcp__gemworks__work', tool_use_id: 'w1', items: [{ title: '导出跳过不留', flow: 'bugfix', state: '你确认', needs: '你按一次跳过', goal: '跳过不留文件' }] })
-  expect(String(said.text ?? said.result), 'a state named by its title').toMatch(/^Recorded #\w+ «导出跳过不留» \(bugfix: confirm\)\./)
+  expect((contexts.at(-1) ?? []).some((x) => x.includes('`work` tool') && x.includes('bugfix bugfix: reproduce 复现 (model) → fix 修 (model) → confirm 你确认 (you)')), 'told once, with the flows and who judges each step').toBe(true)
+  const bad = await $.tool.call({ tool: 'mcp__gemworks__work', tool_use_id: 'w0', items: [{ title: 'x', flow: 'bugfix', met: ['nowhere'] }] })
+  expect(String(bad.text ?? bad.result)).toMatch(/^Nothing recorded: item 1: bugfix has no step "nowhere"/)
+  const theirs = await $.tool.call({ tool: 'mcp__gemworks__work', tool_use_id: 'w1', items: [{ title: 'x', flow: 'bugfix', met: ['复现', '修', '你确认'] }] })
+  expect(String(theirs.text ?? theirs.result), 'the person\'s step needs their words').toMatch(/你确认 is the person's to meet/)
+  const ok = await $.tool.call({ tool: 'mcp__gemworks__work', tool_use_id: 'w2', items: [{ title: '导出跳过不留', flow: 'bugfix', met: ['复现', '修'], needs: '你按一次跳过', goal: '跳过不留文件' }] })
+  expect(String(ok.text ?? ok.result), 'steps named by their titles').toMatch(/^Recorded #\w+ «导出跳过不留» \(bugfix: confirm\)\./)
   await $.turn.complete({ answer: '改好了。', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.advance(1)
   const item = events(w.files.get(OWN_LOG)).find((x) => x.t === 'item')
   expect(item).toMatchObject({ turn: 1, flow: 'bugfix', title: '导出跳过不留', state: 'confirm', needs: '你按一次跳过', goal: '跳过不留文件', status: 'open' })
+  expect((item!['met'] as { step: string }[]).map((x) => x.step)).toEqual(['reproduce', 'fix'])
   const id = String(item!['id'])
-  // The next prompt carries it by its id, so the report updates it.
+  // The next prompt carries it by its id, with the steps met.
   await $.prompt.submit({ text: '再看下', wait: false, origin: COMPOSER })
-  expect((contexts.at(-1) ?? []).find((x) => x.startsWith('[gemworks] work items on the way'))).toBe(`[gemworks] work items on the way: #${id} «导出跳过不留» (bugfix: confirm 你确认, needs 你按一次跳过)`)
-  // Nothing waits on the person: the band names it in place of the workflow's stage.
+  expect((contexts.at(-1) ?? []).find((x) => x.startsWith('[gemworks] work items on the way'))).toBe(`[gemworks] work items on the way: #${id} «导出跳过不留» (bugfix: met reproduce, fix; at confirm 你确认, needs 你按一次跳过)`)
+  // Its step is the person's: the band says so, with the step's two words.
   const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
   const line = shown((await band.drawn()) as unknown as Drawn).join(' ')
   await band.unmount()
-  expect(line).toMatch(/bugfix 导出跳过不留 · 还差：你按一次跳过/)
-  expect(line).not.toMatch(/我在做/)
+  expect(line).toMatch(/等你 · bugfix 导出跳过不留 · 你按一次跳过/)
+  expect(line).toMatch(/\[好了\] \[没好\] \[暂缓处理\]/)
   await $.command.run({ command: 'gemworks', args: 'board items', origin: COMPOSER, presentation: PRESENTATION })
   const mount = () => $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: { ...PANE, bodyColumns: 120 } })
   let pane = await mount()
   const words = async (): Promise<string> => shown((await pane.drawn()) as unknown as Drawn).join(' ')
-  expect(await words(), 'its row: flow, name, state').toMatch(/bugfix 导出跳过不留 你确认/)
-  expect(await words(), 'what it needs and ends as').toMatch(/还差：你按一次跳过 · 最后：跳过不留文件/)
+  expect(await words(), 'its row: flow, name (a press that unfolds it), its steps as cells').toMatch(/等你 1 bugfix \[导出跳过不留\] .*✓复现 ✓修 ●你确认 ○完成/)
+  expect(await words(), 'what it needs, and its two words').toMatch(/还差：你按一次跳过 \[好了\] \[没好\]/)
   await pane.press({ key: `work-go-${id}` })
   await pane.unmount()
   pane = await mount()
-  expect(hasSvg((await pane.drawn()) as unknown as Drawn, '复现 → 修 → [你确认 ·1] → 完成'), 'the arrow: its flow, the item on its state').toBe(true)
-  expect(await words()).toMatch(/bugfix 1 件在走/)
-  expect(await words(), 'the state it stands in: the item, what it needs, what the state needs to be left').toMatch(/导出跳过不留 你确认 还差：你按一次跳过 离开要求：你按过说对/)
+  expect(await words(), 'the manual: where it came from').toMatch(/从「导出跳过不留」过来 · 卡在「你确认」/)
+  expect(await words(), 'how many are on the way').toMatch(/bugfix 1 件在走/)
+  expect(await words(), 'each step, its requirement, who judges it').toMatch(/你确认 · 你按过说对 你/)
   await pane.unmount()
-  // Where the surface draws no pictures, the flow is one line.
+  // Where the surface draws no pictures, the step it stands at is marked.
   const term = await $.ui.mount({ plugin: 'gemworks', surface: 'terminal', component: 'Pane', requestId: 'gemworks-board', props: PANE })
-  expect(shown((await term.drawn()) as unknown as Drawn).join(' ')).toMatch(/复现 → 修 → \[你确认 ·1\] → 完成/)
+  expect(shown((await term.drawn()) as unknown as Drawn).join(' ')).toMatch(/▸你确认/)
   await term.unmount()
+  // Its 好了 meets the step: the item is done, and the press is said so the turn hears it.
+  await $.command.run({ command: 'gemworks', args: 'board items', origin: COMPOSER, presentation: PRESENTATION })
+  pane = await mount()
+  await pane.press({ key: `work-yes-${id}` })
+  await clock.settle()
+  await pane.unmount()
+  const last = events(w.files.get(OWN_LOG)).filter((x) => x.t === 'item').at(-1)
+  expect(last).toMatchObject({ id, status: 'done', state: 'done' })
+  expect(said.at(-1)).toBe('导出跳过不留 · 你确认：好了')
+})
+
+test('好，做吧 pressed while a turn runs is sent once: the band says 排队中, then 进行中 through the turn it opened, and offers the button again only after that turn', async ($, on) => {
+  const w = world(on)
+  w.sessionsDir = LOGS
+  w.files.set(`${ROOT}/.geml/coach/bugfix.geml`, BUGFIX_JUDGED)
+  const said: string[] = []
+  on('prompt.submit', ($, e) => { said.push(e.text); return { text: e.text } })
+  on('turn.complete', ($, e) => ({ text: e.answer }))
+  const clock = await start($, on)
+  await clock.advance(1)
+  await $.prompt.submit({ text: '导出跳过还是存了', wait: false, origin: COMPOSER })
+  // Reported while the turn runs: what comes next is for after this turn, and is offered already.
+  await $.tool.call({ tool: 'mcp__gemworks__work', tool_use_id: 'w1', items: [{ title: '导出跳过不留', flow: 'bugfix', met: ['复现'], next: '改导出那一处' }] })
+  await clock.advance(1)
+  const button = async (): Promise<boolean> => {
+    const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+    const found = (await band.find({ type: 'Button', key: 'band-go-on' })) !== undefined
+    await band.unmount()
+    return found
+  }
+  expect(await bandText($, 'desktop'), 'what comes next').toMatch(/接下来我去：改导出那一处/)
+  expect(await button()).toBe(true)
+  // The turn is still running when the person presses.
+  const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  await band.press({ key: 'band-go-on' })
+  await clock.settle()
+  await band.unmount()
+  expect(said.filter((x) => x === '改导出那一处'), 'said once').toHaveLength(1)
+  expect(await bandText($, 'desktop'), 'behind the running turn').toMatch(/排队中 改导出那一处/)
+  expect(await button(), 'not offered a second time').toBe(false)
+  await $.turn.complete({ answer: '找到了。', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(1)
+  expect(await bandText($, 'desktop'), 'its own turn under way').toMatch(/进行中 改导出那一处/)
+  expect(await button()).toBe(false)
+  await $.turn.complete({ answer: '改好了。', durationMs: 5, isAborted: false, turnId: 't2', reason: 'answer' })
+  await clock.advance(1)
+  expect(await button(), 'its turn ended with the item as it was: offered again').toBe(true)
+})
+
+test('while the person\'s own turn is on the work item, the band and its row say 我在做 and offer no 好，做吧; reporting it, or the turn ending, offers it again', async ($, on) => {
+  const w = world(on)
+  w.sessionsDir = LOGS
+  w.files.set(`${ROOT}/.geml/coach/bugfix.geml`, BUGFIX_JUDGED)
+  on('prompt.submit', ($, e) => ({ text: e.text }))
+  on('turn.complete', ($, e) => ({ text: e.answer }))
+  const clock = await start($, on)
+  await clock.advance(1)
+  await $.prompt.submit({ text: '导出跳过还是存了', wait: false, origin: COMPOSER })
+  await $.tool.call({ tool: 'mcp__gemworks__work', tool_use_id: 'w1', items: [{ title: '导出跳过不留', flow: 'bugfix', met: ['复现'], next: '改导出那一处' }] })
+  await $.turn.complete({ answer: '找到了。', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(1)
+  const id = String(events(w.files.get(OWN_LOG)).find((x) => x.t === 'item')!['id'])
+  const button = async (): Promise<boolean> => {
+    const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+    const found = (await band.find({ type: 'Button', key: 'band-go-on' })) !== undefined
+    await band.unmount()
+    return found
+  }
+  expect(await button()).toBe(true)
+  // The person types: their turn takes the item up.
+  await $.prompt.submit({ text: '修吧', wait: false, origin: COMPOSER })
+  await clock.advance(1)
+  expect(await bandText($, 'desktop')).toMatch(/我在做：改导出那一处/)
+  expect(await button(), 'not offered while it is being done').toBe(false)
+  await $.command.run({ command: 'gemworks', args: 'board items', origin: COMPOSER, presentation: PRESENTATION })
+  const pane = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: { ...PANE, bodyColumns: 120 } })
+  const row = shown((await pane.drawn()) as unknown as Drawn).join(' ')
+  await pane.unmount()
+  expect(row, 'its row says so').toMatch(/我在做：改导出那一处/)
+  expect(row, 'and offers only 暂缓处理').not.toMatch(/好，做吧/)
+  // The turn reports it with what comes after: that is offered.
+  await $.tool.call({ tool: 'mcp__gemworks__work', tool_use_id: 'w2', items: [{ id, title: '导出跳过不留', flow: 'bugfix', met: ['复现'], next: '再跑一遍导出' }] })
+  await clock.advance(1)
+  expect(await bandText($, 'desktop')).toMatch(/接下来我去：再跑一遍导出/)
+  expect(await button()).toBe(true)
+  await $.turn.complete({ answer: '改好了。', durationMs: 5, isAborted: false, turnId: 't2', reason: 'answer' })
+  await clock.advance(1)
+  // A turn of the person's that does not report it: offered again once it ends.
+  await $.prompt.submit({ text: '先看下别的', wait: false, origin: COMPOSER })
+  await clock.advance(1)
+  expect(await button()).toBe(false)
+  await $.turn.complete({ answer: '看过了。', durationMs: 5, isAborted: false, turnId: 't3', reason: 'answer' })
+  await clock.advance(1)
+  expect(await button(), 'the turn ended').toBe(true)
 })
 
 test('a page the Artifact tool published is an artifact of the work item, named by its title; the model records a link of its own with the artifact tool', async ($, on) => {
@@ -2018,11 +2150,10 @@ test('the session tab across the project: the decisions, a file two sessions cha
   await pane.unmount()
   const again = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
   expect(await again.find({ type: 'Button', key: 'open-other-cx1-1' }), 'the other session unfolds to its turns').toBeDefined()
-  // The decisions are the journal tab's.
-  await again.press({ key: 'tab-journal' })
+  // The decisions are the sessions tab's, after the sessions.
   await again.unmount()
   const journal = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
-  expect(await journal.find({ type: 'Text', text: '决定' }), 'the decisions on the journal tab').toBeDefined()
+  expect(await journal.find({ type: 'Text', text: '决定' }), 'the decisions on the sessions tab').toBeDefined()
   const decision = (await journal.findAll({ type: 'Button' })).find((b) => String(b.key).startsWith('go-decision-cx1-'))
   expect(decision).toBeDefined()
   await journal.press({ key: String(decision!.key) })
@@ -2191,12 +2322,13 @@ test('整理 on the sessions tab: a press on a row picks it, 连同之后的 pic
   expect(w.toasts.at(-1)).toBe('已交给模型，结果看对话')
 })
 
-test('questions stay on the band until answered: a typed prompt answers the one shown, the rest come back with the next reply; one asked again is asked once; lines pasted back answer what they name', async ($, on) => {
+test('questions stay on the band until settled: a typed prompt settles what the judgement reads, the rest come back after the next reply\'s own; one asked again is asked once; lines pasted back answer what they name', async ($, on) => {
   world(on)
   on('prompt.submit', ($, e) => ({ text: e.text }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
-  // The small model reads the typed prompt as an answer to the one shown.
-  on('model.complete', () => ({ value: { isAnswered: true as const, text: '{"answers": true}', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }))
+  // The small model reads the typed prompt as settling the first open question; later, none.
+  let verdict = '{"settled": [1]}'
+  on('model.complete', () => ({ value: { isAnswered: true as const, text: verdict, usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }))
   const clock = await start($, on)
   const ask = (id: string, question: string) => $.tool.call({ tool: 'mcp__gemworks__ask', tool_use_id: id, question, options: ['好', '不好'] })
   const bandSays = async (): Promise<string> => {
@@ -2217,10 +2349,80 @@ test('questions stay on the band until answered: a typed prompt answers the one 
   await ask('q4', '加不加？')
   await $.turn.complete({ answer: '记下了。', durationMs: 5, isAborted: false, turnId: 't2', reason: 'answer' })
   const after = await bandSays()
-  expect(after, 'the one shown was answered; the two left come first, the one asked again once').toMatch(/定 1\/3：怎么改？/)
+  expect(after, 'the settled one is gone; the reply\'s own come first, the one asked again once, then the one left').toMatch(/定 1\/3：复制吗？/)
+  verdict = '{"settled": []}'
   await $.prompt.submit({ text: '怎么改？：好\n复制吗？：不好', wait: false, origin: COMPOSER })
+  await clock.settle()
   await $.turn.complete({ answer: '好。', durationMs: 5, isAborted: false, turnId: 't3', reason: 'answer' })
   expect(await bandSays(), 'the pasted lines answered theirs: one left').toMatch(/待决定：加不加？/)
+})
+
+test('a session the app starts from another (a rewind) carries it on: the prompts the transcript still holds, and the board when it was up; a new session carries nothing', async ($, on) => {
+  const w = world(on)
+  const old = 'old-session-0262'
+  const prompt = (id: string, text: string) => ({ id, at: '2026-10-30T04:00:00.000Z', text, tools: 0, refusals: 0, entered: [], signals: [] })
+  w.store.set('prompts:sessions', [old])
+  w.store.set(`prompts:${old}`, [prompt('p1', '写三个开头'), prompt('p2', 'C，A稍差，B最差'), prompt('p3', '回退前的最后一句')])
+  w.store.set(`board:${old}`, true)
+  // The rewound transcript holds the person's words up to where they went back to, not the last one.
+  on('session.messages', () => ({ value: [
+    { role: 'user' as const, text: '写三个开头', toolUses: [] },
+    { role: 'assistant' as const, text: '三个开头在这。', toolUses: [] },
+    { role: 'user' as const, text: 'C，A稍差，B最差\n<system-reminder>…</system-reminder>', toolUses: [] },
+  ] }))
+  const clock = await start($, on)
+  await clock.settle()
+  expect(w.store.get('continues:sess-1234567890'), 'it knows the session it carries on').toEqual([old])
+  expect((w.store.get('prompts:sess-1234567890') as { text: string }[]).map((p) => p.text), 'the prompts up to where the transcript leaves off').toEqual(['写三个开头', 'C，A稍差，B最差'])
+  expect(w.opened, 'the board that was up is up again').toBe(1)
+})
+
+test('a session whose transcript holds nothing a kept session said starts on its own: no prompts carried, no board opened', async ($, on) => {
+  const w = world(on)
+  w.store.set('prompts:sessions', ['other-session'])
+  w.store.set('prompts:other-session', [{ id: 'p1', at: '2026-10-30T04:00:00.000Z', text: '别的事', tools: 0, refusals: 0, entered: [], signals: [] }])
+  w.store.set('board:other-session', true)
+  on('session.messages', () => ({ value: [{ role: 'user' as const, text: '新的一件事', toolUses: [] }] }))
+  const clock = await start($, on)
+  await clock.settle()
+  expect(w.store.get('continues:sess-1234567890')).toBeUndefined()
+  expect(w.opened).toBe(0)
+})
+
+test('every open question is judged against a typed prompt: the one it settles leaves wherever it stands, newest or oldest; the rest stay', async ($, on) => {
+  world(on)
+  let verdict = '{"settled": []}'
+  on('model.complete', () => ({ value: { isAnswered: true as const, text: verdict, usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }))
+  on('prompt.submit', ($, e) => ({ text: e.text }))
+  on('turn.complete', ($, e) => ({ text: e.answer }))
+  const clock = await start($, on)
+  const bandSays = async (): Promise<string> => {
+    const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+    const text = shown((await band.drawn()) as unknown as Drawn).join(' ')
+    await band.unmount()
+    return text
+  }
+  await $.prompt.submit({ text: '写三个开头', wait: false, origin: COMPOSER })
+  await $.tool.call({ tool: 'mcp__gemworks__ask', tool_use_id: 'q1', question: '三个开头哪个好？', options: ['A', 'B', 'C'] })
+  await $.turn.complete({ answer: '三个开头在这。', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
+  // A message about something else: the judgement settles none, the question stays.
+  await $.prompt.submit({ text: '你都没拆过我认可的文章', wait: false, origin: COMPOSER })
+  await clock.settle()
+  await $.tool.call({ tool: 'mcp__gemworks__ask', tool_use_id: 'q2', question: '初稿哪几句不对？', options: ['我点出来', '整体不对'] })
+  await $.turn.complete({ answer: '拆完了，初稿在这。', durationMs: 5, isAborted: false, turnId: 't2', reason: 'answer' })
+  expect(await bandSays(), 'the turn\'s own first, the one still open after it').toMatch(/定 1\/2：初稿哪几句不对？/)
+  // The prompt answers the newest: it leaves, the older one stays.
+  verdict = '{"settled": [1]}'
+  await $.prompt.submit({ text: '总体认可，时机不成熟', wait: false, origin: COMPOSER })
+  await clock.settle()
+  await $.turn.complete({ answer: '推迟一个月。', durationMs: 5, isAborted: false, turnId: 't3', reason: 'answer' })
+  const later = await bandSays()
+  expect(later, 'the newest answered is gone').not.toMatch(/初稿哪几句不对/)
+  expect(later, 'the older one, not answered, still asked').toMatch(/待决定：三个开头哪个好？/)
+  await $.prompt.submit({ text: '早就定了 C', wait: false, origin: COMPOSER })
+  await clock.settle()
+  await $.turn.complete({ answer: '好。', durationMs: 5, isAborted: false, turnId: 't4', reason: 'answer' })
+  expect(await bandSays(), 'settled: nothing left to ask').not.toMatch(/三个开头哪个好/)
 })
 
 test('the journal tab shows the project\'s memory after its events: a filter picks a type, a memory opens to its card; its summary is edited in place and it is deleted after a yes', async ($, on) => {
@@ -2236,7 +2438,7 @@ test('the journal tab shows the project\'s memory after its events: a filter pic
   await $.command.run({ command: 'gemworks', args: 'board', origin: COMPOSER, presentation: PRESENTATION })
   const mount = () => $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: { ...PANE, bodyColumns: 120 } })
   let pane = await mount()
-  await pane.press({ key: 'tab-journal' })
+  await pane.press({ key: 'tab-sessions' })
   await clock.settle()
   await pane.unmount()
   pane = await mount()
@@ -2266,7 +2468,7 @@ test('the journal tab shows the project\'s memory after its events: a filter pic
 
 test('a typed prompt about something else leaves the question shown on the band; one that answers it in its own words settles it', async ($, on) => {
   world(on)
-  let verdict = '{"answers": false}'
+  let verdict = '{"settled": []}'
   on('model.complete', () => ({ value: { isAnswered: true as const, text: verdict, usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }))
   on('prompt.submit', ($, e) => ({ text: e.text }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
@@ -2285,7 +2487,7 @@ test('a typed prompt about something else leaves the question shown on the band;
   await clock.settle()
   await $.turn.complete({ answer: '下次分行写。', durationMs: 5, isAborted: false, turnId: 't2', reason: 'answer' })
   expect(await bandSays(), 'a message about something else: still asked').toMatch(/待决定：轻流程能跳步吗？/)
-  verdict = '{"answers": true}'
+  verdict = '{"settled": [1]}'
   await $.prompt.submit({ text: '轻的可以，严格的别跳', wait: false, origin: COMPOSER })
   await clock.settle()
   await $.turn.complete({ answer: '记下了。', durationMs: 5, isAborted: false, turnId: 't3', reason: 'answer' })
@@ -2297,7 +2499,7 @@ test('a question answered while a turn runs is not asked again when that turn, w
   const said: string[] = []
   on('prompt.submit', ($, e) => { said.push(e.text); return { text: e.text } })
   on('turn.complete', ($, e) => ({ text: e.answer }))
-  on('model.complete', () => ({ value: { isAnswered: true as const, text: '{"answers": true}', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }))
+  on('model.complete', () => ({ value: { isAnswered: true as const, text: '{"settled": [1]}', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }))
   const clock = await start($, on)
   const bandSays = async (): Promise<string> => {
     const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })

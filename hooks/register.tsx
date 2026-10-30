@@ -33,16 +33,22 @@ import { commitMessageFiles } from '../dist/core/commit-message.js'
 import { FLOW_TOOLS } from '../dist/core/verb-specs.js'
 import type { VerbName } from '../dist/core/verb-specs.js'
 import type { BoardAction, BoardTab, Dialog, JournalFilter, Pressable, ShareHow, ShareWhat } from '../dist/hosts/claude-code/actions.js'
-import { answered, asksOf, bandLine, heldSteps, leadOf, newsOf, NO_FACTS, NO_MEMORY, nowRows, openAfter, pendingNote, picksText, pressablesFor, pressedOf, remember, shownWhenTyped, standingOf, stepPressables } from '../dist/hosts/claude-code/attention.js'
+import { answered, asksAfterTurn, asksOf, bandLine, heldSteps, leadOf, newsOf, NO_FACTS, NO_MEMORY, nowRows, openAfter, pendingNote, picksText, pressablesFor, pressedOf, remember, standingOf, stepPressables } from '../dist/hosts/claude-code/attention.js'
 import type { Queued } from '../dist/hosts/claude-code/attention.js'
 import type { AttentionFacts, AttentionMemory } from '../dist/hosts/claude-code/attention.js'
 import { envParts, remoteInPlay } from '../dist/hosts/claude-code/env.js'
 import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isDeferral, isLogName, isStatusLine, legacyLogName, logName, nextTurn, NOTE_TOOL, parseLog, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
 import type { SessionEvent, SessionSummary } from '../dist/core/session-log.js'
+import { flowRequest, labelRequest, linkKey, promptId, readFlowDraft, readLabels, readThemes, themeRequest, typedWords } from '../dist/core/corrections.js'
+import type { LabelledPrompt } from '../dist/core/corrections.js'
 import { ARTIFACT_TOOL, isMadeForPeople, publishedLink } from '../dist/core/artifact-tool.js'
 import { ASK_PROMPT, ASK_TOOL, askedOf } from '../dist/core/ask-tool.js'
-import { COACH_FLOWS, coachBand, readCoachFlow, WORK_REMINDER, WORK_TOOL, workContext, workEvents, workItemsOf, workPrompt } from '../dist/hosts/claude-code/coach.js'
-import type { CoachFlow, CoachFocus, WorkItem } from '../dist/hosts/claude-code/coach.js'
+import { COACH_FLOWS, coachBand, goneOnAfterTurn, holdEvent, itemProgress, pressEvent, readCoachFlow, stripText, turnItem, turnWords, WORK_REMINDER, WORK_TOOL, workContext, workEvents, workItemsOf, workPrompt } from '../dist/hosts/claude-code/coach.js'
+import type { CoachFlow, CoachFocus, Doing, GoneOn, WorkGroup, WorkItem } from '../dist/hosts/claude-code/coach.js'
+import { memoryMoveContext, PRACTICE_PROMPT, PRACTICE_TOOL, practiceContext } from '../dist/hosts/claude-code/practice.js'
+import { isNew, newPractices, type Practice } from '../dist/core/practices.js'
+import { applyToFlow, exportText as flowExport, expireEvent, expiring, flowText, GROWTH_PROMPT, referenceName, referenceProposals, isRulesFile, newFlow, newProposals, parseProposals, parseRules, PROPOSE_TOOL, proposalsText, RULE_TOOL, ruleAsk, ruleRefusal, rulesText, skippedSteps, type Proposal, type Rule } from '../dist/hosts/claude-code/growth.js'
+import { keysOf } from '../dist/core/dictionary.js'
 import { isVisualTool, visualFileName, visualPage } from '../dist/hosts/claude-code/visual.js'
 import { transcriptEvents, type Transcript } from '../dist/core/transcript.js'
 import type { Asked } from '../dist/core/ask-tool.js'
@@ -58,10 +64,13 @@ import type { BeforeDecision, CallFacts } from '../dist/hosts/claude-code/fastpa
 import { inboxItems, othersWaiting, pendingList, shortReason } from '../dist/hosts/claude-code/inbox.js'
 import type { InboxItem } from '../dist/hosts/claude-code/inbox.js'
 import { BRIDGE_TIMEOUT_MS, decodeResponse, encodeRequest, SLOW_TIMEOUT_MS, unreadableText } from '../dist/hosts/claude-code/protocol.js'
-import type { BoardData, BridgeOp, BridgeRequest, BridgeResponse, ShellStatus, TimelineEntry, TodoCount } from '../dist/hosts/claude-code/protocol.js'
+import type { BoardData, BridgeOp, BridgeRequest, BridgeResponse, CorrectionsView, ShellStatus, TimelineEntry, TodoCount } from '../dist/hosts/claude-code/protocol.js'
 import { bashExitCode, bridgeInput, contextOf, hasGitOperation, nodeMajor, toolArgs, touchedPath, writtenPath } from '../dist/hosts/claude-code/readers.js'
 import { answerGist, logExport, promptLine, sessionExport } from '../dist/hosts/claude-code/sessions.js'
 import type { PromptRecord } from '../dist/hosts/claude-code/sessions.js'
+import type { TurnMoved } from '../dist/hosts/claude-code/board.js'
+import { MADE_PAGE, MADE_VIEW, type MadeView } from '../dist/hosts/claude-code/made.js'
+import type { MadeAll } from '../dist/hosts/claude-code/protocol.js'
 import type { MemoryList } from '../dist/memory-store.js'
 import { fitToBudget } from '../dist/hosts/claude-code/budget.js'
 import { hhmm } from '../dist/hosts/claude-code/time.js'
@@ -72,7 +81,7 @@ import type { Settings } from '../dist/hosts/claude-code/settings.js'
 import { statusShareText } from '../dist/hosts/claude-code/share.js'
 import { HEADER_LOCKUP, LOCKUP_SVG } from '../dist/hosts/claude-code/brand.js'
 import { RELEASE_NOTES, isNewer } from '../dist/hosts/claude-code/release-notes.js'
-import { askJudgeRequest, judgementLine, judgeOptions, judgeRequest, JUDGEMENT_MS, readAskJudgement, readJudgement } from '../dist/hosts/claude-code/judge.js'
+import { asksJudgeRequest, judgementLine, judgeOptions, judgeRequest, JUDGEMENT_MS, readAsksJudgement, readJudgement } from '../dist/hosts/claude-code/judge.js'
 import type { Judgement, JudgeOption } from '../dist/hosts/claude-code/judge.js'
 import { langOf, wordsFor } from '../dist/hosts/claude-code/text.js'
 import type { T } from '../dist/hosts/claude-code/text.js'
@@ -98,12 +107,17 @@ const droppedOpenAtom = atom({ plugin: 'gemworks', key: 'droppedOpen' } as const
 const heldOpenAtom = atom({ plugin: 'gemworks', key: 'heldOpen' } as const, false)
 const artifactMenuAtom = atom({ plugin: 'gemworks', key: 'artifactMenu' } as const, null as string | null)
 const docsOpenAtom = atom({ plugin: 'gemworks', key: 'docsOpen' } as const, false)
+/** 全部产物: every artifact the project's work made, as the bridge last read it; how the list stands. */
+const madeAllAtom = atom({ plugin: 'gemworks', key: 'madeAll' } as const, null as GemworksJson)
+const madeViewAtom = atom({ plugin: 'gemworks', key: 'madeView' } as const, MADE_VIEW as { kind: string; shown: number; item: string | null })
 const madeElsewhereAtom = atom({ plugin: 'gemworks', key: 'madeElsewhere' } as const, [] as string[])
+/** The project paths this turn wrote, made for a person: with no workflow journal to hold them, what the turn's end versions. */
+const madeHereAtom = atom({ plugin: 'gemworks', key: 'madeHere' } as const, [] as string[])
 /** Files handed to git commit as its message this turn: not artifacts, taken out again at the turn's end. */
 const notMadeAtom = atom({ plugin: 'gemworks', key: 'notMade' } as const, [] as string[])
 /** The questions the model registered this turn (the ask tool): the band's once the turn ends. */
 const askedAtom = atom({ plugin: 'gemworks', key: 'asked' } as const, [] as Asked[])
-/** The questions the person's last prompt left open: the next reply's band asks them again, before its own. */
+/** The questions the person's last prompt left open: the next reply's band asks them again, after its own. */
 const leftAsksAtom = atom({ plugin: 'gemworks', key: 'leftAsks' } as const, [] as Asked[])
 /** The questions answered since the last reply: a reply that registers one again, not having seen the answer (it waited in the queue), does not ask it again. */
 const answeredAtom = atom({ plugin: 'gemworks', key: 'answered' } as const, [] as string[])
@@ -130,6 +144,8 @@ const startedAtAtom = atom({ plugin: 'gemworks', key: 'startedAt' } as const, nu
 const passesAtom = atom({ plugin: 'gemworks', key: 'passes' } as const, [] as GemworksJson)
 const preferPassedAtom = atom({ plugin: 'gemworks', key: 'preferPassed' } as const, [] as GemworksJson)
 const promptsAtom = atom({ plugin: 'gemworks', key: 'prompts' } as const, [] as GemworksJson)
+/** The sessions this one carries on, newest first: the app started it from them (a rewind, a fork). Their work items are its own. */
+const sessionLineAtom = atom({ plugin: 'gemworks', key: 'sessionLine' } as const, [] as string[])
 const sessionFlowAtom = atom({ plugin: 'gemworks', key: 'sessionFlow' } as const, null as string | null)
 const sessionRunsAtom = atom({ plugin: 'gemworks', key: 'sessionRuns' } as const, [] as GemworksJson)
 const filterAtom = atom({ plugin: 'gemworks', key: 'filter' } as const, 'all')
@@ -197,6 +213,29 @@ const exportedForAtom = atom({ plugin: 'gemworks', key: 'exportedFor' } as const
 /** The coach's light flows, read once (coachFlows); the work item whose arrow was pressed. */
 const coachFlowsAtom = atom({ plugin: 'gemworks', key: 'coachFlows' } as const, null as GemworksJson)
 const coachFocusAtom = atom({ plugin: 'gemworks', key: 'coachFocus' } as const, null as GemworksJson)
+/** The work items tab's groups listed whole (coach.ts WorkGroup). */
+const workOpenAtom = atom({ plugin: 'gemworks', key: 'workOpen' } as const, [] as string[])
+/** Every layer's practices (core/practices.ts) and whether the project's memory was moved in; null until read. */
+const practicesAtom = atom({ plugin: 'gemworks', key: 'practices' } as const, null as GemworksJson)
+/** The person's ledger of corrections as the flow tab shows it (protocol.ts CorrectionsView); null until read. */
+const correctionsAtom = atom({ plugin: 'gemworks', key: 'corrections' } as const, null as GemworksJson)
+/** Whether this session was asked to move the project's memory onto the steps. */
+const memoryAskedAtom = atom({ plugin: 'gemworks', key: 'memoryAsked' } as const, false)
+/** The flows of the flow tab whose practices are listed (`*` those for every flow); null: the first flow's. */
+const manualExpandedAtom = atom({ plugin: 'gemworks', key: 'manualExpanded' } as const, null as string[] | null)
+/** The work item unfolded under its row on the work items tab (its history). */
+const workUnfoldedAtom = atom({ plugin: 'gemworks', key: 'workUnfolded' } as const, null as string | null)
+/** The 好，做吧 the person pressed, on their way until their own turn ends (coach.ts GoneOn). */
+const goneOnAtom = atom({ plugin: 'gemworks', key: 'goneOn' } as const, [] as GemworksJson)
+const goneOnKept = async ($: EngineInterface): Promise<GoneOn[]> => ((await read($, goneOnAtom)) as unknown as GoneOn[] | null) ?? []
+/** The work item the person's own turn took up, as it stood then (coach.ts Doing): 我在做 in place of 好，做吧 until that turn ends. */
+const doingAtom = atom({ plugin: 'gemworks', key: 'doing' } as const, null as GemworksJson)
+const doingKept = async ($: EngineInterface): Promise<Doing | null> => (await read($, doingAtom)) as unknown as Doing | null
+/** The proposals to change the flows (growth.ts), and the rules (the project's and the team's): null until read. */
+const proposalsAtom = atom({ plugin: 'gemworks', key: 'proposals' } as const, null as GemworksJson)
+const rulesAtom = atom({ plugin: 'gemworks', key: 'rules' } as const, null as GemworksJson)
+/** The practice whose 改成规定 was pressed: the one practice the rule tool may write a rule for. */
+const pendingRuleAtom = atom({ plugin: 'gemworks', key: 'pendingRule' } as const, null as string | null)
 /** The share dialog's text, shown to select where nothing can be copied (the desktop has no clipboard for a plugin). */
 const sharedTextAtom = atom({ plugin: 'gemworks', key: 'sharedText' } as const, null as string | null)
 const readQueued = async ($: EngineInterface): Promise<Queued[]> => ((await read($, queuedAtom)) as unknown as Queued[] | null) ?? []
@@ -431,7 +470,7 @@ async function prefaceFor($: EngineInterface): Promise<string[]> {
     if (told === true || composed === true || cut === false) return []
     await update($, toldAtom, () => true)
     const flows = await coachFlows($).catch(() => [] as CoachFlow[])
-    return [SESSIONS_PROMPT, ASK_PROMPT, ...(flows.length > 0 ? [workPrompt(flows)] : [])]
+    return [SESSIONS_PROMPT, ASK_PROMPT, ...(flows.length > 0 ? [workPrompt(flows), PRACTICE_PROMPT, GROWTH_PROMPT] : [])]
   } catch {
     return []
   }
@@ -486,8 +525,16 @@ async function serveVerb($: EngineInterface, name: VerbName, event: unknown): Pr
 }
 
 /** Read the board; null when it came, else why not (kept for the pane, which shows it). The inbox is told of new items. */
+/** 全部产物: every artifact the project's work made, read again; the list read before stays when it cannot be. */
+async function loadMade($: EngineInterface): Promise<void> {
+  const res = await bridge($, { op: 'made' }, SLOW_TIMEOUT_MS).catch(() => undefined)
+  if (res !== undefined && res.ok && res.made !== undefined) { const made = res.made; await update($, madeAllAtom, () => made as unknown as GemworksJson) }
+}
+
 async function loadBoard($: EngineInterface): Promise<string | null> {
-  const res = await bridge($, { op: 'board' }, SLOW_TIMEOUT_MS)
+  // 全部产物 is read beside the board while the board is up on the work items tab: no workflow has no board, and still made things.
+  const shown = ['items', 'made'].includes((await read($, tabAtom)) as string) && (await $.ui.panes().catch(() => [])).some((p) => p.id === BOARD_ID)
+  const [res] = await Promise.all([bridge($, { op: 'board' }, SLOW_TIMEOUT_MS), shown ? loadMade($) : Promise.resolve()])
   const failure = boardFailure(res, await read($, problemAtom), await words($)) ?? null
   await update($, boardProblemAtom, () => failure)
   if (res !== undefined && res.ok && res.board !== undefined) {
@@ -547,15 +594,14 @@ async function attentionOnPrompt($: EngineInterface, said: string, typed = true)
     if (!a.consumed) {
       const memory = answered(remember(a.memory, { reply: a.reply, standing: now.standing, lead: now.lead }), said)
       await update($, attentionAtom, () => ({ ...a, memory, consumed: true }) as unknown as GemworksJson)
-      // What it did not answer stays for the next reply's band. The one shown, when the person typed and named none, stays
-      // too until a small model reads whether the prompt answers it (judgeShownAsk): a message about something else does not.
-      const open = openAfter(a.asks ?? [], a.picks ?? [], said, typed)
-      const shown = shownWhenTyped(a.asks ?? [], a.picks ?? [], said, typed)
-      await update($, leftAsksAtom, () => (shown !== undefined ? [shown, ...open] : open))
-      const settled = (a.asks ?? []).filter((q) => q.question !== shown?.question && !open.some((x) => x.question === q.question)).map((q) => q.question)
+      // What it did not answer stays for the next reply's band. When the person typed, a small model reads which of the
+      // open questions the prompt settles, answered or left behind (judgeOpenAsks); a pressed step settles only what it names.
+      const open = openAfter(a.asks ?? [], a.picks ?? [], said)
+      await update($, leftAsksAtom, () => open)
+      const settled = (a.asks ?? []).filter((q) => !open.some((x) => x.question === q.question)).map((q) => q.question)
       const before = ((await read($, answeredAtom)) as string[] | null) ?? []
       await update($, answeredAtom, () => [...new Set([...before, ...settled])])
-      if (shown !== undefined) $.clock.after(0, () => { void judgeShownAsk($, shown, said).catch(() => undefined) })
+      if (typed && open.length > 0) $.clock.after(0, () => { void judgeOpenAsks($, open, said).catch(() => undefined) })
     }
     const news = newsOf((await read($, factsAtReplyAtom)) as unknown as AttentionFacts | null, await factsNow($), t)
     return news.length > 0 ? [`[gemworks] since your last reply: ${news.join('; ')}`] : []
@@ -565,24 +611,32 @@ async function attentionOnPrompt($: EngineInterface, said: string, typed = true)
 }
 
 /**
- * Whether a typed prompt answers the question the band showed: a small model reads both after the prompt is on its way.
- * It does, or the model gave no answer (as typing always settled it), and the question is settled; it does not, and it
- * stays for the next reply's band.
+ * Which of the open questions a typed prompt settles: the questions are state, what the person wrote since the oldest
+ * of them was asked is the change (the prompt the last of it), and a small model reads both after the prompt is on its
+ * way. Reading the whole stretch, not the prompt alone, settles a question answered in an earlier message that an older
+ * version took for an answer to another. A settled question leaves the state; the others stay for the next reply's
+ * band. With no reading (the call failed, the reply was no answer) typing settles the one the band showed, the first,
+ * as it always did.
  */
-async function judgeShownAsk($: EngineInterface, q: Asked, said: string): Promise<void> {
-  const ask = askJudgeRequest(q.question, q.options, said)
-  const r = await $.model.complete({ model: 'haiku', system: ask.system, prompt: ask.prompt, maxTokens: 60, effort: 'low', timeoutMs: 20_000 }).catch(() => undefined)
-  if (r !== undefined && r.isAnswered && readAskJudgement(r.text) === false) return
-  await update($, leftAsksAtom, (left) => ((left as Asked[] | null) ?? []).filter((x) => x.question !== q.question))
-  // While the turn runs, it is answered for the turn's end (which reads this); after, a later turn may ask it afresh.
-  if (turnBusy) await update($, answeredAtom, (done) => [...new Set([...(((done as string[] | null) ?? [])), q.question])])
-  // The turn may have ended first and put it back on the band: take it off there, with its place among the picks.
+async function judgeOpenAsks($: EngineInterface, open: Asked[], said: string): Promise<void> {
+  const from = open.every((q) => q.at !== undefined) ? open.map((q) => q.at as string).sort()[0] : undefined
+  const since = (await readPrompts($)).filter((p) => from === undefined || p.at >= from).map((p) => ({ at: p.at, text: p.text }))
+  const history = since.at(-1)?.text === said ? since : [...since, { at: await nowIso($), text: said }]
+  const ask = asksJudgeRequest(open, history)
+  const r = await $.model.complete({ model: 'haiku', system: ask.system, prompt: ask.prompt, maxTokens: 120, effort: 'low', timeoutMs: 20_000 }).catch(() => undefined)
+  const places = r !== undefined && r.isAnswered ? readAsksJudgement(r.text, open.length) : undefined
+  const settled = (places ?? [0]).flatMap((i) => (open[i] !== undefined ? [open[i].question] : []))
+  if (settled.length === 0) return
+  await update($, leftAsksAtom, (left) => ((left as Asked[] | null) ?? []).filter((x) => !settled.includes(x.question)))
+  // While the turn runs, they are answered for the turn's end (which reads this); after, a later turn may ask them afresh.
+  if (turnBusy) await update($, answeredAtom, (done) => [...new Set([...(((done as string[] | null) ?? [])), ...settled])])
+  // The turn may have ended first and put them back on the band: take them off there, with their places among the picks.
   const a = await readAttention($)
-  const at = a?.asks?.findIndex((x) => x.question === q.question) ?? -1
-  if (a === null || a.consumed || a.asks === undefined || at < 0) return
+  if (a === null || a.consumed || a.asks === undefined || !a.asks.some((x) => settled.includes(x.question))) return
   const { asks: _asks, picks: _picks, ...rest } = a
-  const asks = a.asks.filter((_, i) => i !== at)
-  const picks = (a.picks ?? []).filter((_, i) => i !== at)
+  const stays = a.asks.map((x) => !settled.includes(x.question))
+  const asks = a.asks.filter((_, i) => stays[i])
+  const picks = (a.picks ?? []).filter((_, i) => stays[i])
   const kept: Attention = { ...rest, ...(asks.length > 0 ? { asks } : {}), ...(a.picks !== undefined && asks.length > 0 ? { picks } : {}) }
   await update($, attentionAtom, () => kept as unknown as GemworksJson)
 }
@@ -707,15 +761,31 @@ async function noteDecisions($: EngineInterface, event: unknown): Promise<ToolCa
  */
 async function coachFlows($: EngineInterface): Promise<CoachFlow[]> {
   const kept = (await read($, coachFlowsAtom)) as unknown as CoachFlow[] | null
-  if (kept !== null && kept.length > 0) return kept
+  // Flows kept by an earlier version (a session the plugin reloaded in) say no judge on their steps: read again.
+  if (kept !== null && kept.length > 0 && kept.every((f) => f.states.every((st) => typeof st.judge === 'string'))) return kept
   const dir = await read($, sessionsDirAtom)
   const own = dir !== null ? dir.replace(/[\\/]sessions[\\/]?$/, '/coach') : undefined
   const flows: CoachFlow[] = []
+  const readAt = async (path: string): Promise<string | undefined> => $.fs.read(path).then(String, () => undefined)
   for (const name of COACH_FLOWS) {
-    for (const path of [...(own !== undefined ? [`${own}/${name}.geml`] : []), `${$.plugin.root}/coach/${name}.geml`]) {
-      const text = await $.fs.read(path).then(String, () => undefined)
+    // The project's own flow takes who judges a step, what it prevents and its buttons' words from the shipped one's step of the same id.
+    const shippedText = await readAt(`${$.plugin.root}/coach/${name}.geml`)
+    const shipped = shippedText !== undefined ? readCoachFlow(name, shippedText) : undefined
+    const ownText = own !== undefined ? await readAt(`${own}/${name}.geml`) : undefined
+    const repo = await read($, rootAtom)
+    const teamText = ownText === undefined && repo !== null ? await readAt(`${repo}/.gemworks/flows/${name}.geml`) : undefined
+    const flow = (ownText !== undefined ? readCoachFlow(name, ownText, shipped) : teamText !== undefined ? readCoachFlow(name, teamText, shipped) : undefined) ?? shipped
+    if (flow !== undefined) flows.push(flow)
+  }
+  if (own !== undefined) {
+    let entries: { name: string; kind: string }[] = []
+    try { entries = [...(await $.fs.list(own))] } catch { /* none of its own */ }
+    for (const en of entries) {
+      const name = en.name.replace(/\.geml$/, '')
+      if (en.kind !== 'file' || !en.name.endsWith('.geml') || (COACH_FLOWS as readonly string[]).includes(name)) continue
+      const text = await readAt(`${own}/${en.name}`)
       const flow = text !== undefined ? readCoachFlow(name, text) : undefined
-      if (flow !== undefined) { flows.push(flow); break }
+      if (flow !== undefined) flows.push(flow)
     }
   }
   if (flows.length > 0) await update($, coachFlowsAtom, () => flows as unknown as GemworksJson)
@@ -737,9 +807,333 @@ async function openAsks($: EngineInterface): Promise<Asked[]> {
   return ((await read($, leftAsksAtom)) as Asked[] | null) ?? []
 }
 
-/** The work items the project's sessions reported, as they stand now. */
+/** The work items the project's sessions reported, as they stand now; those of the sessions this one carries on are its own. */
 async function workItems($: EngineInterface): Promise<WorkItem[]> {
-  return workItemsOf(((await read($, projectSessionsAtom)) as unknown as SessionSummary[] | null) ?? [])
+  const items = workItemsOf(((await read($, projectSessionsAtom)) as unknown as SessionSummary[] | null) ?? [], await coachFlowsKept($))
+  const line = ((await read($, sessionLineAtom)) as string[] | null) ?? []
+  if (line.length === 0) return items
+  const id = await $.session.id().catch(() => '')
+  return id === '' ? items : items.map((i) => (line.includes(i.session) ? { ...i, session: id } : i))
+}
+
+/**
+ * A session the app started from another (a rewind, a fork) carries that one on: its prompts up to where the transcript
+ * leaves off, its work items, and its board when the board was up. The store keeps nothing under the new id while the
+ * transcript already holds the person's words: the session whose kept prompts the transcript holds most is the one.
+ * A reload of a session carried on reads the line again from the store.
+ */
+async function continueFrom($: EngineInterface): Promise<void> {
+  try {
+    const id = await $.session.id()
+    const known = await $.store.get(`continues:${id}`)
+    if (Array.isArray(known)) { await update($, sessionLineAtom, () => known as string[]); return }
+    if ((await readPrompts($)).length > 0) return
+    const said = (await $.session.messages()).filter((m) => m.role === 'user' && m.text.trim() !== '').map((m) => m.text)
+    if (said.length === 0) return
+    const held = (p: PromptRecord): boolean => { const head = p.text.slice(0, 80).trim(); return head !== '' && said.some((s) => s.includes(head)) }
+    const order = await $.store.get('prompts:sessions')
+    let from: string | undefined
+    let kept: PromptRecord[] = []
+    for (const other of (Array.isArray(order) ? (order as string[]) : []).filter((x) => x !== id).reverse()) {
+      const theirs = await $.store.get(`prompts:${other}`)
+      const carried = Array.isArray(theirs) ? (theirs as unknown as PromptRecord[]).filter(held) : []
+      if (carried.length > kept.length) { from = other; kept = carried }
+    }
+    if (from === undefined) return
+    const before = await $.store.get(`continues:${from}`)
+    const line = [from, ...(Array.isArray(before) ? (before as string[]).filter((x) => x !== id) : [])]
+    await update($, sessionLineAtom, () => line)
+    await $.store.set(`continues:${id}`, line)
+    await update($, promptsAtom, () => kept as unknown as GemworksJson)
+    $.clock.after(0, () => { void storePrompts($) })
+    trace($, `continue: from ${from}, ${kept.length} prompts`)
+    if ((await $.store.get(`board:${from}`)) === true) await openBoard($)
+  } catch { /* taken for a new session, as before */ }
+}
+
+/** Whether the board is up, kept per session (only when it changed): a session carried on from this one opens it again. */
+async function noteBoard($: EngineInterface): Promise<void> {
+  try {
+    const id = await $.session.id()
+    const up = (await $.ui.panes()).some((p) => p.id === BOARD_ID)
+    if ((await $.store.get(`board:${id}`)) !== up) await $.store.set(`board:${id}`, up)
+  } catch { /* noted at the next */ }
+}
+
+/**
+ * What each of this session's prompts moved, decided and learned, as the record holds it: the turn whose prompt is
+ * the same text sent nearest in time. A turn that moved one work item names it, so the sessions tab folds a run of them.
+ */
+async function movedOf($: EngineInterface, t: T): Promise<(p: PromptRecord) => TurnMoved> {
+  const session = await $.session.id().catch(() => '')
+  const own = (((await read($, projectSessionsAtom)) as unknown as SessionSummary[] | null) ?? []).find((x) => x.id === session)
+  const flows = await coachFlowsKept($)
+  const learned = ((await practicesKept($))?.list ?? []).filter((x) => x.session === session)
+  return (p) => {
+    const at = Date.parse(p.at)
+    const turn = (own?.turns ?? []).filter((x) => x.prompt === p.text).sort((a, b) => Math.abs(Date.parse(a.at) - at) - Math.abs(Date.parse(b.at) - at))[0]
+    if (turn === undefined) return { words: [] }
+    const moved = turn.moved ?? []
+    const one = moved.length === 1 ? moved[0] : undefined
+    return { words: turnWords(turn, flows, learned.filter((x) => x.turn === turn.turn), t), ...(one !== undefined ? { item: { id: one.id, title: one.title } } : {}) }
+  }
+}
+
+/** The project's .geml/ directory: where its sessions are kept; null until the bridge said. */
+async function gemlDir($: EngineInterface): Promise<string | null> {
+  const dir = await read($, sessionsDirAtom)
+  return dir === null ? null : dir.replace(/[\\/]sessions[\\/]?$/, '')
+}
+
+/** The proposals and the rules as their files hold them: the project's (beside its sessions) and the team's (the repository's .gemworks/). */
+async function loadGrowth($: EngineInterface): Promise<void> {
+  const geml = await gemlDir($)
+  if (geml === null) return
+  const readAt = async (p: string): Promise<string> => $.fs.read(p).then(String, () => '')
+  const proposals = parseProposals(await readAt(`${geml}/proposals.geml`))
+  const root = await read($, rootAtom)
+  const rules = [...parseRules(await readAt(`${geml}/rules.geml`), 'project'), ...(root !== null ? parseRules(await readAt(`${root}/.gemworks/rules.geml`), 'team') : [])]
+  await update($, proposalsAtom, () => proposals as unknown as GemworksJson)
+  await update($, rulesAtom, () => rules as unknown as GemworksJson)
+}
+
+const proposalsKept = async ($: EngineInterface): Promise<Proposal[]> => ((await read($, proposalsAtom)) as unknown as Proposal[] | null) ?? []
+const rulesKept = async ($: EngineInterface): Promise<Rule[]> => ((await read($, rulesAtom)) as unknown as Rule[] | null) ?? []
+
+/** The proposals written back, and kept. */
+async function saveProposals($: EngineInterface, list: readonly Proposal[]): Promise<void> {
+  const geml = await gemlDir($)
+  if (geml === null) return
+  await $.fs.write(`${geml}/proposals.geml`, proposalsText(list))
+  await update($, proposalsAtom, () => list as unknown as GemworksJson)
+}
+
+/** The project's rules written back (the team's stay the repository's), and kept with the team's. */
+async function saveRules($: EngineInterface, list: readonly Rule[]): Promise<void> {
+  const geml = await gemlDir($)
+  if (geml === null) return
+  await $.fs.write(`${geml}/rules.geml`, rulesText(list.filter((r) => r.layer === 'project')))
+  await update($, rulesAtom, () => list as unknown as GemworksJson)
+}
+
+/** A flow changed or added by the person, written as the project's own; the flows read again. */
+async function writeOwnFlow($: EngineInterface, flow: CoachFlow): Promise<void> {
+  const geml = await gemlDir($)
+  if (geml === null) return
+  await $.fs.write(`${geml}/coach/${flow.name}.geml`, flowText(flow))
+  await update($, coachFlowsAtom, () => [] as unknown as GemworksJson)
+  await coachFlows($)
+}
+
+/** The propose tool: the proposals given, checked against the flows and the ones kept, for the person on the flow tab. */
+async function recordProposals($: EngineInterface, event: unknown): Promise<ToolCallResult> {
+  if ((event as { agentId?: string }).agentId !== undefined) return { result: 'Not recorded: only the main conversation proposes.' }
+  if ((await gemlDir($)) === null) return { result: 'Nothing recorded: this project has no shared record yet.' }
+  const args = toolArgs(event as Record<string, unknown>)
+  const given = Array.isArray(args['proposals']) ? (args['proposals'] as unknown[]) : []
+  await loadGrowth($)
+  const kept = await proposalsKept($)
+  const at = await nowIso($)
+  const stamp = Date.parse(at).toString(36).slice(-6)
+  const r = newProposals(given, await coachFlows($), kept, at, (n) => `q${stamp}${n}`)
+  if (r.added.length === 0) return { result: `Nothing recorded: ${r.errors.join('; ') || 'proposals is a list'}.` }
+  await saveProposals($, [...kept, ...r.added])
+  return { result: `Proposed ${r.added.length}; the person answers on the flow tab.${r.errors.length > 0 ? ` Left out: ${r.errors.join('; ')}.` : ''}` }
+}
+
+/** The rule tool: the rule for the practice whose 改成规定 the person pressed, and for no other. */
+async function recordRule($: EngineInterface, event: unknown): Promise<ToolCallResult> {
+  const args = toolArgs(event as Record<string, unknown>)
+  const pending = await read($, pendingRuleAtom)
+  const id = typeof args['practice'] === 'string' ? args['practice'] : ''
+  if (pending === null || pending !== id) return { result: 'Not recorded: a rule is written only for the practice whose 改成规定 the person pressed.' }
+  const practice = ((await practicesKept($))?.list ?? []).find((p) => p.id === id)
+  const flow = (await coachFlows($)).find((f) => f.name === practice?.flow)
+  const requires = typeof args['requires'] === 'string' ? args['requires'] : ''
+  const key = typeof args['key'] === 'string' ? args['key'].trim() : ''
+  if (practice === undefined || flow === undefined) return { result: 'Not recorded: that practice is gone.' }
+  if (!flow.states.some((st) => st.id === requires && !st.final)) return { result: `Not recorded: ${flow.name} has no step "${requires}" (${flow.states.map((st) => st.id).join(', ')}).` }
+  if (key === '' || !/^[A-Za-z_][\w.-]*(\(.*\))?$/s.test(key)) return { result: 'Not recorded: key is a tool key, as Bash(npm run deploy*).' }
+  await loadGrowth($)
+  const at = await nowIso($)
+  const text = typeof args['text'] === 'string' && args['text'].trim() !== '' ? args['text'].trim() : practice.text
+  const rule: Rule = { id: `r${Date.parse(at).toString(36).slice(-6)}`, flow: flow.name, requires, key, text, why: practice.why, at, layer: 'project', from: `practice:${practice.id}` }
+  await saveRules($, [...(await rulesKept($)), rule])
+  await update($, pendingRuleAtom, () => null)
+  return { result: `Rule written: ${key} is held while «${flow.states.find((st) => st.id === requires)?.title ?? requires}» is unmet.` }
+}
+
+/**
+ * What holds a tool call, if anything does: a write to a file that keeps rules (they are the person's to change), or
+ * a rule whose key the call matches while the step it requires is unmet on this session's work item. A write also
+ * takes back the facts of that item that expire once the work changes.
+ */
+async function ruleHold($: EngineInterface, tool: string, input: Record<string, unknown>): Promise<string | undefined> {
+  const writes = CLAUDE_CODE_TOOLS.write.includes(tool)
+  const target = typeof input['file_path'] === 'string' ? input['file_path'] : typeof input['notebook_path'] === 'string' ? input['notebook_path'] : ''
+  if (writes && isRulesFile(target)) return '规定只有定它的人能改：rules.geml 请你自己改。'
+  const session = await $.session.id().catch(() => '')
+  const item = turnItem(await workItems($), session)
+  if (item === undefined) return undefined
+  const flows = await coachFlowsKept($)
+  const rules = await rulesKept($)
+  if (rules.length > 0) {
+    const held = ruleRefusal(rules, item, flows, keysOf(tool, input, CLAUDE_CODE_TOOLS.run, CLAUDE_CODE_TOOLS.write))
+    if (held !== undefined) {
+      if (held.rule.layer === 'project') await saveRules($, rules.map((r) => (r.id === held.rule.id ? { ...r, held: (r.held ?? 0) + 1 } : r)))
+      return held.reason
+    }
+  }
+  const flow = flows.find((f) => f.name === item.flow)
+  if (writes && flow !== undefined) {
+    const gone = expiring(item, flow)
+    if (gone.length > 0) {
+      const at = await nowIso($)
+      const t = await words($)
+      await appendOwn($, (so) => [expireEvent(item, gone, t('改过，要重跑'), at, currentTurn(so))])
+      await loadProjectSessions($)
+    }
+  }
+  return undefined
+}
+
+/** Every layer's practices, as the bridge reads them; kept for the board and the next prompt. */
+async function loadPractices($: EngineInterface): Promise<void> {
+  const res = await bridge($, { op: 'practices' }).catch(() => undefined)
+  if (res === undefined || !res.ok || res.practices === undefined) return
+  if (JSON.stringify(res.practices) === JSON.stringify(await read($, practicesAtom))) return
+  await update($, practicesAtom, () => res.practices as unknown as GemworksJson)
+}
+
+/** The practices as read so far: what a drawing uses. */
+async function practicesKept($: EngineInterface): Promise<{ list: Practice[]; memoryMoved: boolean } | null> {
+  return (await read($, practicesAtom)) as unknown as { list: Practice[]; memoryMoved: boolean } | null
+}
+
+// ---- the ledger of corrections (core/corrections.ts): labelled and put in themes by the session's own model ----------
+
+/** The model that labels the person's prompts and puts their corrections in themes. */
+const LEDGER_MODEL = 'sonnet'
+/** The most theme requests one run makes, the newest corrections first: enough to work off two months imported, behind the person's prompt. */
+const THEME_RUNS = 12
+/** Whether this session is putting corrections in themes now: one run at a time. */
+let theming = false
+
+/** The ledger as the flow tab shows it, kept; what was read stays when the bridge does not answer. */
+async function loadCorrections($: EngineInterface): Promise<CorrectionsView | undefined> {
+  const res = await bridge($, { op: 'corrections' }).catch(() => undefined)
+  if (res === undefined || !res.ok || res.corrections === undefined) return undefined
+  await update($, correctionsAtom, () => res.corrections as unknown as GemworksJson)
+  return res.corrections
+}
+
+const correctionsKept = async ($: EngineInterface): Promise<CorrectionsView | null> => (await read($, correctionsAtom)) as unknown as CorrectionsView | null
+
+/** What the flow tab draws of the ledger: its cards and each practice's count; none until read. */
+async function ledgerKept($: EngineInterface): Promise<{ cards: CorrectionsView['cards']; counts: CorrectionsView['counts'] } | undefined> {
+  const view = await correctionsKept($)
+  return view !== null ? { cards: view.cards, counts: view.counts } : undefined
+}
+
+/**
+ * A prompt the person typed, labelled by the session's own model following the guide (never keyword rules), into their
+ * ledger, with the step this session's work item stood at; a correction then goes into a theme. When the model or the
+ * bridge does not answer, nothing is kept: `gemworks corrections pending` finds it later.
+ */
+async function labelPrompt($: EngineInterface, p: { text: string; before: string; at: string; session: string; project: string; flow?: string; step?: string }): Promise<void> {
+  const ask = labelRequest([{ text: p.text, before: p.before }])
+  const r = await $.model.complete({ model: LEDGER_MODEL, system: ask.system, prompt: ask.prompt, maxTokens: 300, effort: 'low', timeoutMs: 60_000 })
+  if (!r.isAnswered) return
+  const label = readLabels(r.text, 1)[0]
+  if (label === undefined) return
+  const row: LabelledPrompt = {
+    id: promptId(p.session, p.at, new Set()), at: p.at, session: p.session, text: p.text, ...label, project: p.project,
+    ...(p.flow !== undefined && p.step !== undefined ? { flow: p.flow, step: p.step } : {}), by: 'model',
+  }
+  const res = await bridge($, { op: 'corrections-add', prompts: [row] }).catch(() => undefined)
+  if (res === undefined || !res.ok || res.corrections === undefined) return
+  await update($, correctionsAtom, () => res.corrections as unknown as GemworksJson)
+  // A correction goes into a theme; so do any waiting from before (imported, or a session that stopped), and the links follow changed practices.
+  if (label.kind === 'correct' || res.corrections.unthemed > 0 || res.corrections.stale) await themeLedger($)
+}
+
+/**
+ * The ledger's corrections put into themes, and the themes linked to the practices that state them, by the session's
+ * own model, a batch a request; then a flow proposed for a kind of work corrected often with none. A correction the
+ * reply left out is given no theme, so it is not asked again.
+ */
+async function themeLedger($: EngineInterface): Promise<void> {
+  if (theming) return
+  theming = true
+  try {
+    const session = await $.session.id().catch(() => '')
+    if (session === '') return
+    for (let run = 0; run < THEME_RUNS; run++) {
+      const res = await bridge($, { op: 'corrections', toTheme: true, session }).catch(() => undefined)
+      const view = res !== undefined && res.ok ? res.corrections : undefined
+      const given = view?.toTheme
+      if (view === undefined || given === undefined || (given.corrections.length === 0 && !view.stale)) break
+      const ask = themeRequest(given.corrections, given.themes, given.practices)
+      const r = await $.model.complete({ model: LEDGER_MODEL, system: ask.system, prompt: ask.prompt, maxTokens: 6000, effort: 'low', timeoutMs: 180_000 })
+      if (!r.isAnswered) break
+      const answer = readThemes(r.text, ask.handles)
+      // A reply that put none in a theme is no answer (cut short, unreadable): nothing is marked, the batch is asked again
+      // another time. One that answered most: the few it left out have no theme, so they are not asked again and again.
+      if (given.corrections.length > 0 && answer.assign.length === 0) break
+      const answered = new Set(answer.assign.map((a) => a.id))
+      const most = answer.assign.length * 2 >= given.corrections.length
+      const whole = { ...answer, assign: [...answer.assign, ...(most ? given.corrections.filter((c) => !answered.has(c.id)).map((c) => ({ id: c.id, theme: null })) : [])] }
+      const done = await bridge($, { op: 'corrections-themes', answer: whole, linked: linkKey(given.practices) }).catch(() => undefined)
+      if (done === undefined || !done.ok || done.corrections === undefined) break
+      await update($, correctionsAtom, () => done.corrections as unknown as GemworksJson)
+      if (done.corrections.unthemed === 0 && !done.corrections.stale) break
+    }
+    await proposeFlows($)
+  } finally {
+    theming = false
+  }
+}
+
+/** A flow proposed, once, for each kind of work corrected often in the last days with no work item on a flow: its steps drafted by the model, the card the flow tab's own. */
+async function proposeFlows($: EngineInterface): Promise<void> {
+  const view = await correctionsKept($)
+  if (view === null || view.flowless.length === 0 || (await gemlDir($)) === null) return
+  const flows = await coachFlowsKept($)
+  const t = await words($)
+  for (const f of view.flowless) {
+    const kept = await proposalsKept($)
+    if (flows.some((x) => x.name === f.work) || kept.some((p) => p.kind === 'new-flow' && p.flow === f.work)) continue
+    const ask = flowRequest(f.work, f.quotes)
+    const r = await $.model.complete({ model: LEDGER_MODEL, system: ask.system, prompt: ask.prompt, maxTokens: 1500, effort: 'low', timeoutMs: 120_000 })
+    const draft = r.isAnswered ? readFlowDraft(r.text) : undefined
+    if (draft === undefined) continue
+    const at = await nowIso($)
+    const made = newProposals([{ kind: 'new-flow', name: f.work, ...draft, why: t('近 7 天纠正 {0} 次，其中判断 {1} 次，无流程可挂', f.n, f.judgment) }], flows, kept, at, (n) => `c${Date.parse(at).toString(36).slice(-6)}${n}`)
+    if (made.added.length > 0) await saveProposals($, [...kept, ...made.added.map((p) => ({ ...p, by: 'gemworks' as const }))])
+  }
+}
+
+/** The practice tool: the practices given, checked against the flows and the ones kept, into their layers. */
+async function recordPractices($: EngineInterface, event: unknown): Promise<ToolCallResult> {
+  if ((event as { agentId?: string }).agentId !== undefined) return { result: 'Not recorded: only the main conversation records practices.' }
+  const args = toolArgs(event as Record<string, unknown>)
+  const given = Array.isArray(args['practices']) ? (args['practices'] as unknown[]) : []
+  const memory = args['memory'] === true
+  const flows = await coachFlows($)
+  await loadPractices($)
+  const kept = (await practicesKept($))?.list ?? []
+  const at = await nowIso($)
+  const stamp = Date.parse(at).toString(36).slice(-6)
+  const session = await $.session.id().catch(() => '')
+  const turn = currentTurn(parseLog(await ownLogText($, (await read($, sessionsDirAtom)) ?? '', session).catch(() => '')))
+  const r = newPractices(given, kept, at, memory ? 'memory' : 'model', (n) => `p${stamp}${n}`, flows.map((f) => ({ name: f.name, steps: f.states.map((s) => s.id) })), { session, turn })
+  if (r.added.length === 0 && !memory) return { result: `Nothing recorded: ${r.errors.join('; ') || 'practices is a list'}.` }
+  const res = await bridge($, { op: 'practice-add', practices: r.added, ...(memory ? { memory: true } : {}) }).catch(() => undefined)
+  if (res === undefined || !res.ok) return { result: 'Nothing recorded: gemworks could not write the practices.' }
+  if (res.practices !== undefined) await update($, practicesAtom, () => res.practices as unknown as GemworksJson)
+  // A new practice may state a theme the person kept saying: the themes are linked again, behind.
+  if (r.added.length > 0) $.clock.after(0, () => { void themeLedger($).catch(() => undefined) })
+  return { result: `Recorded ${r.added.length} practice${r.added.length === 1 ? '' : 's'}; they remind at their steps.${r.errors.length > 0 ? ` Left out: ${r.errors.join('; ')}.` : ''}` }
 }
 
 /** The work tool: the turn's work items, checked against the flows, into this session's log; the board shows them. */
@@ -780,22 +1174,38 @@ async function keepVisual($: EngineInterface, input: Record<string, unknown>): P
   await update($, madeElsewhereAtom, (was) => [...new Set([...(was ?? []), path])])
 }
 
+/**
+ * The work item an artifact goes under: the workflow's current one, which the bridge knows ({}); else the one this
+ * session's turn is on (the coach's); undefined when there is neither, and the artifact is no work item's.
+ */
+async function artifactItem($: EngineInterface): Promise<{ item?: string } | undefined> {
+  if ((await readShell($))?.status?.item.kind === 'item') return {}
+  const item = turnItem(await workItems($), await $.session.id().catch(() => ''))
+  return item !== undefined ? { item: item.id } : undefined
+}
+
 /** A turn's end, on a work item: the files it wrote that git does not keep get a version where their content changed. */
 async function artifactsOnTurn($: EngineInterface): Promise<void> {
-  const [shell, made, drafts] = await Promise.all([readShell($), read($, madeElsewhereAtom), read($, notMadeAtom)])
-  if (shell?.status?.item.kind !== 'item') return
+  const [on, made, drafts, here] = await Promise.all([artifactItem($), read($, madeElsewhereAtom), read($, notMadeAtom), read($, madeHereAtom)])
   const elsewhere = ((made as unknown) as string[] | null) ?? []
   const notMade = ((drafts as unknown) as string[] | null) ?? []
+  const written = ((here as unknown) as string[] | null) ?? []
   if (elsewhere.length > 0) await update($, madeElsewhereAtom, () => [] as unknown as GemworksJson)
   if (notMade.length > 0) await update($, notMadeAtom, () => [] as string[])
-  await bridge($, { op: 'artifacts', ...(elsewhere.length > 0 ? { elsewhere } : {}), ...(notMade.length > 0 ? { notMade } : {}) }, SLOW_TIMEOUT_MS).catch(() => undefined)
+  if (written.length > 0) await update($, madeHereAtom, () => [] as string[])
+  // A turn on no work item made nothing that is one's.
+  if (on === undefined) return
+  // The workflow item's journal names what it wrote; with the coach's item, the turn's own list does.
+  const own = on.item !== undefined && written.length > 0 ? { written } : {}
+  await bridge($, { op: 'artifacts', ...on, ...own, ...(elsewhere.length > 0 ? { elsewhere } : {}), ...(notMade.length > 0 ? { notMade } : {}) }, SLOW_TIMEOUT_MS).catch(() => undefined)
   // What the turn recorded shows on an open board now: nothing else reads the board again while the stage stays put.
   try { if ((await $.ui.panes()).some((p) => p.id === BOARD_ID)) await reloadBoardLater($) } catch { /* read when next opened */ }
 }
 
 /** What the person gave with a prompt (images, documents): their bytes, as the conversation holds them, among the work item's artifacts. */
 async function uploadsOnPrompt($: EngineInterface, named: readonly { type: string; mediaType?: string; filename?: string }[]): Promise<void> {
-  if ((await readShell($))?.status?.item.kind !== 'item') return
+  const on = await artifactItem($)
+  if (on === undefined) return
   const messages = await $.session.messages({ as: 'api' })
   if (!Array.isArray(messages)) return
   const last = [...messages].reverse().find((m) => m.role === 'user' && m.content.some((b) => b.type === 'image' || b.type === 'document'))
@@ -806,7 +1216,7 @@ async function uploadsOnPrompt($: EngineInterface, named: readonly { type: strin
     if (source?.type !== 'base64' || typeof source.data !== 'string' || source.data === '') continue
     const name = named[i]?.filename
     const mediaType = source.media_type ?? named[i]?.mediaType
-    await bridge($, { op: 'artifact', kind: b.type === 'image' ? 'image' : 'file', where: 'upload', data: source.data, ...(name !== undefined ? { name } : {}), ...(mediaType !== undefined ? { mediaType } : {}) }, SLOW_TIMEOUT_MS)
+    await bridge($, { op: 'artifact', ...on, kind: b.type === 'image' ? 'image' : 'file', where: 'upload', data: source.data, ...(name !== undefined ? { name } : {}), ...(mediaType !== undefined ? { mediaType } : {}) }, SLOW_TIMEOUT_MS)
   }
   await reloadBoardLater($)
 }
@@ -816,7 +1226,8 @@ async function registerAsk($: EngineInterface, event: unknown): Promise<ToolCall
   if ((event as { agentId?: string }).agentId !== undefined) return { result: 'Not registered: only the main conversation asks the person.' }
   const asked = askedOf(toolArgs(event as Record<string, unknown>))
   if ('error' in asked) return { result: `Not registered: ${asked.error}.` }
-  await update($, askedAtom, (was) => [...(was ?? []).filter((q) => q.question !== asked.question), asked])
+  const stamped = { ...asked, at: await nowIso($) }
+  await update($, askedAtom, (was) => [...(was ?? []).filter((q) => q.question !== asked.question), stamped])
   return { result: 'Registered: the status band asks it with these answers once this turn ends.' }
 }
 
@@ -828,7 +1239,9 @@ async function recordArtifact($: EngineInterface, event: unknown): Promise<ToolC
   if ((kind !== 'link' && kind !== 'image' && kind !== 'file') || where === '') return { result: 'Nothing recorded: kind is link, image or file, and where is the address or the path.' }
   const name = typeof args['name'] === 'string' ? args['name'] : undefined
   const version = typeof args['version'] === 'string' ? args['version'] : undefined
-  const res = await bridge($, { op: 'artifact', kind, where, ...(name !== undefined ? { name } : {}), ...(version !== undefined ? { version } : {}) })
+  const on = await artifactItem($)
+  if (on === undefined) return { result: 'Nothing recorded: no work item is on the way in this session; report the one this is for with the work tool first.' }
+  const res = await bridge($, { op: 'artifact', ...on, kind, where, ...(name !== undefined ? { name } : {}), ...(version !== undefined ? { version } : {}) })
   if (res === undefined) return { result: 'Nothing recorded: gemworks did not answer.' }
   if (!res.ok) return { result: `Nothing recorded: ${res.error.replace(/^gemworks: /, '')}` }
   await reloadBoardLater($)
@@ -842,7 +1255,9 @@ async function publishedArtifact($: EngineInterface, said: string | undefined, i
   if (link === undefined) return
   const title = typeof input['title'] === 'string' && input['title'] !== '' ? input['title'] : undefined
   const page = typeof input['file_path'] === 'string' && input['file_path'] !== '' ? input['file_path'] : undefined
-  const res = await bridge($, { op: 'artifact', kind: 'link', where: link.url, ...(link.version !== undefined ? { version: link.version } : {}), ...(title !== undefined ? { name: title } : {}), ...(page !== undefined ? { page } : {}) })
+  const on = await artifactItem($)
+  if (on === undefined) return
+  const res = await bridge($, { op: 'artifact', ...on, kind: 'link', where: link.url, ...(link.version !== undefined ? { version: link.version } : {}), ...(title !== undefined ? { name: title } : {}), ...(page !== undefined ? { page } : {}) })
   if (res !== undefined && res.ok) await reloadBoardLater($)
 }
 
@@ -962,8 +1377,9 @@ async function startBridge($: EngineInterface): Promise<void> {
   startRetrying = false
   const dir = res.ok ? res.sessions : undefined
   if (dir !== undefined && dir !== (await read($, sessionsDirAtom))) await update($, sessionsDirAtom, () => dir)
+  if (res.ok && res.practices !== undefined) await update($, practicesAtom, () => res.practices as unknown as GemworksJson)
   // The coach's flows, read once the project's home is known (its own flows sit beside its sessions).
-  $.clock.after(0, () => { void coachFlows($).catch(() => undefined) })
+  $.clock.after(0, () => { void coachFlows($).catch(() => undefined); void loadGrowth($).catch(() => undefined) })
   // git and gh can take seconds: catch up outside the start the first prompt waits on, and read the board the inbox is built from.
   $.clock.after(0, () => {
     void bridge($, { op: 'refresh' }, SLOW_TIMEOUT_MS).then(() => loadBoard($))
@@ -1408,6 +1824,7 @@ async function openBoard($: EngineInterface, tab?: BoardTab, readNow = true): Pr
   // one read before shows what it had until the new read lands, so nothing recorded since is missing for long.
   if ((await readBoard($)) === null) await update($, boardProblemAtom, () => null)
   if (readNow) $.clock.after(0, () => { void loadBoard($) })
+  else if (['items', 'made'].includes((await read($, tabAtom)) as string)) $.clock.after(0, () => { void loadMade($) })
   return opened
 }
 
@@ -1536,19 +1953,222 @@ async function act($: EngineInterface, action: BoardAction, surface?: string): P
       await update($, tabAtom, () => 'flow')
       return
     }
+    // A step the person judges, pressed on its row: into this session's record at once; said too when the item is this session's, so the turn hears it.
+    case 'work-meet':
+    case 'work-hold': {
+      const item = (await workItems($)).find((i) => i.id === action.id)
+      const flow = (await coachFlowsKept($)).find((f) => f.name === item?.flow)
+      if (item === undefined || flow === undefined) return
+      const at = await nowIso($)
+      await appendOwn($, (so) => [action.op === 'work-meet' ? pressEvent(item, flow, action.step, action.yes, at, currentTurn(so)) : holdEvent(item, action.held, at, currentTurn(so))])
+      await loadProjectSessions($)
+      if (action.op === 'work-meet' && item.session === (await $.session.id().catch(() => ''))) {
+        const step = flow.states.find((s) => s.id === action.step)?.title ?? action.step
+        await act($, { op: 'say', text: `${item.title} · ${step}：${action.label}` }, surface)
+      }
+      return
+    }
+    // 好，做吧: the button gives way first, so a second press finds 排队中/进行中 instead of sending the step again.
+    case 'work-go-on': {
+      const wait = turnBusy ? 1 : 0
+      await update($, goneOnAtom, (was) => [...(((was as unknown) as GoneOn[] | null) ?? []).filter((g) => g.id !== action.id), { id: action.id, next: action.next, at: action.at, wait, ends: 0 }] as unknown as GemworksJson)
+      try {
+        await act($, { op: 'say', text: action.next }, surface)
+      } catch (err) {
+        await update($, goneOnAtom, (was) => (((was as unknown) as GoneOn[] | null) ?? []).filter((g) => g.id !== action.id) as unknown as GemworksJson)
+        throw err
+      }
+      return
+    }
+    case 'manual-open': {
+      const now = (await read($, manualExpandedAtom)) as string[] | null
+      const first = (await workItems($)).filter((i) => i.status === 'open').sort((a, b) => (a.at < b.at ? 1 : -1))[0]?.flow
+      const was = now ?? (first !== undefined ? [first] : [])
+      await update($, manualExpandedAtom, () => [...was.filter((f) => f !== action.flow), ...(action.open ? [action.flow] : [])])
+      return
+    }
+    case 'practice-delete':
+    case 'practice-layer':
+    case 'practice-everywhere': {
+      const change = action.op === 'practice-delete' ? { deleted: true } : action.op === 'practice-everywhere' ? { everywhere: true } : { layer: action.layer }
+      const res = await bridge($, { op: 'practice-set', id: action.id, ...change }).catch(() => undefined)
+      if (res !== undefined && res.ok && res.practices !== undefined) await update($, practicesAtom, () => res.practices as unknown as GemworksJson)
+      // The ledger's cards and counts are read against the practices.
+      await loadCorrections($)
+      return
+    }
+    // A theme of corrections written as a practice, and linked to it at once: its card gives way to the practice's count.
+    case 'practice-from-theme': {
+      const flows = await coachFlows($)
+      await loadPractices($)
+      const kept = (await practicesKept($))?.list ?? []
+      const at = await nowIso($)
+      const r = newPractices([{ flow: action.flow, step: action.step, text: action.rule, why: action.why, layer: 'personal' }], kept, at, 'person', (n) => `p${Date.parse(at).toString(36).slice(-6)}${n}`, flows.map((f) => ({ name: f.name, steps: f.states.map((s) => s.id) })))
+      const added = r.added[0]
+      if (added === undefined) { $.ui.toast(`gemworks：${r.errors.join('；') || '没有记下'}`); return }
+      const res = await bridge($, { op: 'practice-add', practices: [added] }).catch(() => undefined)
+      if (res === undefined || !res.ok) { $.ui.toast('gemworks：做法没有写进去'); return }
+      if (res.practices !== undefined) await update($, practicesAtom, () => res.practices as unknown as GemworksJson)
+      // The links were current but for this practice: they are again. Else the next theme run links every practice.
+      const current = (await correctionsKept($))?.stale === false
+      const linked = current ? linkKey((res.practices?.list ?? []).filter((p) => p.deleted !== true)) : ''
+      const done = await bridge($, { op: 'corrections-themes', answer: { assign: [], links: [{ theme: action.theme, practices: [added.id] }] }, linked }).catch(() => undefined)
+      if (done !== undefined && done.ok && done.corrections !== undefined) await update($, correctionsAtom, () => done.corrections as unknown as GemworksJson)
+      if (!current) $.clock.after(0, () => { void themeLedger($).catch(() => undefined) })
+      return
+    }
+    case 'ledger-dismiss': {
+      const res = await bridge($, { op: 'corrections-dismiss', key: action.key, n: action.n }).catch(() => undefined)
+      if (res !== undefined && res.ok && res.corrections !== undefined) await update($, correctionsAtom, () => res.corrections as unknown as GemworksJson)
+      return
+    }
+    case 'work-unfold': await update($, workUnfoldedAtom, () => action.id); return
+    // A work item's prompts: the sessions tab, showing only the turns that moved it.
+    case 'session-item':
+      await update($, sessionFlowAtom, () => action.id)
+      if (action.id !== null) await update($, tabAtom, () => 'sessions')
+      return
+    // A proposal answered: accepted, the flow changes (the project's own); declined, it is not proposed again.
+    case 'proposal-answer': {
+      const list = await proposalsKept($)
+      const p = list.find((x) => x.id === action.id)
+      if (p === undefined) return
+      if (action.yes) {
+        if (p.kind === 'new-flow') await writeOwnFlow($, newFlow(p))
+        else {
+          const flow = (await coachFlowsKept($)).find((f) => f.name === p.flow)
+          if (flow !== undefined) await writeOwnFlow($, applyToFlow(flow, p))
+        }
+      }
+      await saveProposals($, list.map((x) => (x.id === p.id ? { ...x, status: action.yes ? 'accepted' as const : 'declined' as const } : x)))
+      return
+    }
+    case 'proposal-skip': {
+      const flow = (await coachFlowsKept($)).find((f) => f.name === action.flow)
+      if (flow === undefined) return
+      if (action.yes) await writeOwnFlow($, applyToFlow(flow, { kind: 'remove-step', remove: action.step }))
+      const at = await nowIso($)
+      const answered: Proposal = { id: `k${Date.parse(at).toString(36).slice(-6)}`, kind: 'remove-step', flow: action.flow, remove: action.step, why: '', at, by: 'gemworks', status: action.yes ? 'accepted' : 'declined' }
+      await saveProposals($, [...(await proposalsKept($)), answered])
+      return
+    }
+    // 改成规定: the model is asked, as the person's words, to write the rule; the rule tool takes it for this practice only.
+    case 'practice-rule': {
+      const practice = ((await practicesKept($))?.list ?? []).find((x) => x.id === action.id)
+      const flow = (await coachFlowsKept($)).find((f) => f.name === practice?.flow)
+      if (practice === undefined || flow === undefined) return
+      await update($, pendingRuleAtom, () => practice.id)
+      await act($, { op: 'say', text: ruleAsk(practice, flow.title, flow.states.find((st) => st.id === practice.step)?.title ?? practice.step) }, surface)
+      return
+    }
+    // A flow shared with the team: its route (when the project changed it), its rules and its practices, into the repository's .gemworks/; the person commits.
+    case 'flow-share': {
+      const repo = await read($, rootAtom)
+      const geml = await gemlDir($)
+      const flow = (await coachFlowsKept($)).find((f) => f.name === action.flow)
+      if (repo === null || geml === null || flow === undefined) return
+      const t = await words($)
+      if (flow.diff !== undefined) await $.fs.write(`${repo}/.gemworks/flows/${flow.name}.geml`, flowText(flow))
+      const rules = await rulesKept($)
+      const mine = rules.filter((r) => r.flow === flow.name && r.layer === 'project')
+      if (mine.length > 0) {
+        const teamText = await $.fs.read(`${repo}/.gemworks/rules.geml`).then(String, () => '')
+        await $.fs.write(`${repo}/.gemworks/rules.geml`, rulesText([...parseRules(teamText, 'team'), ...mine.map((r) => ({ ...r, layer: 'team' as const }))]))
+        await saveRules($, rules.map((r) => (mine.includes(r) ? { ...r, layer: 'team' as const } : r)))
+      }
+      const ids = ((await practicesKept($))?.list ?? []).filter((p) => p.flow === flow.name && p.layer === 'project' && p.deleted !== true).map((p) => p.id)
+      if (ids.length > 0) {
+        const res = await bridge($, { op: 'practice-share', ids }).catch(() => undefined)
+        if (res !== undefined && res.ok && res.practices !== undefined) await update($, practicesAtom, () => res.practices as unknown as GemworksJson)
+      }
+      await loadGrowth($)
+      $.ui.toast(t('已写进 .gemworks/，提交由你'))
+      return
+    }
+    case 'flow-export': {
+      const geml = await gemlDir($)
+      const flow = (await coachFlowsKept($)).find((f) => f.name === action.flow)
+      if (geml === null || flow === undefined) return
+      const file = `${geml}/exports/flow-${flow.name}.geml`
+      await $.fs.write(file, flowExport(flow, (await practicesKept($))?.list ?? [], await rulesKept($)))
+      $.ui.toast((await words($))('已导出 {0}', file))
+      return
+    }
+    case 'practice-share': {
+      const res = await bridge($, { op: 'practice-share', ids: [action.id] }).catch(() => undefined)
+      if (res !== undefined && res.ok && res.practices !== undefined) await update($, practicesAtom, () => res.practices as unknown as GemworksJson)
+      $.ui.toast((await words($))('已写进 .gemworks/，提交由你'))
+      return
+    }
+    case 'practice-claude-md': {
+      const practice = ((await practicesKept($))?.list ?? []).find((x) => x.id === action.id)
+      if (practice === undefined) return
+      await act($, { op: 'say', text: (await words($))('把做法「{0}」写进 CLAUDE.md：它每轮都要用。先把改动给我看，我批了再写；写好后用 practice 工具记一条 ref 指向那一段。', practice.text) }, surface)
+      return
+    }
+    // A reference imported: the file exported from a flow, or every flow in another project's .gemworks/flows; what it has that the project lacks, offered back.
+    case 'reference-import': {
+      const geml = await gemlDir($)
+      if (geml === null) return
+      const t = await words($)
+      const given = action.path.replace(/[\\/]+$/, '')
+      let files: string[] = [given]
+      try {
+        const listed = [...(await $.fs.list(`${given}/flows`))].filter((en) => en.kind === 'file' && en.name.endsWith('.geml')).map((en) => `${given}/flows/${en.name}`)
+        if (listed.length > 0) files = listed
+      } catch { /* a file, not a directory */ }
+      const flows = await coachFlows($)
+      const at = await nowIso($)
+      const stamp = Date.parse(at).toString(36).slice(-6)
+      let kept = await proposalsKept($)
+      let read = 0
+      for (const file of files) {
+        const text = await $.fs.read(file).then(String, () => undefined)
+        const name = referenceName(file, 'ref')
+        const ref = text !== undefined ? readCoachFlow(name, text) : undefined
+        if (ref === undefined || text === undefined) continue
+        read++
+        await $.fs.write(`${geml}/references/${name}.geml`, text)
+        kept = [...kept, ...referenceProposals(ref, name, flows, kept, at, (n) => `f${stamp}${read}${n}`)]
+      }
+      if (read === 0) { $.ui.toast(t('读不出参考：{0}', action.path)); return }
+      await saveProposals($, kept)
+      $.ui.toast(t('已导入 {0} 份参考，它有的步骤在流程页上提议', read))
+      return
+    }
+    case 'work-fold':
+      await update($, workOpenAtom, (was) => [...((was ?? []) as string[]).filter((g) => g !== action.group), ...(action.open ? [action.group] : [])])
+      return
     case 'tab': {
       await update($, tabAtom, () => action.tab)
       trace($, `tab is now ${action.tab}`)
       const filter = action.filter
       if (filter !== undefined) await update($, filterAtom, () => filter)
-      if (action.tab === 'journal') {
-        // Chosen anew, the journal starts on its first page: a page kept from before is a tree the desktop may not take.
+      if (action.tab === 'sessions') {
+        // Chosen anew, the sessions tab's memory and decisions start on their first page: a page kept from before is a tree the desktop may not take.
         await update($, decisionsShownAtom, () => 20)
         await update($, memoryShownAtom, () => 10)
         $.clock.after(0, () => { void loadMemory($) })
       }
+      // The flow tab shows the ledger as it is now: other sessions write into it too.
+      if (action.tab === 'flow') $.clock.after(0, () => { void loadCorrections($).catch(() => undefined) })
+      // What the work made, read anew behind the tab (a project with no workflow has no board read to bring it):
+      // the 产物 tab chosen from the tab bar starts on every work item's, newest first; the work items tab counts each one's.
+      if (action.tab === 'made') await update($, madeViewAtom, () => MADE_VIEW)
+      if (action.tab === 'made' || action.tab === 'items') $.clock.after(0, () => { void loadMade($) })
       return
     }
+    // A work item's 产物 n: the 产物 tab with its own alone; × there shows every one's again.
+    case 'made-item': {
+      await update($, madeViewAtom, () => ({ ...MADE_VIEW, item: action.id }))
+      if (action.id !== null) {
+        await update($, tabAtom, () => 'made' as GemworksTab)
+        $.clock.after(0, () => { void loadMade($) })
+      }
+      return
+    }
+    case 'made-kind': await update($, madeViewAtom, (was) => ({ ...(was ?? MADE_VIEW), kind: action.kind, shown: 0 })); return
+    case 'made-more': await update($, madeViewAtom, (was) => ({ ...(was ?? MADE_VIEW), shown: Math.max(MADE_PAGE, was?.shown ?? 0) + MADE_PAGE })); return
     case 'memory-group': {
       await update($, memoryGroupAtom, () => action.group)
       await update($, memoryMenuAtom, () => null)
@@ -2117,6 +2737,9 @@ function iconButton($: EngineInterface, els: Els, b: Pressable, g: Glyph, o: { t
 /** The prototype's greys, with alpha so they read on a light and a dark ground: a rule, a heading, a band behind a row. */
 const RULE = '#8a898666'
 const HEADING = '#8a8986'
+/** A work item's step as a cell: met, the one it stands at (bold), not reached (dim), passed unmet (a warning). */
+const CELL_MARK = { met: '✓', here: '●', ahead: '○', skipped: '⚠' } as const
+const CELL_TONE = { met: {}, here: { bold: true as const }, ahead: { dimColor: true as const }, skipped: toneProps('warning') } as const
 const SHADE = '#8a89861a'
 const SELECTED = '#2a6fdb24'
 /** A rule one CSS pixel high in the grey at 22%: wider than any slot, so drawn with no width it spans the slot it is in. */
@@ -2282,17 +2905,51 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
     }
     // A tool in one line: its name as the press that opens its menu, its use, what it looks like, how often it ran.
     // The name in the tab's one name column (drawRows measures it), so the uses start at the same edge in every group.
-    // A work item on the way: its flow's word, its name, the state it stands in, and the arrow to its flow; under it what it needs and ends as.
+    // A work item on the way: its flow's word, its name and the arrow to its flow; its steps as cells (one line of marks
+    // where no pictures are drawn); what it needs or what comes next, and the presses that are the person's.
     case 'work': return (
       <Box key={row.key} flexDirection="column" paddingX={1}>
         <Box gap={1}>
           <Text {...toneProps(row.flow === 'bugfix' ? 'error' : row.flow === 'design' ? 'warning' : 'success')}>{els.Svg !== undefined ? row.tag : `[${row.tag}]`}</Text>
-          <Box flexShrink={1} minWidth={0}><Text wrap="truncate-end">{row.title}</Text></Box>
+          <Box flexShrink={1} minWidth={0}>{row.open !== undefined ? <Button key={row.open.key} plain label={row.title} onPress={press($, row.open.action)} /> : <Text wrap="truncate-end">{row.title}</Text>}</Box>
           <Box flexGrow={1} />
-          <Text dimColor>{row.state}</Text>
+          {row.made !== undefined && <Button key={row.made.key} plain dimColor label={row.made.label} onPress={press($, row.made.action)} />}
           {els.Svg !== undefined ? iconButton($, els, row.go, 'go', { from: 'right', size: 15 }) : <Button key={row.go.key} plain label="›" onPress={press($, row.go.action)} />}
         </Box>
-        {row.detail !== '' && <Text dimColor wrap="truncate-end">{row.detail}</Text>}
+        {row.cells.length > 0 && (els.Svg !== undefined
+          ? <Box gap={1}>{row.cells.map((c, n) => <Text key={`c${n}`} {...CELL_TONE[c.cell]}>{`${CELL_MARK[c.cell]}${c.title}`}</Text>)}</Box>
+          : <Text dimColor wrap="truncate-end">{stripText(row.cells)}</Text>)}
+        {(row.detail !== '' || row.actions.length > 0) && (
+          <Box gap={1}>
+            <Box flexShrink={1} minWidth={0}><Text dimColor wrap="truncate-end">{row.detail}</Text></Box>
+            <Box flexGrow={1} />
+            {row.actions.map((b) => <Button key={b.key} label={b.label} {...(b.primary ? { variant: 'primary' } : {})} onPress={press($, b.action)} />)}
+          </Box>
+        )}
+      </Box>
+    )
+    // A flow's step in the manual: its title, the requirement to leave it, who judges it; under it what it prevents.
+    case 'step': return (
+      <Box key={row.key} flexDirection="column" paddingX={1} {...(row.here && els.Svg !== undefined ? { backgroundColor: SELECTED } : {})}>
+        <Box gap={1}>
+          <Text {...(row.final ? { dimColor: true } : row.here ? { bold: true } : {})}>{row.here && els.Svg === undefined ? `▸${row.title}` : row.title}</Text>
+          {row.need !== '' && <Box flexShrink={1} minWidth={0}><Text dimColor wrap="truncate-end">{`· ${row.need}`}</Text></Box>}
+          <Box flexGrow={1} />
+          {row.judge !== '' && <Text {...toneProps(row.judgeKind === 'fact' ? 'success' : row.judgeKind === 'you' ? 'warning' : 'dim')}>{row.judge}</Text>}
+        </Box>
+        {row.prevents !== '' && <Text dimColor wrap="truncate-end">{row.prevents}</Text>}
+        {(row.rules ?? []).map((r, n) => <Text key={`rule${n}`} {...toneProps('warning')} wrap="truncate-end">{`🔒 ${r}`}</Text>)}
+      </Box>
+    )
+    // A practice on a step: what to do, its tag, where it came from; its layer and × the person's presses.
+    case 'practice': return (
+      <Box key={row.key} gap={1} paddingX={2}>
+        {row.tag !== '' && <Text {...toneProps(row.fresh ? 'warning' : 'dim')}>{row.tag}</Text>}
+        <Box flexShrink={1} minWidth={0}><Text wrap="truncate-end">{row.text}</Text></Box>
+        {row.why !== '' && <Box flexShrink={1} minWidth={0}><Text dimColor wrap="truncate-end">{`— ${row.why}`}</Text></Box>}
+        <Box flexGrow={1} />
+        {row.count !== undefined && <Box flexShrink={0}><Text {...toneProps(row.count.held ? 'success' : 'warning')}>{row.count.text}</Text></Box>}
+        {row.actions.map((b) => <Button key={b.key} plain dimColor label={b.label} onPress={press($, b.action)} />)}
       </Box>
     )
     case 'tool': return (
@@ -2631,15 +3288,27 @@ async function tabRows($: EngineInterface, e: { surface: string; props: { bodyCo
     shows(tab === 'items')(() => read($, artifactMenuAtom), null),
     shows(tab === 'items')(() => read($, docsOpenAtom), false),
   ])
-  const memory = tab === 'journal'
+  const memory = tab === 'sessions'
     ? { list: (await read($, memoryAtom)) as MemoryList | null, group: await read($, memoryGroupAtom), menu: await read($, memoryMenuAtom), edit: await read($, memoryEditAtom), shown: ((await read($, memoryShownAtom)) as number | null) ?? 10 }
     : undefined
+  // What the work made: the 产物 tab's list, and each work item's 产物 n.
+  const made = tab === 'items' || tab === 'made'
+    ? { madeAll: (await read($, madeAllAtom)) as unknown as MadeAll | null, madeView: (await read($, madeViewAtom)) as unknown as MadeView }
+    : {}
   const rows = paneRows({
-    board, problem, shell, tab, columns, maxRows: Math.max(4, e.props.scroll.bodyRows - 4), t, now, root: root ?? '', inbox,
+    board, problem, shell, tab, columns, maxRows: Math.max(4, e.props.scroll.bodyRows - 4), t, now, root: root ?? '', inbox, ...made,
     filter: filter as JournalFilter, expanded, evidence, prompts,
     ...(project !== null ? { project, scrolls: e.surface === 'terminal', unfolded: unfolded as unknown as { id: string; answer: string | null } | null } : {}),
-    ...(tab === 'items' || tab === 'flow' ? { coach: { items: await workItems($), flows: await coachFlowsKept($), focus: (await read($, coachFocusAtom)) as unknown as CoachFocus | null, asks: tab === 'items' ? await openAsks($) : [] } } : {}),
-    exportedFor, doneOpen, droppedOpen, sessionFlow, sessionLimit: await read($, turnsShownAtom), picked: ((await read($, pickedAtom)) as string[] | null) ?? [], tidying: (await read($, tidyingAtom)) === true, sessionRuns: (sessionRuns as unknown as string[] | null) ?? [],
+    ...(tab === 'items' || tab === 'flow' || tab === 'made' ? { coach: {
+      items: await workItems($), flows: await coachFlowsKept($), focus: (await read($, coachFocusAtom)) as unknown as CoachFocus | null, asks: tab === 'items' ? await openAsks($) : [],
+      own: await $.session.id().catch(() => ''), open: ((await read($, workOpenAtom)) ?? []) as WorkGroup[],
+      practices: (await practicesKept($))?.list ?? [], expanded: (await read($, manualExpandedAtom)) as string[] | null,
+      unfolded: (await read($, workUnfoldedAtom)) as string | null, sessions: ((await read($, projectSessionsAtom)) as unknown as SessionSummary[] | null) ?? [],
+      proposals: await proposalsKept($), rules: await rulesKept($), skipped: skippedSteps(await workItems($), await coachFlowsKept($), await proposalsKept($)),
+      gone: await goneOnKept($), doing: await doingKept($),
+      ...(tab === 'flow' ? { ledger: await ledgerKept($) } : {}),
+    } } : {}),
+    exportedFor, doneOpen, droppedOpen, sessionItem: sessionFlow as string | null, ...(tab === 'sessions' ? { moved: await movedOf($, t) } : {}), sessionLimit: await read($, turnsShownAtom), picked: ((await read($, pickedAtom)) as string[] | null) ?? [], tidying: (await read($, tidyingAtom)) === true, sessionRuns: (sessionRuns as unknown as string[] | null) ?? [],
     flowState, switching, workflows: workflows as unknown as { bundled: string[]; installed: string[] } | null,
     usage, dismissed, toolQuery, toolMenu, toolNaming, toolsOpen: (toolsOpen as unknown as string[] | null) ?? [],
     exported, artifactMenu, docsOpen, ...(memory !== undefined ? { memory } : {}),
@@ -2701,6 +3370,7 @@ export const register: Register = (on) => {
     await update($, setupAtom, () => null)
     await loadStored($)
     await restorePrompts($)
+    await continueFrom($)
     for (const t of FLOW_TOOLS) {
       await registerOne($, t.name, () => $.tool.register({ name: t.name, description: t.description, inputSchema: t.inputSchema, isDeferred: false }))
     }
@@ -2708,6 +3378,9 @@ export const register: Register = (on) => {
     await registerOne($, ARTIFACT_TOOL.name, () => $.tool.register({ name: ARTIFACT_TOOL.name, description: ARTIFACT_TOOL.description, inputSchema: ARTIFACT_TOOL.inputSchema as unknown as Record<string, unknown>, isDeferred: false }))
     await registerOne($, ASK_TOOL.name, () => $.tool.register({ name: ASK_TOOL.name, description: ASK_TOOL.description, inputSchema: ASK_TOOL.inputSchema as unknown as Record<string, unknown>, isDeferred: false }))
     await registerOne($, WORK_TOOL.name, () => $.tool.register({ name: WORK_TOOL.name, description: WORK_TOOL.description, inputSchema: WORK_TOOL.inputSchema as unknown as Record<string, unknown>, isDeferred: false }))
+    await registerOne($, PRACTICE_TOOL.name, () => $.tool.register({ name: PRACTICE_TOOL.name, description: PRACTICE_TOOL.description, inputSchema: PRACTICE_TOOL.inputSchema as unknown as Record<string, unknown>, isDeferred: false }))
+    await registerOne($, PROPOSE_TOOL.name, () => $.tool.register({ name: PROPOSE_TOOL.name, description: PROPOSE_TOOL.description, inputSchema: PROPOSE_TOOL.inputSchema as unknown as Record<string, unknown>, isDeferred: false }))
+    await registerOne($, RULE_TOOL.name, () => $.tool.register({ name: RULE_TOOL.name, description: RULE_TOOL.description, inputSchema: RULE_TOOL.inputSchema as unknown as Record<string, unknown>, isDeferred: false }))
     await registerOne($, '/gemworks', () => $.command.register({ name: 'gemworks', description: 'Gemworks：当前阶段、看板、暂停与继续、切换或添加流程', argumentHint: COMMAND_HINT }))
     // The settings, from the store; the host's language; the plugin's version.
     try {
@@ -2727,9 +3400,16 @@ export const register: Register = (on) => {
     // person away from the keyboard comes back to the steps still waiting on them without having to type first.
     await update($, reloadAtom, () => false)
     await update($, queuedAtom, () => [])
+    await update($, goneOnAtom, () => [])
+    await update($, doingAtom, () => null)
     $.clock.after(0, () => { void loadFacts($) })
     $.clock.every(120_000, () => { void loadFacts($) })
-    $.clock.every(60_000, () => { $.ui.invalidate('ui.render'); void loadProjectSessions($) })
+    $.clock.every(60_000, () => {
+      $.ui.invalidate('ui.render')
+      void loadProjectSessions($)
+      // The flow tab's ledger, while it is the tab shown: other sessions label into it too.
+      void read($, tabAtom).then((tab) => (tab === 'flow' ? loadCorrections($) : undefined)).catch(() => undefined)
+    })
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -2756,6 +3436,7 @@ export const register: Register = (on) => {
     await update($, deliveredAtom, () => null)
     try { await update($, toldAtom, () => false) } catch { /* said again at the next */ }
     try { await storeUsage($) } catch { /* kept for the session */ }
+    await noteBoard($)
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -2774,7 +3455,12 @@ export const register: Register = (on) => {
     if (e.agentId === undefined && (CLAUDE_CODE_TOOLS.write.includes(tool) || CLAUDE_CODE_TOOLS.run.includes(tool) || tool === 'Artifact' || tool === `mcp__gemworks__${ASK_TOOL.name}`)) turnActed = true
     // How often each tool is used: every call is noted under its day as it starts, by the key the dictionary would give it, gemworks's own too.
     await noteUsage($, tool, toolArgs(e as unknown as Record<string, unknown>))
-    if (isOwnTool(tool) || tool === `mcp__gemworks__${NOTE_TOOL.name}` || tool === `mcp__gemworks__${ARTIFACT_TOOL.name}` || tool === `mcp__gemworks__${ASK_TOOL.name}` || tool === `mcp__gemworks__${WORK_TOOL.name}`) return next(e)
+    if (isOwnTool(tool) || tool === `mcp__gemworks__${NOTE_TOOL.name}` || tool === `mcp__gemworks__${ARTIFACT_TOOL.name}` || tool === `mcp__gemworks__${ASK_TOOL.name}` || tool === `mcp__gemworks__${WORK_TOOL.name}` || tool === `mcp__gemworks__${PRACTICE_TOOL.name}` || tool === `mcp__gemworks__${PROPOSE_TOOL.name}` || tool === `mcp__gemworks__${RULE_TOOL.name}`) return next(e)
+    // A rule the person made holds a call while the step it requires is unmet; a check that fails lets the call through.
+    try {
+      const held = await ruleHold($, tool, toolArgs(e as unknown as Record<string, unknown>))
+      if (held !== undefined) return { deny: `gemworks: ${held}` }
+    } catch { /* never in the way on its own failure */ }
     await retryStart($)
     if (e.agentId === undefined) await notePrompt($, (p) => ({ ...p, tools: p.tools + 1 }))
     const input = toolArgs(e as unknown as Record<string, unknown>)
@@ -2827,6 +3513,8 @@ export const register: Register = (on) => {
     // A file written in another checkout is that checkout's work item, never the session's current one.
     if (!elsewhere && wrotePath !== undefined && matchesUnit(policy, wrotePath, (await readShell($))?.units ?? [])) await update($, lastFileAtom, () => wrotePath)
     if (wrotePath !== undefined && ran.isError !== true) { const path = wrotePath; $.clock.after(0, () => { void sessionsOnFile($, path) }) }
+    // A file made for a person in the project: versioned at the turn's end, when no workflow journal names it.
+    if (!elsewhere && wrotePath !== undefined && ran.isError !== true && isMadeForPeople(wrotePath)) { const path = wrotePath; $.clock.after(0, () => { void update($, madeHereAtom, (was) => [...new Set([...(was ?? []), path])]).catch(() => undefined) }) }
     // A page, a picture, a draft made for the person outside the project (a scratchpad): one of the work item's artifacts at the turn's end.
     const outside = wrotePath === undefined && ran.isError !== true && CLAUDE_CODE_TOOLS.write.includes(tool) ? writtenPath(tool, input) : undefined
     if (outside !== undefined && isMadeForPeople(outside)) $.clock.after(0, () => { void update($, madeElsewhereAtom, (was) => [...new Set([...(was ?? []), outside])]).catch(() => undefined) })
@@ -2885,13 +3573,16 @@ export const register: Register = (on) => {
   on('tool.call', { tool: 'mcp__gemworks__artifact' }, ($, e) => recordArtifact($, e)).catch(() => ({ result: 'gemworks could not record that' }))
   on('tool.call', { tool: 'mcp__gemworks__ask' }, ($, e) => registerAsk($, e)).catch(() => ({ result: 'gemworks could not register that' }))
   on('tool.call', { tool: 'mcp__gemworks__work' }, ($, e) => recordWork($, e)).catch(() => ({ result: 'gemworks could not record that' }))
+  on('tool.call', { tool: 'mcp__gemworks__practice' }, ($, e) => recordPractices($, e)).catch(() => ({ result: 'gemworks could not record that' }))
+  on('tool.call', { tool: 'mcp__gemworks__propose' }, ($, e) => recordProposals($, e)).catch(() => ({ result: 'gemworks could not record that' }))
+  on('tool.call', { tool: 'mcp__gemworks__rule' }, ($, e) => recordRule($, e)).catch(() => ({ result: 'gemworks could not record that' }))
 
   // The model is told about the project's other sessions and the ask tool in the system prompt, where this event reaches gemworks (see prefaceFor).
   on('prompt.compose', async ($, e, next) => {
     const done = await next(e)
     try { await update($, composedAtom, () => true) } catch { /* the next prompt may say it once more */ }
     const flows = await coachFlows($).catch(() => [] as CoachFlow[])
-    return { ...done, sections: [...done.sections, { id: 'gemworks:sessions', text: SESSIONS_PROMPT, scope: 'session' as const }, { id: 'gemworks:ask', text: ASK_PROMPT, scope: 'session' as const }, ...(flows.length > 0 ? [{ id: 'gemworks:work', text: workPrompt(flows), scope: 'session' as const }] : [])] }
+    return { ...done, sections: [...done.sections, { id: 'gemworks:sessions', text: SESSIONS_PROMPT, scope: 'session' as const }, { id: 'gemworks:ask', text: ASK_PROMPT, scope: 'session' as const }, ...(flows.length > 0 ? [{ id: 'gemworks:work', text: workPrompt(flows), scope: 'session' as const }, { id: 'gemworks:practice', text: PRACTICE_PROMPT, scope: 'session' as const }, { id: 'gemworks:growth', text: GROWTH_PROMPT, scope: 'session' as const }] : [])] }
   }).catch(($, e, next) => next(e))
 
   // A turn that changed things and reported no work item goes back once to report it; the next stop ends it whatever it did.
@@ -2910,9 +3601,12 @@ export const register: Register = (on) => {
     if (e.agentId === undefined) {
       turnBusy = false
       try { await setQueued($, (q) => q.filter((x) => !x.entered)) } catch { /* shown till the next */ }
+      try { if ((await goneOnKept($)).length > 0) await update($, goneOnAtom, (was) => goneOnAfterTurn(((was as unknown) as GoneOn[] | null) ?? []) as unknown as GemworksJson) } catch { /* shown till the next */ }
+      try { if ((await doingKept($)) !== null) await update($, doingAtom, () => null) } catch { /* shown till the next */ }
       $.clock.after(0, () => { void storePrompts($) })
+      $.clock.after(0, () => { void noteBoard($) })
       if (!e.isAborted) { const answer = e.answer; $.clock.after(0, () => { void sessionsOnAnswer($, answer) }) }
-      $.clock.after(0, () => { void artifactsOnTurn($) })
+      $.clock.after(0, () => { void artifactsOnTurn($).catch(() => undefined) })
       $.clock.after(0, () => { void loadMemory($) })
       try { await storeUsage($) } catch { /* kept for the next turn */ }
       try {
@@ -2922,12 +3616,11 @@ export const register: Register = (on) => {
       if (!e.isAborted) {
         try {
           const [was, at, registered, left] = await Promise.all([readAttention($), $.clock.now(), read($, askedAtom), read($, leftAsksAtom)])
-          // The questions still open from before come first, then this reply's own; one asked again is asked once, as now worded.
+          // The state the turn leaves: this reply's own questions first, then those still open from before (attention.ts).
           // A question the person answered while this turn ran is not asked again: the answer waits in the queue, unseen by it.
           const done = ((await read($, answeredAtom)) as string[] | null) ?? []
-          const fresh = (((registered as unknown) as Asked[] | null) ?? []).filter((q) => !done.includes(q.question))
-          const carried = (((left as unknown) as Asked[] | null) ?? []).filter((q) => !fresh.some((x) => x.question === q.question) && !done.includes(q.question))
-          const asks = [...carried, ...fresh]
+          const item = turnItem(await workItems($), await $.session.id().catch(() => ''))?.id
+          const asks = asksAfterTurn(((registered as unknown) as Asked[] | null) ?? [], ((left as unknown) as Asked[] | null) ?? [], done, item)
           await update($, askedAtom, () => [] as unknown as GemworksJson)
           await update($, leftAsksAtom, () => [] as Asked[])
           await update($, answeredAtom, () => [] as string[])
@@ -2951,10 +3644,30 @@ export const register: Register = (on) => {
     turnReported = false
     try { if (((await read($, initAtom)) as unknown as InitState | null)?.state === 'done') await update($, initAtom, () => null) } catch { /* stays */ }
     if (person && e.origin.kind !== 'plugin') { try { await update($, originAtom, () => e.origin.kind) } catch { /* unknown */ } }
+    // The person's own turn takes up this session's work item: 我在做 in place of its 好，做吧 until the turn ends.
+    if (person) {
+      try {
+        const i = turnItem(await workItems($), await $.session.id().catch(() => ''))
+        await update($, doingAtom, () => (i !== undefined ? { id: i.id, next: i.next, at: i.at } : null))
+      } catch { /* the button stays */ }
+    }
     // The first prompt of a conversation carries the standing instructions, where the system prompt did not.
     const news = [...(await prefaceFor($)), ...(person ? [...(await attentionOnPrompt($, e.text)), ...(await sessionsOnPrompt($, e.text).catch(() => [] as string[]))] : [])]
     // The work items on the way, by id, so the turn's report updates them rather than reporting them anew.
     try { news.push(...workContext(await workItems($), await coachFlows($))) } catch { /* the model reports them anew */ }
+    // The practices of the step this session's work item stands at; on a project's first start, the ask to move its memory onto the steps.
+    try {
+      const kept = await practicesKept($)
+      if (kept !== null) news.push(...practiceContext(await workItems($), await coachFlows($), kept.list, await $.session.id().catch(() => '')))
+      if (person && kept !== null && !kept.memoryMoved && (await read($, memoryAskedAtom)) !== true) {
+        const res = await bridge($, { op: 'memory' }).catch(() => undefined)
+        const memory = res !== undefined && res.ok ? res.memory : undefined
+        if (memory !== undefined && memory.entries.length > 0) {
+          news.push(...memoryMoveContext(memory.dir, memory.entries))
+          await update($, memoryAskedAtom, () => true)
+        }
+      }
+    } catch { /* a reminder missed, not a prompt stopped */ }
     // What the person gave with it (images, documents) is one of the work item's artifacts: copied once the prompt entered, behind it.
     const given = person ? e.attachments ?? [] : []
     const go = (ev: typeof e) => next(news.length > 0 ? { ...ev, context: [...(ev.context ?? []), ...news] } : ev).then((done) => {
@@ -2977,6 +3690,20 @@ export const register: Register = (on) => {
       const before = await readPrompts($)
       await update($, promptsAtom, (was) => [...((((was as unknown) as PromptRecord[] | null) ?? [])), record].slice(-PROMPTS_KEPT) as unknown as GemworksJson)
       $.clock.after(0, () => { void storePrompts($) })
+      // A typed prompt goes into the person's ledger of corrections, labelled behind it: its words without the host's
+      // reminders, the reply it answers, the step its session's work item stood at. Another session's report arrives as
+      // a prompt that is one reminder: nothing typed, nothing labelled.
+      const words = typedWords(e.text)
+      if (e.origin.kind !== 'plugin' && words !== undefined) {
+        try {
+          const session = await $.session.id().catch(() => '')
+          const item = turnItem(await workItems($), session)
+          const flow = item !== undefined ? (await coachFlowsKept($)).find((f) => f.name === item.flow) : undefined
+          const step = item !== undefined && flow !== undefined ? itemProgress(item, flow).here ?? undefined : undefined
+          const said = { text: words, before: (await readAttention($))?.reply ?? '', at: record.at, session, project: root, ...(flow !== undefined && step !== undefined ? { flow: flow.name, step } : {}) }
+          if (session !== '') $.clock.after(0, () => { void labelPrompt($, said).catch(() => undefined) })
+        } catch { /* this prompt stays unlabelled; gemworks corrections pending finds it */ }
+      }
       // A typed prompt is judged (an option pressed said what it chose already), after it is on its way.
       if (e.origin.kind !== 'plugin' && (await readSettings($)).judge.enabled) {
         const lastAnswer = before[before.length - 1]?.did ?? ''
@@ -3050,7 +3777,7 @@ export const register: Register = (on) => {
       const item = shell?.status?.item
       // What waits on the person, the same list the board's 待处理 shows: the current work item's things, then the others'.
       const inbox = pendingList(await inboxOf($, t), [...othersWaiting(board, item?.kind === 'item' ? item.id : undefined, t), ...(board !== null ? [...toolSuggestions(board, await usageDrawn($), await dismissedOf($), t), ...ciSuggestions(board, shell?.units ?? [], await dismissedOf($), t)] : [])])
-      workflow = shell?.status != null
+      workflow = shell?.status != null || (await coachFlowsKept($)).length > 0
       waitingOnPerson = inbox.length
       // The initialization's count while it runs; its outcome, once, until the next prompt.
       const init = (await read($, initAtom)) as unknown as InitState | null
@@ -3063,8 +3790,11 @@ export const register: Register = (on) => {
       })
       // Nothing waits on the person: the band names the work item this session was on last (coach.ts), not the stage the workflow holds.
       if (view.verb === t('我在做')) {
-        const line = coachBand(await workItems($), await coachFlowsKept($), await $.session.id().catch(() => ''), t)
-        if (line !== undefined) view = { ...view, verb: line.verb, title: line.title, note: line.note, detail: [line.verb, line.title, line.note].join(SEP) }
+        const session = await $.session.id().catch(() => '')
+        const own = (((await read($, projectSessionsAtom)) as unknown as SessionSummary[] | null) ?? []).find((x) => x.id === session)
+        const line = coachBand(await workItems($), await coachFlowsKept($), session, t, own?.turns.at(-1)?.at, await goneOnKept($), await doingKept($))
+        if (line !== undefined) view = { ...view, verb: line.verb, title: line.title, note: line.note, detail: line.detail, actions: line.actions, ...(line.more.count > 0 ? { more: line.more } : {}) }
+        else if (view.title === '') view = { ...view, verb: '', title: t('还没有在路上的工作项') }
       }
       // No shell yet and a start that got no answer: the band says it is trying again, not 启动中… for good.
       if (shell === null && startRetrying && view.tone !== 'error') view = { ...view, note: t('桥接未应答，重试中') }
@@ -3098,6 +3828,14 @@ export const register: Register = (on) => {
     }
     // Something else leads: the initialization's count stays as the dim words after it.
     if (notice !== null && attentionPresses !== null && view.note === '') view = { ...view, note: notice.text }
+    // What grew, in a few words at the right: the proposals waiting, the practices learned today.
+    let aside = ''
+    try {
+      const nowAt = await nowIso($)
+      const waitingProposals = (await proposalsKept($)).filter((p) => p.status === 'open').length + skippedSteps(await workItems($), await coachFlowsKept($), await proposalsKept($)).length
+      const learnedToday = ((await practicesKept($))?.list ?? []).filter((p) => p.deleted !== true && isNew(p, nowAt, 1)).length
+      aside = [learnedToday > 0 ? t('新学到 {0} 条', learnedToday) : '', waitingProposals > 0 ? t('{0} 条提议', waitingProposals) : ''].filter((x) => x !== '').join(SEP)
+    } catch { /* nothing said of it */ }
     const options: Pressable[] = attentionPresses ?? view.actions
     const tail: Pressable[] = [
       ...(view.more.count > 0 ? [{ key: 'more', label: t('还有 {0} 件', view.more.count), action: { op: 'open-board', tab: 'items' } as BoardAction }] : []),
@@ -3204,6 +3942,7 @@ export const register: Register = (on) => {
           ? <Box key="band-more">{pressable(b, options.length + i)}{card(view.more.detail, { right: 0 }, columns - 4)}</Box>
           : null)}
         {board !== undefined && <Box key="band-push" flexGrow={1} />}
+        {aside !== '' && <Text key="band-aside" {...toneProps('warning')}>{aside}</Text>}
         {board !== undefined && pressable(board, options.length + tail.indexOf(board))}
       </Box>
     )

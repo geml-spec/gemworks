@@ -31,8 +31,12 @@ import { TOOLS_FILE } from "./core/dictionary.js";
 import { renderDictionary } from "./core/dictionary-file.js";
 import { migrateLayout, projectDocOf, recordedPath, workflowAt } from "./project-home.js";
 import { updateOutline, type OutlineEntry } from "./outline-store.js";
-import { copyPath, artifactsDir, forgetFiles, isUnder, recordBytes, recordFile, recordLink, syncDocs, syncWritten } from "./artifacts-store.js";
+import { copyPath, artifactsDir, forgetFiles, isUnder, readArtifactRows, recordBytes, recordFile, recordLink, syncDocs, syncWritten } from "./artifacts-store.js";
 import { deleteMemory, memoryDir, readMemory, setMemoryHook } from "./memory-store.js";
+import { changePractice, readPractices, sharePractices, writePractices } from "./practice-store.js";
+import type { Practice } from "./core/practices.js";
+import { readLedger, updateLedger } from "./corrections-store.js";
+import { addPrompts, applyThemes, claimThemes, dismiss, flowless, isCorrection, ledgerCards, linkKey, localDay, practiceCounts, unthemed, type Ledger } from "./core/corrections.js";
 import { isDocPath, isGemlPath, isImagePath, isMadeForPeople, pageTitle, artifactsOfItem, UPLOAD_PREFIX, type Artifact } from "./core/artifacts.js";
 import { historyPathFor } from "@geml/geml";
 import { prOf, type PrFact } from "./core/outline.js";
@@ -55,7 +59,7 @@ import { timelineOf } from "./timeline.js";
 import { flowPicture } from "./core/picture.js";
 import { runVerb } from "./verbs.js";
 import { dependsOf, fileUnitOf, itemProgress, loadWorkspace, openWorkspace, resolveWorkflow, sideFlows, workflowNameOf, type FlowCache, type Opened, type ShellView, type Workspace } from "./workspace.js";
-import type { Backfill, BoardData, BoardItem, BridgeRequest, BridgeResponse, Made, MadeEntry, Artifacts, ShellStatus, TimelineEntry, TodoCount } from "./hosts/claude-code/protocol.js";
+import type { Backfill, BoardData, BoardItem, BridgeRequest, BridgeResponse, CorrectionsView, Made, MadeAll, MadeAllEntry, MadeEntry, Artifacts, ShellStatus, TimelineEntry, TodoCount } from "./hosts/claude-code/protocol.js";
 
 type Answered = Extract<BridgeResponse, { ok: true }>;
 
@@ -386,6 +390,34 @@ function writtenOf(journal: Journal): { path: string; rev: number; at: string; t
 }
 
 /**
+ * Every artifact in the project's table (protocol.ts, MadeAll), one entry per
+ * work item, kind and name, newest first: a link opens its address; a file
+ * where it is under `root`, else its newest copy; a document in git where it
+ * is. Reads only: what a turn wrote was versioned at its end. None when the
+ * table cannot be read.
+ */
+function madeAllOf(root: string): MadeAll {
+  const home = journalBaseOf(root);
+  let rows: ReturnType<typeof readArtifactRows>;
+  try { rows = readArtifactRows(home); } catch { return { entries: [] }; }
+  const by = new Map<string, { row: (typeof rows)[number]; versions: number; copy?: string }>();
+  // The table is in the order its rows were written: a later row is the newer version.
+  for (const r of rows) {
+    const key = `${r.item}\u0000${r.kind}\u0000${r.name}`;
+    const was = by.get(key);
+    const copy = r.where.startsWith("artifacts/") ? copyPath(home, r.where) : was?.copy;
+    by.set(key, { row: r, versions: (was?.versions ?? 0) + 1, ...(copy !== undefined ? { copy } : {}) });
+  }
+  const entries = [...by.values()].map(({ row: r, versions, copy }): MadeAllEntry => {
+    const given = r.name.startsWith(UPLOAD_PREFIX);
+    const own = resolve(root, r.name);
+    const open = r.kind === "link" ? r.where : !given && exists(own) ? own : copy ?? own;
+    return { item: r.item, kind: r.kind, name: given ? r.name.slice(UPLOAD_PREFIX.length) : r.name, open, versions, version: r.version, at: r.at, ...(given ? { given: true as const } : {}) };
+  });
+  return { entries: entries.sort((a, b) => b.at.localeCompare(a.at)) };
+}
+
+/**
  * What the work item made, by kind (protocol.ts, Made): a version of each
  * file it wrote that git does not keep is copied first, and its documents in
  * git are written into the table; then the table's links, files and
@@ -468,25 +500,43 @@ function artifactsOf(ws: Workspace, root: string, journal: Journal): Artifacts |
 }
 
 /**
+ * The work item an artifact goes under, and the home whose table keeps it: the
+ * workflow's current work item; else the one the turn is on (`item`, the
+ * coach's), so a project with no workflow keeps what its work made too.
+ */
+function artifactsAt(ws: Workspace | undefined, root: string, item: string | undefined): { home: string; item: string } | undefined {
+  if (ws !== undefined && ws.item.kind === "item") return { home: ws.journalBase, item: ws.item.id };
+  return item !== undefined && item !== "" ? { home: ws?.journalBase ?? journalBaseOf(root), item } : undefined;
+}
+
+/**
  * A turn's end: a version of each file the current work item wrote that git
  * does not keep, when its content changed; and of each made for a person it
  * wrote outside the project (`elsewhere`, absolute paths).
  */
-function syncArtifacts(ws: Workspace, root: string, elsewhere: readonly string[] = [], notMade: readonly string[] = []): void {
-  if (ws.item.kind !== "item") return;
-  const item = ws.item.id;
-  const file = ws.itemFile;
-  if (ws.journalPath !== undefined && exists(ws.journalPath)) {
-    try { syncWritten(root, ws.journalBase, item, writtenOf(readJournal(readText(ws.journalPath))).map((w) => w.path).filter((p) => p !== file)); } catch { /* the next look copies it */ }
+function syncArtifacts(ws: Workspace | undefined, root: string, req: Extract<BridgeRequest, { op: "artifacts" }>): void {
+  const at = artifactsAt(ws, root, req.item);
+  if (at === undefined) return;
+  const { home, item } = at;
+  const elsewhere = req.elsewhere ?? [];
+  const notMade = req.notMade ?? [];
+  // What the turn wrote in the project: the workflow item's journal has it, else the hook named it.
+  if (ws !== undefined && ws.item.kind === "item") {
+    const file = ws.itemFile;
+    if (ws.journalPath !== undefined && exists(ws.journalPath)) {
+      try { syncWritten(root, home, item, writtenOf(readJournal(readText(ws.journalPath))).map((w) => w.path).filter((p) => p !== file)); } catch { /* the next look copies it */ }
+    }
+  } else if ((req.written ?? []).length > 0) {
+    try { syncWritten(root, home, item, req.written ?? []); } catch { /* the next turn's look copies it */ }
   }
   // A draft handed to git commit as its message was for the commit: taken out again where an earlier turn recorded it.
   if (notMade.length > 0) {
-    try { forgetFiles(root, ws.journalBase, notMade, join(homedir(), ".gemworks", "trash", `${new Date().toISOString().replace(/[:.]/g, "-")}-artifacts`)); } catch { /* the next turn's look takes it out */ }
+    try { forgetFiles(root, home, notMade, join(homedir(), ".gemworks", "trash", `${new Date().toISOString().replace(/[:.]/g, "-")}-artifacts`)); } catch { /* the next turn's look takes it out */ }
   }
   // Claude's own files (its memory, its settings, its plans) are not the work item's artifacts.
   const claudeHome = process.env["CLAUDE_CONFIG_DIR"] ?? join(homedir(), ".claude");
   for (const path of elsewhere.filter(isMadeForPeople).filter((p) => !isUnder(p, claudeHome) && !notMade.some((n) => isUnder(p, n)))) {
-    try { recordFile(root, ws.journalBase, item, path, isImagePath(path) ? "image" : "file"); } catch { /* not there any more */ }
+    try { recordFile(root, home, item, path, isImagePath(path) ? "image" : "file"); } catch { /* not there any more */ }
   }
 }
 
@@ -504,9 +554,10 @@ function titleOf(text: string): string | undefined {
 }
 
 /** An artifact the model or a publish tool names, under the current work item: a link, or a file's version. Answers what was recorded, in words for the model. */
-function recordArtifact(ws: Workspace, root: string, req: Extract<BridgeRequest, { op: "artifact" }>): { ok: true; text: string } | { ok: false; reason: string } {
-  if (ws.item.kind !== "item") return { ok: false, reason: "there is no current work item to record it under" };
-  const item = ws.item.id;
+function recordArtifact(ws: Workspace | undefined, root: string, req: Extract<BridgeRequest, { op: "artifact" }>): { ok: true; text: string } | { ok: false; reason: string } {
+  const at = artifactsAt(ws, root, req.item);
+  if (at === undefined) return { ok: false, reason: "there is no current work item to record it under" };
+  const { home, item } = at;
   const where = req.where.trim();
   if (where === "") return { ok: false, reason: "where is empty: give the link's address or the file's path" };
   if (req.kind === "link") {
@@ -515,7 +566,7 @@ function recordArtifact(ws: Workspace, root: string, req: Extract<BridgeRequest,
     let name = req.name?.trim() ?? "";
     if (name === "" && req.page !== undefined) { try { name = titleOf(readText(resolve(root, req.page))) ?? ""; } catch { /* named otherwise */ } }
     const fallback = req.page !== undefined ? basename(req.page).replace(/\.[^.]*$/, "") : undefined;
-    recordLink(ws.journalBase, item, { name, ...(fallback !== undefined ? { fallback } : {}), url: where, ...(req.version !== undefined && req.version !== "" ? { version: req.version } : {}), at: new Date().toISOString() });
+    recordLink(home, item, { name, ...(fallback !== undefined ? { fallback } : {}), url: where, ...(req.version !== undefined && req.version !== "" ? { version: req.version } : {}), at: new Date().toISOString() });
     return { ok: true, text: `Recorded the link under ${item}'s artifacts.` };
   }
   // An upload: its bytes, named by its file's name under upload/.
@@ -524,10 +575,10 @@ function recordArtifact(ws: Workspace, root: string, req: Extract<BridgeRequest,
     if (bytes.length === 0) return { ok: false, reason: "data is empty" };
     const own = req.name?.trim().split(/[\\/]/).at(-1) ?? "";
     const name = `${UPLOAD_PREFIX}${own !== "" ? own : `upload-${createHash("sha256").update(bytes).digest("hex").slice(0, 8)}${EXT_OF[req.mediaType ?? ""] ?? ""}`}`;
-    const given = recordBytes(ws.journalBase, item, { name, bytes, kind: req.kind, at: new Date().toISOString() });
+    const given = recordBytes(home, item, { name, bytes, kind: req.kind, at: new Date().toISOString() });
     return { ok: true, text: given !== undefined ? `Recorded ${name} under ${item}'s artifacts.` : "Nothing new to record: these bytes are recorded already." };
   }
-  const row = recordFile(root, ws.journalBase, item, where, req.kind);
+  const row = recordFile(root, home, item, where, req.kind);
   return row !== undefined
     ? { ok: true, text: `Recorded ${row.name} (version ${row.version}) under ${item}'s artifacts.` }
     : { ok: true, text: "Nothing new to record: no file there, or this version is recorded already." };
@@ -735,6 +786,33 @@ export function answerRequest(req: BridgeRequest): BridgeResponse {
   }
 }
 
+/** The ledger as the flow tab shows it, against the project's practices; with what a theme request reads, when asked. */
+function correctionsView(ledger: Ledger, practices: readonly Practice[], now: string, toTheme: boolean): CorrectionsView {
+  const live = practices.filter((p) => p.deleted !== true);
+  const since = new Date(Date.parse(now) - 7 * 86_400_000).toISOString();
+  // The days a card names are the person's own: this machine's, not UTC's.
+  const offset = -new Date().getTimezoneOffset();
+  const day = (at: string): string => localDay(at, offset).slice(5);
+  return {
+    cards: ledgerCards(ledger, live, now).map((c) => ({
+      ...c, quotes: c.quotes.map((q) => ({ ...q, day: day(q.at) })), ...(c.kind === "failing" && c.instead !== undefined ? { insteadDay: day(c.instead.at) } : {}),
+    })),
+    counts: practiceCounts(ledger, live),
+    flowless: flowless(ledger, now).map((f) => ({
+      ...f,
+      quotes: ledger.prompts.filter((x) => isCorrection(x) && x.at >= since && x.flow === undefined && x.work === f.work).slice(-12).map((x) => ({ at: x.at, text: x.text.replace(/\s+/g, " ").trim() })),
+    })),
+    unthemed: unthemed(ledger, Infinity).length,
+    stale: ledger.linked !== linkKey(live),
+    ...(toTheme ? { toTheme: { corrections: unthemed(ledger), themes: ledger.themes, practices: live } } : {}),
+  };
+}
+
+/** Every layer's practices for the answer; none when they cannot be read. */
+function practicesOf(root: string): { list: Practice[]; memoryMoved: boolean } {
+  try { const r = readPractices(root); return { list: r.practices, memoryMoved: r.memoryMoved }; } catch { return { list: [], memoryMoved: false }; }
+}
+
 function answer(req: BridgeRequest): BridgeResponse {
   const root = req.root;
   if (req.op === "use") {
@@ -757,11 +835,52 @@ function answer(req: BridgeRequest): BridgeResponse {
     return { v: 1, ok: true, shell: shellAt(req), workflows: bundledWorkflows(), installed: projectWorkflows(root), added: { name: r.name, activated: r.activated } };
   }
   if (req.op === "status" && req.migrate === true) moveEarlierLayout(root);
+  // What the project's work made stays, whichever work item made it and whether it has ended: workflow or none.
+  if (req.op === "made") return { v: 1, ok: true, shell: shellAt(req), made: madeAllOf(root) };
+  // The project's memory and its practices need only the project, workflow or none.
+  if (req.op === "memory" || req.op === "memory-set" || req.op === "memory-delete") {
+    const dir = memoryDir(transcriptsRoot(req), journalBaseOf(root));
+    const trash = join(homedir(), ".gemworks", "trash", `${new Date().toISOString().replace(/[:.]/g, "-")}-memory`);
+    if (req.op === "memory-set" && !setMemoryHook(dir, req.file, req.hook, trash)) return { v: 1, ok: false, error: `no memory ${req.file} to change`, shell: shellAt(req) };
+    if (req.op === "memory-delete" && !deleteMemory(dir, req.file, trash)) return { v: 1, ok: false, error: `no memory ${req.file} to delete`, shell: shellAt(req) };
+    return { v: 1, ok: true, shell: shellAt(req), memory: readMemory(dir) };
+  }
+  if (req.op === "practices" || req.op === "practice-add" || req.op === "practice-set" || req.op === "practice-share") {
+    if (req.op === "practice-add") writePractices(root, req.practices, req.memory === true);
+    if (req.op === "practice-share") sharePractices(root, req.ids);
+    if (req.op === "practice-set" && !changePractice(root, req.id, { ...(req.deleted !== undefined ? { deleted: req.deleted } : {}), ...(req.layer !== undefined ? { layer: req.layer } : {}), ...(req.everywhere === true ? { everywhere: true } : {}) })) {
+      return { v: 1, ok: false, error: `no practice ${req.id} to change`, shell: shellAt(req) };
+    }
+    const { practices, memoryMoved } = readPractices(root);
+    return { v: 1, ok: true, shell: shellAt(req), practices: { list: practices, memoryMoved } };
+  }
+  // The person's ledger of corrections: theirs, not the project's; read against this project's practices.
+  if (req.op === "corrections" || req.op === "corrections-add" || req.op === "corrections-themes" || req.op === "corrections-dismiss") {
+    const now = new Date().toISOString();
+    // What a theme request reads goes only to the session that holds the claim: two sessions would theme the same corrections twice.
+    let mine = false;
+    const asking = req.op === "corrections" && req.toTheme === true && req.session !== undefined;
+    const ledger = req.op === "corrections" && !asking ? readLedger() : updateLedger((l) => {
+      if (req.op === "corrections") { const c = claimThemes(l, req.session ?? "", now); mine = c.mine; return c.ledger; }
+      if (req.op === "corrections-add") return addPrompts(l, req.prompts.map((p) => ({ ...p, by: "model" as const }))).ledger;
+      if (req.op === "corrections-themes") return applyThemes(l, req.answer, now, req.linked, (n) => `t${Date.parse(now).toString(36)}${n}`);
+      return dismiss(l, req.key, req.n, now);
+    });
+    return { v: 1, ok: true, shell: shellAt(req), corrections: correctionsView(ledger, practicesOf(root).list, now, mine) };
+  }
   const opened = openFor(req);
   if (!opened.ok) {
     const shell = notOpened(opened, req.root);
     const asks = req.op === "verb" || req.op === "mark" || req.op === "advance" || req.op === "bind" || req.op === "learn" || req.op === "pause" || req.op === "resume" || req.op === "rollback" || req.op === "export";
-    return asks ? { v: 1, ok: false, error: opened.reason, shell } : { v: 1, ok: true, shell };
+    // No workflow keeps no session out of the project's shared record: its work items, decisions and visuals still have a home.
+    const record = req.op === "status" ? { sessions: join(journalBaseOf(root), GEML_DIR, SESSIONS_DIR), practices: practicesOf(root) } : {};
+    // Nor what its work made: under the work item the turn is on.
+    if (req.op === "artifacts") syncArtifacts(undefined, root, req);
+    if (req.op === "artifact") {
+      const r = recordArtifact(undefined, root, req);
+      return r.ok ? { v: 1, ok: true, shell, text: r.text } : { v: 1, ok: false, error: r.reason, shell };
+    }
+    return asks ? { v: 1, ok: false, error: opened.reason, shell } : { v: 1, ok: true, shell, ...record };
   }
   const ws = opened.ws;
   /** The answer: the view after the op, and the new stage text when the op changed the stage. */
@@ -771,7 +890,7 @@ function answer(req: BridgeRequest): BridgeResponse {
   switch (req.op) {
     case "status":
       // The shared session logs' directory too: a session's first prompt is written before the slower facts come.
-      return ok(ws.view(), { sessions: join(journalBaseOf(root), GEML_DIR, SESSIONS_DIR) });
+      return ok(ws.view(), { sessions: join(journalBaseOf(root), GEML_DIR, SESSIONS_DIR), practices: practicesOf(root) });
     case "refresh": {
       // The workspace opened for this request: git's facts it read are this moment's.
       const change = ws.refresh({ reread: false });
@@ -854,7 +973,7 @@ function answer(req: BridgeRequest): BridgeResponse {
       return ok(view, { attention: { ahead: ahead ?? [], prs: open ?? [], ...(unread.length > 0 ? { unread } : {}), ...(bump !== undefined ? { bump: { version: bump.version, path: bump.path } } : {}), ...(elsewhere.length > 0 ? { elsewhere } : {}) }, host, sessions: join(journalBaseOf(root), GEML_DIR, SESSIONS_DIR) });
     }
     case "artifacts": {
-      syncArtifacts(ws, root, req.elsewhere, req.notMade);
+      syncArtifacts(ws, root, req);
       return ok(ws.view());
     }
     case "artifact": {
@@ -866,16 +985,6 @@ function answer(req: BridgeRequest): BridgeResponse {
     case "backfill-one": {
       const r = backfillOne(ws, root, req);
       return r.ok ? ok(ws.view(), { backfill: r.backfill }) : failed(r.reason);
-    }
-    // The project's Claude Code memory: read, one hook rewritten, one taken out; each answers the memory as it now stands.
-    case "memory":
-    case "memory-set":
-    case "memory-delete": {
-      const dir = memoryDir(transcriptsRoot(req), ws.journalBase);
-      const trash = join(homedir(), ".gemworks", "trash", `${new Date().toISOString().replace(/[:.]/g, "-")}-memory`);
-      if (req.op === "memory-set" && !setMemoryHook(dir, req.file, req.hook, trash)) return failed(`no memory ${req.file} to change`);
-      if (req.op === "memory-delete" && !deleteMemory(dir, req.file, trash)) return failed(`no memory ${req.file} to delete`);
-      return ok(ws.view(), { memory: readMemory(dir) });
     }
     case "turn-ids": {
       const file = transcriptFiles(root, transcriptsRoot(req)).find((f) => f.id === req.session);

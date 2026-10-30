@@ -150,10 +150,8 @@ function stageSegments(shell: ShellStatus | null, todo: TodoCount | null, t: T, 
   const s = shell.status;
   if (s === null) {
     if (shell.problem !== undefined && !shell.problem.quiet) return [{ text: `gemworks：${shell.problem.text}`, tone: "error" }];
-    // No workflow yet: say so, and which bundled one fits what the project holds.
-    const out: Segment[] = [{ text: t("没有流程"), tone: "dim" }];
-    if (shell.suggest !== undefined) out.push({ text: t("建议 {0}（{1}）", shell.suggest.workflow, shell.suggest.file ?? t("默认")), tone: "dim" });
-    return out;
+    // No workflow of the project's own: the light flows are there; nothing is missing to say.
+    return [];
   }
   if (s.item.kind === "inactive") return [{ text: `⧗ ${s.item.reason}`, tone: "dim" }];
   const out: Segment[] = [{ text: `⧗ ${s.item.id}`, tone: "normal" }];
@@ -225,15 +223,10 @@ export function bandView(o: BandInput): BandView {
   const shell = o.shell;
   if (shell === null) return { ...none, title: t("启动中…"), tone: "dim" };
   const s = shell.status;
+  // No workflow of the project's own is no missing flow: the light flows are always there, and the band names the work item on the way.
   if (s === null) {
     if (shell.problem !== undefined && !shell.problem.quiet) return { ...none, title: `gemworks：${shell.problem.text}`, tone: "error" };
-    const suggest = shell.suggest;
-    return suggest === undefined
-      ? { ...none, title: t("没有流程"), tone: "dim" }
-      : {
-          ...none, title: t("没有流程"), tone: "dim", note: t("建议 {0}（{1}）", suggest.workflow, suggest.file ?? t("默认")),
-          actions: [{ key: "add-suggested", label: t("添加 {0}", suggest.workflow), primary: true, action: { op: "add", workflow: suggest.workflow } }, { key: "pick-workflow", label: t("选流程"), action: { op: "dialog", dialog: "settings" } }],
-        };
+    return { ...none, verb: t("我在做"), title: "", tone: "dim" };
   }
   if (s.item.kind === "inactive") return { ...none, title: s.item.reason, tone: "dim" };
   const name = s.title ?? s.item.id;

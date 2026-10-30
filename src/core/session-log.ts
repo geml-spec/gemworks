@@ -22,13 +22,25 @@ export type SessionEvent =
   | { t: "file"; turn: number; at: string; path: string; branch?: string }
   | { t: "commit"; turn: number; at: string; sha: string; subject: string; branch?: string }
   /**
-   * A work item the turn was about, as the model reported it (the work tool): which flow, the state it stands in, what it
-   * still needs and what it should be at the end. The newest event of an id, in any session, is the item as it stands.
+   * A work item the turn was about, as the model reported it (the work tool) or a press set it: which flow, the steps whose
+   * leave requirement is met (`met`; an event written before steps were met names only `state`), the step it stands at,
+   * what it still needs, what comes next and what it should be at the end. The newest event of an id, in any session, is
+   * the item as it stands.
    */
-  | { t: "item"; turn: number; at: string; id: string; flow: string; title: string; state: string; needs: string; goal: string; status: ItemStatus };
+  | { t: "item"; turn: number; at: string; id: string; flow: string; title: string; state: string; needs: string; goal: string; status: ItemStatus; met?: MetStep[]; next?: string };
 
-/** Where a work item stands: on its way, finished, or given up. */
-export type ItemStatus = "open" | "done" | "dropped";
+/** Where a work item stands: on its way, put aside by the person, finished, or given up. */
+export type ItemStatus = "open" | "held" | "done" | "dropped";
+
+/** A step whose leave requirement is met: when, in which turn, and how a step the person judges was met — their words, or their press. */
+export interface MetStep { step: string; at: string; turn: number; said?: string; pressed?: boolean }
+
+const isMetStep = (v: unknown): v is MetStep => {
+  if (typeof v !== "object" || v === null) return false;
+  const m = v as Record<string, unknown>;
+  return typeof m["step"] === "string" && typeof m["at"] === "string" && typeof m["turn"] === "number"
+    && (m["said"] === undefined || typeof m["said"] === "string") && (m["pressed"] === undefined || typeof m["pressed"] === "boolean");
+};
 
 const safe = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, "-");
 
@@ -60,7 +72,9 @@ function isEvent(v: unknown): v is SessionEvent {
     case "prompt": case "answer": case "decision": return typeof e["turn"] === "number" && typeof e["text"] === "string";
     case "file": return typeof e["turn"] === "number" && typeof e["path"] === "string";
     case "commit": return typeof e["turn"] === "number" && typeof e["sha"] === "string" && typeof e["subject"] === "string";
-    case "item": return typeof e["turn"] === "number" && ["id", "flow", "title", "state", "needs", "goal"].every((k) => typeof e[k] === "string") && (e["status"] === "open" || e["status"] === "done" || e["status"] === "dropped");
+    case "item": return typeof e["turn"] === "number" && ["id", "flow", "title", "state", "needs", "goal"].every((k) => typeof e[k] === "string")
+      && (e["status"] === "open" || e["status"] === "held" || e["status"] === "done" || e["status"] === "dropped")
+      && (e["met"] === undefined || (Array.isArray(e["met"]) && e["met"].every(isMetStep))) && (e["next"] === undefined || typeof e["next"] === "string");
     default: return false;
   }
 }
@@ -109,7 +123,10 @@ export function currentTurn(events: readonly SessionEvent[]): number {
 }
 
 /** `gist`: the answer's first sentence, kept by a reader that lets the answer itself go. */
-export interface SessionTurn { turn: number; at: string; prompt: string; answer?: string; gist?: string; decisions: string[]; uuid?: string; backfilled?: boolean; kind?: "scheduled" | "peer" }
+/** A work item a turn moved: the steps it met in that turn (with their words or press), where the item then stood, and when. */
+export interface TurnMove { id: string; title: string; flow: string; state: string; met: MetStep[]; status: ItemStatus; at: string }
+
+export interface SessionTurn { turn: number; at: string; prompt: string; answer?: string; gist?: string; decisions: string[]; uuid?: string; backfilled?: boolean; kind?: "scheduled" | "peer"; moved?: TurnMove[] }
 
 /** One session as the record holds it: who, where, when, and what it asked, decided and made. */
 export interface SessionSummary {
@@ -160,7 +177,14 @@ export function summarize(events: readonly SessionEvent[]): SessionSummary | und
       case "decision": turn(e.turn, e.at).decisions.push(e.text); s.decisions.push({ turn: e.turn, at: e.at, text: e.text }); break;
       case "file": if (!s.files.some((f) => f.path === e.path)) s.files.push({ path: e.path, at: e.at, ...(e.branch !== undefined ? { branch: e.branch } : {}) }); break;
       case "commit": if (!s.commits.some((c) => c.sha === e.sha)) s.commits.push({ sha: e.sha, subject: e.subject, at: e.at, ...(e.branch !== undefined ? { branch: e.branch } : {}) }); break;
-      case "item": s.items = [...(s.items ?? []).filter((x) => x.id !== e.id), e]; break;
+      case "item": {
+        s.items = [...(s.items ?? []).filter((x) => x.id !== e.id), e];
+        // The turn that moved it: the steps met in that turn, its latest event of the turn standing for it.
+        const tn = turn(e.turn, e.at);
+        const move: TurnMove = { id: e.id, title: e.title, flow: e.flow, state: e.state, met: (e.met ?? []).filter((m) => m.turn === e.turn), status: e.status, at: e.at };
+        tn.moved = [...(tn.moved ?? []).filter((x) => x.id !== e.id), move];
+        break;
+      }
     }
   }
   s.turns.sort((a, b) => a.turn - b.turn);

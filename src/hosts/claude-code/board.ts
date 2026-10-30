@@ -7,10 +7,14 @@ import type { BoardAction, BoardTab, JournalFilter, Pressable } from "./actions.
 import type { MemoryList } from "../../memory-store.js";
 import { howText, truncate, varSegment, wrapCells, type Tone } from "./band.js";
 import { othersWaiting, pendingList, shortReason, type InboxItem } from "./inbox.js";
-import type { BoardData, BoardItem, MadeEntry, Artifacts, ShellStatus, TimelineEntry } from "./protocol.js";
+import type { BoardData, BoardItem, MadeAll, MadeEntry, Artifacts, ShellStatus, TimelineEntry } from "./protocol.js";
+import { MADE_VIEW, madeTabRows, type ItemWords, type MadeView } from "./made.js";
 import { promptLine, promptTail, type PromptRecord } from "./sessions.js";
 import type { SessionSummary } from "../../core/session-log.js";
-import { coachFlowRows, workRows, type CoachFlow, type CoachFocus, type WorkItem } from "./coach.js";
+import { manualRows, workRows, type CoachFlow, type CoachFocus, type Doing, type GoneOn, type ManualOptions, type WorkGroup, type WorkItem } from "./coach.js";
+import type { Cell, Judge } from "../../core/progress.js";
+import type { Practice } from "../../core/practices.js";
+import type { Proposal, Rule } from "./growth.js";
 import type { Asked } from "../../core/ask-tool.js";
 import type { AheadFact, PrFact } from "./attention.js";
 import { ZH, type T } from "./text.js";
@@ -20,27 +24,29 @@ import { groupOf, guessUse, keyWords, type ToolGroup } from "./usage.js";
 export const BOARD_ID = "gemworks-board";
 export const DIALOG_ID = "gemworks-dialog";
 
-export const TAB_IDS: readonly BoardTab[] = ["sessions", "items", "journal", "flow", "tools"];
+// 记录 is gone: what each turn did is on 会话, how a work item came here is under its row, where a practice came from is on it.
+export const TAB_IDS: readonly BoardTab[] = ["sessions", "items", "made", "flow", "tools"];
 
 /** The tab the board opens on: the work items, what waits on the person on top. */
 export const HOME_TAB: BoardTab = "items";
 
 /** The tabs in order, labelled. */
-export function tabs(t: T = ZH): { id: BoardTab; label: string }[] {
+export function tabs(t: T = ZH, ids: readonly BoardTab[] = TAB_IDS): { id: BoardTab; label: string }[] {
   const label = (id: BoardTab): string => {
     switch (id) {
       case "sessions": return t("会话");
       case "flow": return t("流程");
       case "items": return t("工作项");
+      case "made": return t("产物");
       case "journal": return t("记录");
       case "tools": return t("工具");
     }
   };
-  return TAB_IDS.map((id) => ({ id, label: label(id) }));
+  return ids.map((id) => ({ id, label: label(id) }));
 }
 
 /** What a field's text means when submitted. */
-export type InputField = "add-tool" | "import-workflow" | "tool-search" | "new-use" | "memory-hook";
+export type InputField = "add-tool" | "import-workflow" | "tool-search" | "new-use" | "memory-hook" | "import-reference";
 
 export type BoardRow =
   | { kind: "text"; text: string; tone: Tone }
@@ -93,8 +99,14 @@ export type BoardRow =
   | { kind: "menu"; key: string; items: Pressable[] }
   /** Running text shown whole: a turn's prompt, its answer (Markdown, where the surface draws it). */
   | { kind: "prose"; key: string; text: string; markdown?: boolean }
-  /** A work item on the way (coach.ts): its flow (`flow` the file name, `tag` its words), its name, the state it stands in, what it needs and ends as, and the arrow to its flow. */
-  | { kind: "work"; key: string; flow: string; tag: string; title: string; state: string; detail: string; go: Pressable };
+  /** A work item on the way (coach.ts): its flow (`flow` the file name, `tag` its words), its name, its steps as cells, what it needs or what comes next, the presses that are the person's, and the arrow to its flow. */
+  /** `made`: the press to what it made (产物 n ›, the 产物 tab with its own alone), beside the arrow; none when it made none. */
+  | { kind: "work"; key: string; flow: string; tag: string; title: string; cells: { title: string; cell: Cell }[]; detail: string; actions: Pressable[]; go: Pressable; open?: Pressable; made?: Pressable }
+  /** A flow's step in the manual (coach.ts manualRows): its title, the requirement to leave it, who judges it (`judge` in words), what it prevents; `here` the step the focused item stands at. */
+  | { kind: "step"; key: string; title: string; need: string; judge: string; judgeKind: Judge; prevents: string; here: boolean; final: boolean; rules?: string[] }
+  /** A practice on a step: what to do, where it came from, its tag (新学到, 从记忆搬来, 团队), the presses on it (its layer, ×). */
+  /** `count`: the corrections of its themes before it was written and since (纠正 2 → 0), green while none came since, amber once one did. */
+  | { kind: "practice"; key: string; text: string; why: string; tag: string; fresh: boolean; actions: Pressable[]; count?: { text: string; held: boolean } };
 
 /** What a card asks of the person: to decide, to accept the work, or to see why something is blocked. */
 export type Icon = "ask" | "done" | "warn";
@@ -117,6 +129,7 @@ const GLYPH_PATH: Readonly<Record<Glyph, string>> = {
   sessions: '<path d="M4 5h16v11H9l-5 4z"/>',
   flow: '<rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v5h11v3"/>',
   items: '<path d="M10 6h10M10 12h10M10 18h10M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/>',
+  made: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',
   journal: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   tools: '<path d="M14.5 5.5a4 4 0 0 0-5 5L4 16l4 4 5.5-5.5a4 4 0 0 0 5-5l-2.5 2.5-2.5-.5-.5-2.5z"/>',
   share: '<path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M12 15V3M8 7l4-4 4 4"/>',
@@ -204,6 +217,7 @@ export function inputAction(field: InputField, typed: string, target?: string): 
   const s = typed.trim();
   if (s === "") return undefined;
   if (field === "import-workflow") return { op: "import", path: s };
+  if (field === "import-reference") return { op: "reference-import", path: s };
   if (field === "new-use") return target === undefined ? undefined : { op: "learn", lessons: [{ kind: "use", key: target, use: s }] };
   if (field === "memory-hook") return target === undefined ? undefined : { op: "memory-set", file: target, hook: s };
   const [tool, use] = s.split("|").map((x) => x.trim());
@@ -239,8 +253,10 @@ export interface PaneInput {
   /** The file the last export wrote: a link to it under the export buttons; on the sessions tab, under the session it was of (`exportedFor`: `own` or its id). */
   exported?: string | null;
   exportedFor?: string | null;
-  /** The flow the sessions tab shows (its title), or null for all; the runs of another flow's turns unfolded (their first prompt's id). */
-  sessionFlow: string | null;
+  /** The work item the sessions tab shows the prompts of (its id), or null for all; the runs of another item's turns unfolded (their first prompt's id). */
+  sessionItem: string | null;
+  /** What each of this session's prompts moved, decided and learned (coach.ts turnWords), as the record holds it. */
+  moved?: (p: PromptRecord) => TurnMoved;
   /** How many of this session's turns the sessions tab draws, the newest; the rest behind a count. */
   sessionLimit?: number;
   /** The sessions tab: this session's turns checked, by prompt id. */
@@ -256,10 +272,13 @@ export interface PaneInput {
   /** The artifact whose menu is open on the work items tab, or null; whether every document it changed is listed. */
   artifactMenu?: string | null;
   docsOpen?: boolean;
+  /** Every artifact the project's work made (the work items tab's 全部产物), and how the list stands; none before it was read. */
+  madeAll?: MadeAll | null;
+  madeView?: MadeView;
   /** The state the flow tab shows below its picture, or null for the current one. */
   flowState: string | null;
   /** The coach (coach.ts): the work items the sessions reported, the light flows, and the item whose arrow was pressed. */
-  coach?: { items: readonly WorkItem[]; flows: readonly CoachFlow[]; focus: CoachFocus | null; asks?: readonly Asked[] };
+  coach?: { items: readonly WorkItem[]; flows: readonly CoachFlow[]; focus: CoachFocus | null; asks?: readonly Asked[]; own?: string; open?: readonly WorkGroup[]; practices?: readonly Practice[]; expanded?: readonly string[] | null; unfolded?: string | null; sessions?: readonly SessionSummary[]; proposals?: readonly Proposal[]; rules?: readonly Rule[]; skipped?: readonly { flow: string; step: string; skipped: number }[]; gone?: readonly GoneOn[]; doing?: Doing | null; ledger?: ManualOptions["ledger"] };
   /** Whether the flow tab lists the workflows to switch to; and those workflows, once read. */
   switching: boolean;
   workflows: { bundled: string[]; installed: string[] } | null;
@@ -283,9 +302,11 @@ export function paneRows(o: PaneInput): BoardRow[] {
   const { t, columns } = o;
   const head = o.problem !== null ? [text(o.problem, columns, "error")] : [];
   const status = o.shell?.status ?? null;
-  const wait = o.board === null && head.length === 0 ? [text(t("正在读取看板…"), columns, "dim")] : [];
+  // No workflow of the project's own has no board to wait for: the light flows' rows are the board.
+  const own = o.shell !== null && o.shell.status === null && o.shell.problem?.quiet === true;
+  const wait = o.board === null && head.length === 0 && !own ? [text(t("正在读取看板…"), columns, "dim")] : [];
   if (o.tab === "sessions") {
-    const own = sessionRows(o.prompts, o.board?.artifacts?.commits ?? [], t, columns, o.now, { flow: o.sessionFlow, runs: o.sessionRuns, current: status?.workflow.title, ...(o.scrolls !== undefined ? { scrolls: o.scrolls } : {}), ...(o.unfolded !== undefined ? { expanded: o.unfolded } : {}), ...(o.sessionLimit !== undefined ? { limit: o.sessionLimit } : {}), ...(o.picked !== undefined ? { picked: o.picked } : {}), tidying: o.tidying === true });
+    const own = sessionRows(o.prompts, o.board?.artifacts?.commits ?? [], t, columns, o.now, { item: o.sessionItem, runs: o.sessionRuns, ...(o.moved !== undefined ? { moved: o.moved } : {}), ...(o.scrolls !== undefined ? { scrolls: o.scrolls } : {}), ...(o.unfolded !== undefined ? { expanded: o.unfolded } : {}), ...(o.sessionLimit !== undefined ? { limit: o.sessionLimit } : {}), ...(o.picked !== undefined ? { picked: o.picked } : {}), tidying: o.tidying === true });
     // Every session's heading carries its export, which asks where to; the file written shows under it.
     const exports: ExportsOf = {
       button: (s) => ({ key: `export-${s}`, label: t("导出"), action: { op: "export", session: s } }),
@@ -308,15 +329,33 @@ export function paneRows(o: PaneInput): BoardRow[] {
       ...head,
       heading, ...exports.under("own"), ...own,
       ...othersRows(o.project, t, columns, o.now, exports),
+      // What used to be 记录's: the project's memory and what every session decided.
+      ...memoryRows(o.memory, t, columns, o.now), ...decisionRows(o.project, t, columns, o.now),
     ];
   }
   const suggestions = o.board !== null ? [...toolSuggestions(o.board, o.usage, o.dismissed, t), ...ciSuggestions(o.board, o.shell?.units ?? [], o.dismissed, t)] : [];
   // The work items on the way lead the work items tab; their flows, the flow tab (neither needs the board).
-  const work = o.coach !== undefined && o.tab === "items" ? workRows(o.coach.items, o.coach.flows, t, o.coach.asks ?? []) : [];
-  const coached = o.coach !== undefined && o.tab === "flow" ? coachFlowRows(o.coach.items, o.coach.flows, t, o.coach.focus) : [];
+  const work = o.coach !== undefined && o.tab === "items"
+    ? workRows(o.coach.items, o.coach.flows, t, { asks: o.coach.asks ?? [], ...(o.coach.own !== undefined ? { own: o.coach.own } : {}), ...(o.coach.open !== undefined ? { open: o.coach.open } : {}), ...(o.coach.unfolded !== undefined ? { unfolded: o.coach.unfolded } : {}), ...(o.coach.sessions !== undefined ? { sessions: o.coach.sessions } : {}), ...(o.coach.gone !== undefined ? { gone: o.coach.gone } : {}), ...(o.coach.doing !== undefined ? { doing: o.coach.doing } : {}), ...(o.madeAll != null ? { made: o.madeAll.entries } : {}) })
+    : [];
+  const coached = o.coach !== undefined && o.tab === "flow"
+    ? manualRows(o.coach.items, o.coach.flows, o.coach.practices ?? [], t, { focus: o.coach.focus, expanded: o.coach.expanded ?? null, ...(o.now !== undefined ? { now: o.now } : {}), ...(o.coach.proposals !== undefined ? { proposals: o.coach.proposals } : {}), ...(o.coach.rules !== undefined ? { rules: o.coach.rules } : {}), ...(o.coach.skipped !== undefined ? { skipped: o.coach.skipped } : {}), ...(o.coach.ledger !== undefined ? { ledger: o.coach.ledger } : {}) })
+    : [];
   if (o.tab === "items") return [...head, ...work, ...itemRows({ board: o.board, status, inbox: o.inbox, columns, t, now: o.now, doneOpen: o.doneOpen, droppedOpen: o.droppedOpen === true, dismissed: o.dismissed, suggestions, artifactMenu: o.artifactMenu ?? null, docsOpen: o.docsOpen === true }), ...wait];
+  if (o.tab === "made") {
+    // Every artifact, whichever work item made it and whether that item has ended: the item said by its title, ✓ once done.
+    const reported = o.coach?.items ?? [];
+    const flowItems = o.board?.items ?? [];
+    const words: ItemWords = (id) => {
+      const r = reported.find((i) => i.id === id);
+      if (r !== undefined) return r.status === "done" ? `✓ ${r.title}` : r.title;
+      const f = flowItems.find((i) => i.id === id);
+      return f !== undefined ? f.title ?? f.id : undefined;
+    };
+    return [...head, ...madeTabRows(o.madeAll, o.madeView ?? MADE_VIEW, words, t, o.now)];
+  }
   if (o.board === null) return head.length > 0 ? [...head, ...coached] : [...coached, ...wait];
-  if (o.tab === "flow") return [...head, ...coached, ...flowRows({ board: o.board, status, columns, t, ...(o.now !== undefined ? { now: o.now } : {}), selected: o.flowState, switching: o.switching, workflows: o.workflows })];
+  if (o.tab === "flow") return [...head, ...coached, ...(status !== null && o.coach !== undefined ? [{ kind: "section" as const, key: "strict", text: t("严格流程"), note: t("只能你把事放进去，挂着的规定会真拦") }] : []), ...flowRows({ board: o.board, status, columns, t, ...(o.now !== undefined ? { now: o.now } : {}), selected: o.flowState, switching: o.switching, workflows: o.workflows })];
   if (o.tab === "tools") return [...head, ...toolRows({ board: o.board, columns, t, usage: o.usage, suggestions, query: o.toolQuery, menu: o.toolMenu, naming: o.toolNaming, open: o.toolsOpen })];
   // The journal: the work item's events, then the project's memory, then what every session decided, each its own section.
   return [...head, ...journalRows({ board: o.board, status, filter: o.filter, menu: o.expanded, evidence: o.evidence, prompts: o.prompts, columns, maxRows: Math.max(1, o.maxRows - head.length), t, now: o.now }),
@@ -371,7 +410,7 @@ export function flowRows(o: FlowInput): BoardRow[] {
   const rows: BoardRow[] = [];
   const name = status?.workflow.default ?? status?.workflow.name;
   if (status !== null) {
-    rows.push({ kind: "heading", key: "flow-title", text: status.workflow.title, sub: status.workflow.name, action: { key: "flow-switch", label: o.switching ? t("收起") : t("换一个 ▾"), action: { op: "flow-switch", open: !o.switching } } });
+    rows.push({ kind: "heading", key: "flow-title", text: status.workflow.title, sub: status.workflow.name, action: { key: "flow-switch", label: o.switching ? t("收起") : t("添加一类活 ▾"), action: { op: "flow-switch", open: !o.switching } } });
   }
   if (o.switching) {
     if (o.workflows === null) rows.push(text(t("正在读取…"), columns, "dim"));
@@ -380,7 +419,7 @@ export function flowRows(o: FlowInput): BoardRow[] {
         ...o.workflows.installed.map((w): Pressable => ({ key: `use-${w}`, label: w, ...(w === name ? { primary: true } : {}), action: { op: "use", workflow: w } })),
         ...o.workflows.bundled.filter((w) => !o.workflows?.installed.includes(w)).map((w): Pressable => ({ key: `add-${w}`, label: t("添加 {0}", w), action: { op: "add", workflow: w } })),
       ]));
-      rows.push(text(t("换了以后，新的工作项走它；已经开始的照旧。"), columns, "dim"));
+      rows.push(text(t("添加以后，新的工作项走它；已经开始的照旧。"), columns, "dim"));
     }
     rows.push({ kind: "input", key: "import-workflow", placeholder: t("导入：流程文件或目录的路径"), field: "import-workflow" });
   }
@@ -1066,20 +1105,18 @@ export function journalRows(o: JournalInput): BoardRow[] {
 /** How many turns in a row in another flow fold into one line. */
 const RUN_FOLDS = 3;
 
-export function sessionRows(prompts: readonly PromptRecord[], commits: readonly { sha: string; at: string }[], t: T = ZH, columns: number, now?: string, by: { flow: string | null; runs: readonly string[]; current?: string; scrolls?: boolean; expanded?: { id: string; answer: string | null } | null; limit?: number; picked?: readonly string[]; tidying?: boolean } = { flow: null, runs: [] }): BoardRow[] {
-  const unfold = { scrolls: by.scrolls !== false, expanded: by.expanded ?? null, picked: by.picked ?? [], tidying: by.tidying === true };
+/** What a prompt's turn moved, as the record holds it (coach.ts turnWords): its words, and the one work item it moved, if one. */
+export interface TurnMoved { words: string[]; item?: { id: string; title: string } }
+
+export function sessionRows(prompts: readonly PromptRecord[], commits: readonly { sha: string; at: string }[], t: T = ZH, columns: number, now?: string, by: { item?: string | null; runs: readonly string[]; moved?: (p: PromptRecord) => TurnMoved; scrolls?: boolean; expanded?: { id: string; answer: string | null } | null; limit?: number; picked?: readonly string[]; tidying?: boolean } = { runs: [] }): BoardRow[] {
+  const unfold = { scrolls: by.scrolls !== false, expanded: by.expanded ?? null, picked: by.picked ?? [], tidying: by.tidying === true, ...(by.moved !== undefined ? { moved: by.moved } : {}) };
   if (prompts.length === 0) return [text(t("还没有 prompt"), columns, "dim")];
   const rows: BoardRow[] = [];
-  // With turns in more than one flow: a filter by flow.
-  const flows = [...new Set(prompts.flatMap((p) => (p.flow !== undefined ? [p.flow] : [])))];
-  if (flows.length > 1) {
-    rows.push(buttons([
-      { key: "flow-all", label: t("全部"), ...(by.flow === null || !flows.includes(by.flow) ? { primary: true } : {}), action: { op: "session-flow", flow: null } },
-      ...flows.map((f): Pressable => ({ key: `flow-${f}`, label: f, ...(by.flow === f ? { primary: true } : {}), action: { op: "session-flow", flow: f } })),
-    ]));
-  }
-  const flow = by.flow !== null && flows.length > 1 && flows.includes(by.flow) ? by.flow : null;
-  const shown = flow === null ? prompts : prompts.filter((p) => p.flow === flow);
+  const itemOf = (p: PromptRecord): string | undefined => by.moved?.(p).item?.id;
+  // Shown for one work item (its row's 看这件的提示词): only the prompts that moved it, and the way back to all.
+  const only = by.item ?? null;
+  if (only !== null) rows.push(buttons([{ key: "session-item-all", label: t("看全部提示词"), action: { op: "session-item", id: null } }]));
+  const shown = only === null ? prompts : prompts.filter((p) => (by.moved?.(p).words ?? []).length > 0 && itemOf(p) === only);
   // The newest turns alone are drawn (a tab of hundreds is a tree the desktop cannot take: 6,000 nodes); the rest wait behind a count.
   const listed = by.limit !== undefined && shown.length > by.limit ? shown.slice(-by.limit) : shown;
   let day = "";
@@ -1087,10 +1124,12 @@ export function sessionRows(prompts: readonly PromptRecord[], commits: readonly 
     const p = listed[i] as PromptRecord;
     const heading = now !== undefined ? dayText(p.at, now, t) : "";
     if (heading !== day) { rows.push({ kind: "section", key: `day-${p.id}`, text: heading }); day = heading; }
-    // A run of turns in a flow other than the current one folds into one line, unfolded on a press.
-    if (flow === null && by.current !== undefined && p.flow !== undefined && p.flow !== by.current) {
+    // A run of turns on one work item other than the newest prompt's folds into one line, unfolded on a press.
+    const current = itemOf(listed[listed.length - 1] as PromptRecord);
+    const mine = itemOf(p);
+    if (only === null && mine !== undefined && mine !== current) {
       let j = i;
-      while (j > 0 && (listed[j - 1] as PromptRecord).flow === p.flow) j--;
+      while (j > 0 && itemOf(listed[j - 1] as PromptRecord) === mine) j--;
       const run = listed.slice(j, i + 1);
       const key = (run[0] as PromptRecord).id;
       if (run.length >= RUN_FOLDS) {
@@ -1099,7 +1138,7 @@ export function sessionRows(prompts: readonly PromptRecord[], commits: readonly 
         const action: BoardAction = { op: "session-run", id: key, open: !open };
         rows.push({
           kind: "turn", key: `run-${key}`, at: `${hhmm(first.at)}–${hhmm(p.at)}`,
-          text: t("{0} · {1} · {2} 条提示词", p.flow, p.itemTitle ?? p.item ?? "", run.length), did: "", open,
+          text: t("{0} · {1} 条提示词", by.moved?.(p).item?.title ?? "", run.length), did: "", open,
           fold: true, action,
         });
         if (open) for (let k = run.length - 1; k >= 0; k--) rows.push(...turnRows(run[k] as PromptRecord, listed[j + k + 1]?.at, commits, t, columns, unfold));
@@ -1121,11 +1160,13 @@ export function sessionRows(prompts: readonly PromptRecord[], commits: readonly 
  * the whole prompt, then the whole answer. A folded row carries no other
  * press: the desktop takes no press at all once the tab draws too many nodes.
  */
-function turnRows(p: PromptRecord, until: string | undefined, commits: readonly { sha: string; at: string }[], t: T, columns: number, unfold: { scrolls: boolean; expanded: { id: string; answer: string | null } | null; picked?: readonly string[]; tidying?: boolean } = { scrolls: true, expanded: null }): BoardRow[] {
+function turnRows(p: PromptRecord, until: string | undefined, commits: readonly { sha: string; at: string }[], t: T, columns: number, unfold: { scrolls: boolean; expanded: { id: string; answer: string | null } | null; picked?: readonly string[]; tidying?: boolean; moved?: (p: PromptRecord) => TurnMoved } = { scrolls: true, expanded: null }): BoardRow[] {
   const tidying = unfold.tidying === true;
   const open = !tidying && unfold.expanded?.id === p.id;
   const made = commits.filter((c) => Date.parse(c.at) >= Date.parse(p.at) && (until === undefined || Date.parse(c.at) < Date.parse(until))).map((c) => c.sha.slice(0, 8)).reverse();
-  const words = [...made, p.did ?? (promptTail(p, t) || (until === undefined && p.backfilled !== true ? t("进行中…") : ""))].filter((x) => x !== "").join(" ");
+  // What the turn moved, decided and learned leads; its answer's first sentence where it did none of that.
+  const moved = unfold.moved?.(p).words ?? [];
+  const words = [...made, ...(moved.length > 0 ? [moved.join(" · ")] : [p.did ?? (promptTail(p, t) || (until === undefined && p.backfilled !== true ? t("进行中…") : ""))])].filter((x) => x !== "").join(" ");
   // A turn read back from the transcript (one before gemworks loaded) is marked so.
   const did = p.backfilled === true ? [t("补录"), words].filter((x) => x !== "").join(" · ") : words;
   const icons: { glyph: Glyph; button: Pressable }[] = unfold.scrolls && !tidying

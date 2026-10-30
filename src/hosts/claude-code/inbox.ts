@@ -125,7 +125,7 @@ export function inboxItems(o: InboxInput): InboxItem[] {
         const lessons: Lesson[] = [{ kind: "allow", key: g.key, where: state }];
         actions.push({ key: `allow-${g.key}`, label: t("在 #{0} 也允许", state), action: { op: "learn", lessons } });
       }
-      actions.push({ key: `journal-${what}`, label: t("看记录"), action: { op: "tab", tab: "journal" } });
+      actions.push({ key: `journal-${what}`, label: t("看会话"), action: { op: "tab", tab: "sessions" } });
       items.push({
         kind: "stuck", key: `stuck-${what}`, verb: t("被拦"), title: what,
         // Within a minute there is no span worth naming: they came one after another.

@@ -7,10 +7,10 @@ profile = "geml-statechart/v1"
 {
   "initial": "baseline",
   "states": {
-    "baseline": { "title": "测基线", "description": "记下现在的数字" },
-    "change":   { "title": "改", "description": "一次改一处" },
-    "measure":  { "title": "复测", "description": "数字比基线好" },
-    "confirm":  { "title": "你确认", "description": "你认可这个数字" },
+    "baseline": { "title": "测基线", "description": "记下现在的数字", "judge": "fact", "prevents": "改完说不清到底快了多少" },
+    "change":   { "title": "改", "description": "一次改一处", "judge": "model", "prevents": "几处一起改，不知道是哪处起的作用" },
+    "measure":  { "title": "复测", "description": "数字比基线好，测试照样通过", "judge": "fact", "expires": true, "prevents": "凭感觉说变好了；快了但坏了" },
+    "confirm":  { "title": "你确认", "description": "你认可这个数字", "judge": "you", "prevents": "数字好了，却换来别的代价（难读、少了功能）" },
     "done":     { "title": "完成", "final": true }
   },
   "transitions": [

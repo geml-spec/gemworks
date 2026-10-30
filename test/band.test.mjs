@@ -43,28 +43,20 @@ test("unavailable git evidence is yellow; a non-boolean variable shows its value
 test("no work item, no workflow, a broken workflow, a broken bridge", () => {
   assert.deepEqual(bandSegments(shell(status({ item: { kind: "inactive", reason: "main · not tracked (work items are branches)" } })), null),
     [{ text: "⧗ main · not tracked (work items are branches)", tone: "dim" }]);
-  assert.deepEqual(bandSegments({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here: run `gemworks init`", quiet: true } }, null), [{ text: "没有流程", tone: "dim" }], "no workflow: the band says so instead of vanishing");
-  assert.deepEqual(bandSegments({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here", quiet: true }, suggest: { workflow: "dev", by: "deploy", file: "wrangler.toml" } }, null),
-    [{ text: "没有流程", tone: "dim" }, { text: "建议 dev（wrangler.toml）", tone: "dim" }], "and names the bundled workflow that fits what the project holds");
-  assert.deepEqual(bandSegments({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here", quiet: true }, suggest: { workflow: "dev", by: "default" } }, null, null, null, wordsFor("en")),
-    [{ text: "no workflow", tone: "dim" }, { text: "suggested: dev (default)", tone: "dim" }]);
+  assert.deepEqual(bandSegments({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here: run `gemworks init`", quiet: true } }, null), [], "no workflow of the project's own: the light flows are there, nothing is missing");
+  assert.deepEqual(bandSegments({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here", quiet: true }, suggest: { workflow: "dev", by: "deploy", file: "wrangler.toml" } }, null), [], "and no offer to add one on the band");
   assert.deepEqual(bandSegments({ status: null, policy: null, contextKey: null, problem: { text: "flow.geml: statechart-initial: …", quiet: false } }, null),
     [{ text: "gemworks：flow.geml: statechart-initial: …", tone: "error" }]);
   assert.deepEqual(bandSegments(shell(status()), "gemworks：找不到 node — 请安装 Node ≥ 22"), [{ text: "gemworks：找不到 node — 请安装 Node ≥ 22", tone: "error" }]);
   assert.deepEqual(bandSegments(null, null), [{ text: "启动中…", tone: "dim" }], "before the bridge answers the band is already there");
 });
 
-test("no workflow: the band offers the suggested workflow with one press and the settings dialog for the rest; a bridge problem takes the offer away", () => {
+test("no workflow of the project's own is no missing flow: the band leaves its line to the work item on the way; a bridge problem still shows", () => {
   const shell = { status: null, policy: null, contextKey: null, problem: { text: "no workflow here", quiet: true }, suggest: { workflow: "coding", by: "code", file: "package.json" } };
   const input = (over = {}) => ({ shell, problem: null, setup: null, todo: null, inbox: [], timeline: [], now: NOW, t: wordsFor("zh"), ...over });
   const v = bandView(input());
-  assert.deepEqual([v.verb, v.title, v.note], ["", "没有流程", "建议 coding（package.json）"]);
-  assert.deepEqual(v.actions, [
-    { key: "add-suggested", label: "添加 coding", primary: true, action: { op: "add", workflow: "coding" } },
-    { key: "pick-workflow", label: "选流程", action: { op: "dialog", dialog: "settings" } },
-  ]);
-  assert.deepEqual(bandView(input({ problem: "gemworks：桥接没有应答（timed out）" })).actions, [], "the bridge is down: nothing to press into it");
-  assert.deepEqual(bandView(input({ shell: { ...shell, suggest: undefined } })).actions, [], "an older CLI that suggests nothing: no offer");
+  assert.deepEqual([v.verb, v.title, v.actions], ["我在做", "", []], "no 没有流程, no offer to add one");
+  assert.equal(bandView(input({ problem: "gemworks：桥接没有应答（timed out）" })).tone, "error");
 });
 
 test("the band's one thing: the first item waiting on the person, with its verb, its options and how many more wait", () => {
@@ -153,6 +145,6 @@ test("a registration that failed is said after the stage, and alone when there i
   assert.deepEqual(segs.at(-1), { text: setup, tone: "error" });
   assert.deepEqual(texts(segs).slice(0, 2), ["⧗ feat/rate-limit", "review"]);
   assert.deepEqual(bandSegments(null, null, setup), [{ text: "启动中…", tone: "dim" }, { text: setup, tone: "error" }]);
-  assert.deepEqual(bandSegments({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here", quiet: true } }, null, setup), [{ text: "没有流程", tone: "dim" }, { text: setup, tone: "error" }]);
+  assert.deepEqual(bandSegments({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here", quiet: true } }, null, setup), [{ text: setup, tone: "error" }]);
   assert.deepEqual(bandSegments(shell(status()), "gemworks：桥接没有应答（timed out）", setup), [{ text: "gemworks：桥接没有应答（timed out）", tone: "error" }], "the bridge's problem first");
 });

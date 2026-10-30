@@ -7,10 +7,10 @@ profile = "geml-statechart/v1"
 {
   "initial": "reproduce",
   "states": {
-    "reproduce": { "title": "复现", "description": "版本已确认" },
-    "fix":       { "title": "修", "description": "一个猜测一版" },
-    "verify":    { "title": "验证", "description": "测试通过" },
-    "confirm":   { "title": "你确认", "description": "你按过说对" },
+    "reproduce": { "title": "复现", "description": "版本已确认", "judge": "model", "prevents": "修的不是真正出问题的那个版本或现象" },
+    "fix":       { "title": "修", "description": "一个猜测一版", "judge": "model", "prevents": "几个猜测混在一起，不知道是哪个修好的" },
+    "verify":    { "title": "验证", "description": "测试通过", "judge": "fact", "expires": true, "prevents": "说修好了，其实没有" },
+    "confirm":   { "title": "你确认", "description": "你按过说对", "judge": "you", "prevents": "测试过了，你看到的现象还在" },
     "done":      { "title": "完成", "final": true }
   },
   "transitions": [

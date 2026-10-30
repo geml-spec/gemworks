@@ -32,7 +32,7 @@ export function usageText(t: T = ZH): string {
 
 export const COMMAND_USAGE = usageText(ZH);
 
-const TAB_WORDS: Readonly<Record<string, BoardTab>> = { sessions: "sessions", flow: "flow", items: "items", journal: "journal", tools: "tools" };
+const TAB_WORDS: Readonly<Record<string, BoardTab>> = { sessions: "sessions", flow: "flow", items: "items", made: "made", artifacts: "made", journal: "journal", tools: "tools" };
 
 export function parseCommand(args: string): CommandIntent {
   const words = args.trim().split(/\s+/).filter((w) => w.length > 0);
@@ -53,8 +53,8 @@ export function noStatusText(shell: ShellStatus, t: T = ZH): string {
   if (shell.problem?.quiet === true) {
     const s = shell.suggest;
     return s !== undefined
-      ? t("这个项目还没有流程。建议 {0}（{1}）：/gemworks add {0}；/gemworks add 列出全部。", s.workflow, s.file ?? t("默认"))
-      : t("这个项目还没有流程。用 /gemworks add 选一个内置流程。");
+      ? t("这个项目用四条轻流程（新设计、新功能、bugfix、优化）。要按顺序走的严格流程，建议添加 {0}（{1}）：/gemworks add {0}；/gemworks add 列出全部。", s.workflow, s.file ?? t("默认"))
+      : t("这个项目用四条轻流程（新设计、新功能、bugfix、优化）。要按顺序走的严格流程，用 /gemworks add 添加一类活。");
   }
   return `gemworks：${shell.problem?.text ?? t("没有状态")}`;
 }
@@ -105,6 +105,8 @@ export function boardFailure(res: BridgeResponse | undefined, problem: string | 
   if (res === undefined) return problem ?? `gemworks：${t("桥接不可用")}`;
   if (!res.ok) return `gemworks：${res.error.replace(/^gemworks: /, "")}`;
   if (res.board !== undefined) return undefined;
+  // No workflow of the project's own: the board opens on the light flows' work items.
+  if (res.shell.status === null && res.shell.problem?.quiet === true) return undefined;
   return noStatusText(res.shell, t);
 }
 

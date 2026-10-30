@@ -7,9 +7,9 @@ profile = "geml-statechart/v1"
 {
   "initial": "discuss",
   "states": {
-    "discuss": { "title": "讨论", "description": "方向你认可" },
-    "mockup":  { "title": "出样稿", "description": "用真实内容" },
-    "approve": { "title": "你点头", "description": "你说行" },
+    "discuss": { "title": "讨论", "description": "方向你认可", "judge": "you", "prevents": "方向错了，样稿做得再好也白做", "answers": ["认可", "再聊"] },
+    "mockup":  { "title": "出样稿", "description": "用真实内容", "judge": "model", "prevents": "假数据看着好，真内容一放就乱" },
+    "approve": { "title": "你点头", "description": "你说行", "judge": "you", "prevents": "没人点头就开工，做完才发现不对", "answers": ["行", "要改"] },
     "done":    { "title": "完成", "final": true }
   },
   "transitions": [

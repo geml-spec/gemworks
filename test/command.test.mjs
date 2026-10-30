@@ -54,8 +54,8 @@ test("/gemworks prints where the work stands: the stage with its uses, each vari
     "git evidence unavailable: gh is not installed",
     "1 refusals",
   ].join("\n"), "the words follow the language; the workflow's own title stays");
-  assert.equal(statusText({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here: run `gemworks init`", quiet: true } }), "这个项目还没有流程。用 /gemworks add 选一个内置流程。");
-  assert.equal(statusText({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here", quiet: true }, suggest: { workflow: "coding", by: "code", file: "Cargo.toml" } }), "这个项目还没有流程。建议 coding（Cargo.toml）：/gemworks add coding；/gemworks add 列出全部。");
+  assert.equal(statusText({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here: run `gemworks init`", quiet: true } }), "这个项目用四条轻流程（新设计、新功能、bugfix、优化）。要按顺序走的严格流程，用 /gemworks add 添加一类活。");
+  assert.equal(statusText({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here", quiet: true }, suggest: { workflow: "coding", by: "code", file: "Cargo.toml" } }), "这个项目用四条轻流程（新设计、新功能、bugfix、优化）。要按顺序走的严格流程，建议添加 coding（Cargo.toml）：/gemworks add coding；/gemworks add 列出全部。");
   assert.equal(statusText({ ...shell, status: { ...status, item: { kind: "inactive", reason: "main · not tracked (work items are branches)" } } }), "流程 dev（开发流程）\nmain · not tracked (work items are branches)");
   const bare = { ...status, state: { id: "done", title: "done", rev: 9, uses: [] }, vars: {}, sources: {}, next: [], gh: { available: true } };
   assert.equal(statusText({ ...shell, status: bare }).split("\n").slice(2).join("\n"), "工具：没有声明用途\n变量：无\n下一步：无（终点）\n1 次拒绝");
@@ -99,8 +99,7 @@ test("why the board did not load: no answer, an error answer, a project with no 
   assert.equal(boardFailure(undefined, "gemworks：桥接没有应答（timed out after 45000 ms）"), "gemworks：桥接没有应答（timed out after 45000 ms）");
   assert.equal(boardFailure(undefined, null), "gemworks：桥接不可用");
   assert.equal(boardFailure({ v: 1, ok: false, error: "gemworks: journal.geml.lock is held by another process" }, null), "gemworks：journal.geml.lock is held by another process");
-  assert.equal(boardFailure({ v: 1, ok: true, shell: { status: null, policy: null, contextKey: null, problem: { text: "no workflow here", quiet: true } } }, null),
-    "这个项目还没有流程。用 /gemworks add 选一个内置流程。");
+  assert.equal(boardFailure({ v: 1, ok: true, shell: { status: null, policy: null, contextKey: null, problem: { text: "no workflow here", quiet: true } } }, null), undefined, "no workflow of the project's own: the board opens on the light flows");
   assert.equal(boardFailure({ v: 1, ok: true, shell: { status: null, policy: null, contextKey: null, problem: { text: "flow.geml: statechart-initial", quiet: false } } }, null),
     "gemworks：flow.geml: statechart-initial");
   assert.equal(boardText(undefined, "这个项目还没有流程。用 /gemworks add 选一个内置流程。"), "看板打不开：这个项目还没有流程。用 /gemworks add 选一个内置流程。");

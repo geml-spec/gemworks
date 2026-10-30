@@ -206,6 +206,7 @@ test("no workflow is a quiet problem; a journal that will not resume, a throw an
   const r = hook(empty, { op: "status" });
   assert.deepEqual([r.ok, r.shell.status, r.shell.problem.quiet], [true, null, true]);
   assert.deepEqual(r.shell.suggest, { workflow: "dev", by: "default" }, "no workflow: the shell names the bundled one that fits the project");
+  assert.equal(r.sessions, join(empty, ".geml", "sessions"), "no workflow: the session still records into the project's shared logs");
   assert.equal(hook(empty, { op: "verb", name: "status", args: {} }).ok, false);
   const root = project();
   hook(root, { op: "status" });

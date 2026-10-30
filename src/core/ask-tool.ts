@@ -3,8 +3,8 @@
 // reply the model did not register is only a grey hint, with no buttons.
 // Pure, and free of @geml/geml: the hooks module imports it.
 
-/** A question the model registered: the whole question, its answers (the recommended one first), which it recommends, and the work item it is about (its id), when it is about one. */
-export interface Asked { question: string; options: string[]; recommended?: string; item?: string }
+/** A question the model registered: the whole question, its answers (the recommended one first), which it recommends, the work item it is about (its id), when it is about one, and when it was asked. */
+export interface Asked { question: string; options: string[]; recommended?: string; item?: string; at?: string }
 
 /** The most answers a question offers. */
 const MOST_OPTIONS = 4;
