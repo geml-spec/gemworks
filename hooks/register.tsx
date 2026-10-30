@@ -72,7 +72,7 @@ import type { TurnMoved } from '../dist/hosts/claude-code/board.js'
 import { MADE_PAGE, MADE_VIEW, type MadeView } from '../dist/hosts/claude-code/made.js'
 import type { MadeAll } from '../dist/hosts/claude-code/protocol.js'
 import type { MemoryList } from '../dist/memory-store.js'
-import { fitToBudget } from '../dist/hosts/claude-code/budget.js'
+import { fitToBudget, stepDown } from '../dist/hosts/claude-code/budget.js'
 import { hhmm } from '../dist/hosts/claude-code/time.js'
 import { dayKey, mergeBooks, noteUse, pruneBook, usageKeys, usesSince } from '../dist/hosts/claude-code/usage.js'
 import type { UsageBook } from '../dist/hosts/claude-code/usage.js'
@@ -3986,6 +3986,8 @@ export const register: Register = (on) => {
     // the body stops at BODY_NODES, and says what it left out, whatever a tab or an unfolded list would draw.
     let drawn = 0
     if (els.Svg !== undefined) {
+      // One text size down from the header and the tab bar, so more of a tab fits; counted after, as drawn.
+      body = body.map((x) => stepDown(x))
       const fit = fitToBudget(body)
       drawn = fit.drawn
       if (fit.left > 0) body = [...fit.kept, <Text key="rows-cut" dimColor>{t('内容太多，后面 {0} 项没画出来：收起一些，或换个页签。', fit.left)}</Text>]

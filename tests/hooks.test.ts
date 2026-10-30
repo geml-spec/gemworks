@@ -347,7 +347,12 @@ const spanOf = (el: Drawn | string, key: string, path: Drawn[] = []): Drawn | un
 const shown = (el: Drawn | string, out: string[] = []): string[] => {
   if (typeof el === 'string') { if (el.trim() !== '') out.push(el.trim()); return out }
   if (el.props?.display === 'none') return out
-  if (el.type === 'Button' && (el.children ?? []).length === 0) out.push(`[${String(el.props?.label)}]`)
+  // A button with only its label, drawn as the label alone or (one size down, budget.ts stepDown) as one Text of it.
+  const only = el.children ?? []
+  const first = only[0]
+  const sized = first !== undefined && typeof first !== 'string' && first.type === 'Text' && JSON.stringify(first.props) === JSON.stringify({ size: 'footnote' })
+  const labelOnly = only.length === 0 || (only.length === 1 && sized && typeof first !== 'string' && (first.children ?? []).length === 1 && first.children?.[0] === el.props?.label)
+  if (el.type === 'Button' && labelOnly) { out.push(`[${String(el.props?.label)}]`); return out }
   for (const c of el.children ?? []) shown(c, out)
   return out
 }
@@ -1620,7 +1625,8 @@ test('a session resumed after the app restarted shows the prompts the store kept
   const drawn = (await pane.drawn()) as unknown as Drawn
   const row = findKey(drawn, 'prompt-p1-a')
   expect(row).toBeDefined()
-  expect([nodesOf(row!), buttonsOf(row!)], 'a folded row: nodes, buttons (its time, words and what it did the buttons, no box laid over them)').toEqual([9, 3])
+  // Each button's label is drawn as a Text one size down (budget.ts stepDown): three elements more than its buttons alone.
+  expect([nodesOf(row!), buttonsOf(row!)], 'a folded row: nodes, buttons (its time, words and what it did the buttons, no box laid over them)').toEqual([12, 3])
   // The row's time, words and what it did each press it; the triangle is drawn beside them.
   expect(spanOf(drawn, 'open-prompt-p1-a'), 'no box laid over the row').toBeUndefined()
   expect(['at-prompt-p1-a', 'open-prompt-p1-a', 'open-2-prompt-p1-a'].every((k) => findKey(row!, k) !== undefined), 'its time, its words and what it did are buttons').toBe(true)
@@ -2216,7 +2222,7 @@ test("the band's 看板 opens the board on the work items tab whichever tab it w
   await pane.unmount()
 })
 
-test('the sessions tab stays within the desktop\'s press budget: twelve folded turns cost ten nodes and three buttons each, nothing more between them', async ($, on) => {
+test('the sessions tab stays within the desktop\'s press budget: twelve folded turns cost thirteen nodes and three buttons each, nothing more between them', async ($, on) => {
   const w = world(on)
   const prompts = Array.from({ length: 12 }, (_, i) => ({ id: `p${i}`, at: new Date(Date.UTC(2026, 9, 20, 9, i)).toISOString(), text: `第 ${i} 句提示词，长度适中，用来量一行的节点数。`, uuid: `row-${i}`, tools: 2, refusals: 0, entered: [], signals: [], did: '做完了一半。' }))
   w.store.set('prompts:sess-1234567890', prompts)
@@ -2227,7 +2233,8 @@ test('the sessions tab stays within the desktop\'s press budget: twelve folded t
   const tree = (await pane.drawn()) as unknown as Drawn
   const rows = prompts.map((p) => findKey(tree, `prompt-${p.id}`)!)
   expect(rows.every((r) => r !== undefined)).toBe(true)
-  expect(rows.map((r) => [nodesOf(r), buttonsOf(r)]).every(([n, b]) => n <= 10 && b <= 3), 'each folded row within ten nodes and three buttons').toBe(true)
+  // Ten nodes, and a Text for each of the three buttons' labels, drawn one size down (budget.ts stepDown).
+  expect(rows.map((r) => [nodesOf(r), buttonsOf(r)]).every(([n, b]) => n <= 13 && b <= 3), 'each folded row within thirteen nodes and three buttons').toBe(true)
   // The rows and the day heading, and nothing drawn between the rows: the whole tab stays a few hundred nodes.
   expect(nodesOf(tree), 'the tab').toBeLessThanOrEqual(12 * 10 + 120)
   expect(buttonsOf(tree), 'its buttons').toBeLessThanOrEqual(12 * 3 + 16)

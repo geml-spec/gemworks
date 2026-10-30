@@ -16,6 +16,28 @@ export function elementsIn(node: unknown): number {
   return 1 + elementsIn(el.children ?? el.props?.children ?? []);
 }
 
+/** The text size a tab's body is drawn at: one step under the surface's body text, so more of a tab fits. */
+export const BODY_SIZE = "footnote";
+
+/**
+ * A drawn tree one text size down: each Text with no size of its own drawn at BODY_SIZE (a Text inside one keeps
+ * following it), and a button with only a label given that label as such a Text, since a button's label has no size.
+ * The terminal has one size and is not asked.
+ */
+export function stepDown(node: unknown, inText = false): unknown {
+  if (node === null || typeof node !== "object") return node;
+  if (Array.isArray(node)) return node.map((x) => stepDown(x, inText));
+  const el = node as { type?: unknown; props?: Record<string, unknown>; children?: unknown[] };
+  if (el.type === "Text") {
+    const children = el.children?.map((x) => stepDown(x, true));
+    return { ...el, ...(inText || el.props?.["size"] !== undefined ? {} : { props: { ...el.props, size: BODY_SIZE } }), ...(children !== undefined ? { children } : {}) };
+  }
+  if (el.type === "Button" && (el.children === undefined || el.children.length === 0) && typeof el.props?.["label"] === "string" && el.props["label"] !== "") {
+    return { ...el, children: [{ type: "Text", props: { size: BODY_SIZE }, children: [el.props["label"]] }] };
+  }
+  return el.children !== undefined ? { ...el, children: el.children.map((x) => stepDown(x, inText)) } : el;
+}
+
 /** The leading items whose elements fit in `budget`, how many were left out, and the elements drawn. */
 export function fitToBudget<T>(items: readonly T[], budget: number = BODY_NODES): { kept: T[]; left: number; drawn: number } {
   let drawn = 0;
