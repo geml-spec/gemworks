@@ -2666,3 +2666,15 @@ test('整理: a message typed mid-turn is picked on its own; its row id is learn
   expect(w.toasts.at(-1)).toBe('有 1 条在对话记录里找不到，没有交给模型')
 })
 
+
+test('the band keeps the line a plugin below it drew (gemsbang\'s) under its own: the engine draws one band, so a plugin above draws for both', async ($, on) => {
+  world(on)
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => { const { Text } = $.ui.resolve(e); return h(Text, { key: 'below' }, '@ xiaoping 空闲') })
+  await start($, on)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const text = await bandText($, surface)
+    const at = text.indexOf('@ xiaoping 空闲')
+    expect(at > 0 && text.endsWith('@ xiaoping 空闲'), `${surface}: ${text}`).toBe(true)
+    expect(text.slice(0, at), surface).toContain('我在做 feat/x · build')
+  }
+})

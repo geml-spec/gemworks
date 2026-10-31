@@ -3854,6 +3854,10 @@ export const register: Register = (on) => {
       ...(workflow ? [{ key: 'board', label: t('看板'), action: { op: 'open-board', tab: 'items' } as BoardAction }] : []),
     ]
     if (view.title === '' && options.length === 0 && tail.length === 0) return next(e)
+    // The engine draws one band: what a plugin below drew (gemsbang's line) goes under this one, or it would not show.
+    // A chain with nothing beneath that draws ends in no tree.
+    const below = await next(e).catch(() => null)
+    const stack = (own: JSX.Element): JSX.Element => (below === null ? own : <Box flexDirection="column" flexGrow={1}>{own}{below}</Box>)
     const columns: number = e.props.bodyColumns
     const env = await envNow($, t, e.surface).catch(() => ({ parts: [] as string[], host: null as HostInfo | null, remote: false }))
     const at = env.remote && env.host !== null ? `@${env.host.name}` : ''
@@ -3879,7 +3883,7 @@ export const register: Register = (on) => {
     const board = tail.find((b) => b.key === 'board')
     if (question !== undefined && cellWidth(question) > room) {
       const lines = wrapCells(question, Math.max(20, columns - lead - 1), QUESTION_ROWS)
-      return (
+      return stack(
         <Box flexDirection="column" flexGrow={1}>
           {lines.map((l, n) => (
             <Box key={`band-q-${n}`} gap={1}>
@@ -3907,7 +3911,7 @@ export const register: Register = (on) => {
         </Box>
       )
     }
-    return (
+    return stack(
       <Box gap={1} alignItems="center" flexGrow={1}>
         {/* The mark opens the board: a blank button laid over the picture (a Button holds only words), the mark itself as the button on the terminal. */}
         {Svg !== undefined
