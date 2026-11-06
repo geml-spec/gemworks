@@ -1046,11 +1046,15 @@ npm test           # tsc + the bundle + node --test
 npm run test:claude   # the hooks module under claude plugin test (needs the claude CLI)
 ```
 
-`npm run build` runs `tsc` and then bundles the CLI into `dist/gemworks.mjs`, the
-one file the Claude Code plugin starts (`@geml/geml` inlined, so an installed
-plugin needs no dependency install). `hooks/register.tsx` runs with no Node: it
-imports only Node-free modules from `dist/hosts/claude-code/` and `dist/core/`,
-and `test/hooks-purity.test.mjs` walks that closure. The hooks tests live in
+`npm run build` runs `tsc` and then bundles the CLI the Claude Code plugin
+starts: `dist/gemworks.mjs` and the `dist/gemworks-*.mjs` files it loads, with
+`@geml/geml` copied unchanged into `dist/vendor/geml/`, so an installed plugin
+needs no dependency install. No file the package ships reaches 256 KiB, the
+size at which Anthropic's plugin directory holds a version for a reviewer
+(`test/hooks-split.test.mjs`). `hooks/register.tsx` and `hooks/act.tsx` (what a
+press does, split from it) run with no Node: they import only Node-free modules
+from `dist/hosts/claude-code/` and `dist/core/`, and `test/hooks-purity.test.mjs`
+walks that closure. The hooks tests live in
 `tests/` (`claude plugin test` does not descend into `node_modules`); the
 node:test suite in `test/` covers the rest, including
 `test/fastpath-parity.test.mjs`, which holds the plugin's fast path to what the
