@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { withLock, writeAtomic, globExists } from "../dist/host-fs.js";
-import { checkoutOf, commitsOf, ghFacts, journalBaseOf, repoFacts, treeFingerprint } from "../dist/host-git.js";
+import { checkoutOf, commitsOf, forgetGitFacts, ghFacts, journalBaseOf, repoFacts, treeFingerprint } from "../dist/host-git.js";
 
 const made = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "gemworks-host-")); made.push(d); return d; };
@@ -469,6 +469,51 @@ test("checkoutOf: the working tree's top, the common directory and the main work
   assert.deepEqual(checkoutOf(wt), { top: realpathSync.native(wt), common: join(real, ".git"), main: real });
   assert.equal(checkoutOf(tmp()), undefined, "no repository");
   assert.equal(checkoutOf(join(d, "missing")), undefined, "a directory that is not there");
+});
+
+test("a request reads what .git's files say plainly without starting git: the branch, the default branch, how far ahead, the checkout, the content fingerprint's index", () => {
+  const d = repo();
+  git(d, "commit", "-q", "--allow-empty", "-m", "init");
+  git(d, "checkout", "-q", "-b", "feat/x");
+  const wt = join(d, ".claude", "worktrees", "w");
+  git(d, "worktree", "add", "-q", "-b", "w", wt);
+  const real = realpathSync.native(d);
+  const withGit = { facts: repoFacts(d), checkout: checkoutOf(wt) };
+  // git gone from PATH: every answer below has to come from the files.
+  const saved = process.env.PATH;
+  process.env.PATH = tmp();
+  try {
+    forgetGitFacts();
+    assert.deepEqual(repoFacts(d), { branch: "feat/x", defaultBranch: "main", committed: false }, "a branch at the default branch's commit has nothing of its own, and no origin/HEAD file means none");
+    assert.deepEqual(repoFacts(d), withGit.facts, "what git said");
+    assert.deepEqual(checkoutOf(wt), { top: realpathSync.native(wt), common: join(real, ".git"), main: real });
+    assert.deepEqual(checkoutOf(wt), withGit.checkout, "what git said");
+    assert.equal(checkoutOf(join(d, ".git")), undefined, "inside .git itself the files do not say it plainly; and git is not there to ask");
+  } finally {
+    process.env.PATH = saved;
+    forgetGitFacts();
+  }
+  // A commit of its own: the files cannot count it, and git does.
+  git(d, "commit", "-q", "--allow-empty", "-m", "own");
+  forgetGitFacts();
+  assert.deepEqual(repoFacts(d), { branch: "feat/x", defaultBranch: "main", committed: true });
+});
+
+test("a variable that sends git elsewhere sends the question to git, not to the files", () => {
+  const d = repo();
+  git(d, "commit", "-q", "--allow-empty", "-m", "init");
+  git(d, "checkout", "-q", "-b", "feat/x");
+  const saved = { PATH: process.env.PATH, GIT_CEILING_DIRECTORIES: process.env.GIT_CEILING_DIRECTORIES };
+  process.env.GIT_CEILING_DIRECTORIES = tmpdir();
+  process.env.PATH = tmp();
+  try {
+    forgetGitFacts();
+    assert.equal(repoFacts(d).committed, undefined, "the files are not trusted to be all there is, and git cannot be asked: not established");
+  } finally {
+    process.env.PATH = saved.PATH;
+    if (saved.GIT_CEILING_DIRECTORIES === undefined) delete process.env.GIT_CEILING_DIRECTORIES; else process.env.GIT_CEILING_DIRECTORIES = saved.GIT_CEILING_DIRECTORIES;
+    forgetGitFacts();
+  }
 });
 
 test("journalBaseOf: the main working tree's copy of the project's directory, shared by every checkout; a project's own outside git", () => {

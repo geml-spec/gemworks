@@ -121,13 +121,66 @@ function gitDirsOf(root: string): { git: string; common: string } | undefined {
   }
 }
 
+/**
+ * Whether .git's files are the whole of what git would say: no variable sends git to another directory, index or
+ * ceiling, and the refs are kept as files (loose, or in packed-refs), not in a reftable. Then a ref the files lack is
+ * not there, and git need not be started to say so — each start costs 150–400 ms on Windows.
+ */
+const GIT_ENV = ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM"];
+function filesAreAll(common: string): boolean {
+  return !GIT_ENV.some((k) => (process.env[k] ?? "") !== "") && !existsSync(join(common, "reftable"));
+}
+
+/** A ref's commit as the files keep it, loose or packed; undefined when they do not have it. */
+function shaInFiles(common: string, ref: string): string | undefined {
+  try {
+    const loose = readFileSync(join(common, ...ref.split("/")), "utf8").trim();
+    return /^[0-9a-f]{40,64}$/.test(loose) ? loose : undefined;
+  } catch { /* not a loose ref: packed, or none */ }
+  try {
+    for (const line of readFileSync(join(common, "packed-refs"), "utf8").split(/\r?\n/)) {
+      const m = /^([0-9a-f]{40,64}) (.+)$/.exec(line);
+      if (m !== null && m[2] === ref) return m[1];
+    }
+  } catch { /* no packed refs */ }
+  return undefined;
+}
+
 /** Whether a ref is in the repository's common directory, loose or packed. */
 function refInFiles(common: string, ref: string): boolean {
-  if (existsSync(join(common, ...ref.split("/")))) return true;
+  try { if (statSync(join(common, ...ref.split("/"))).isFile()) return true; } catch { /* not loose */ }
   try {
     return readFileSync(join(common, "packed-refs"), "utf8").split(/\r?\n/).some((l) => l.endsWith(` ${ref}`));
   } catch {
     return false;
+  }
+}
+
+/** HEAD's commit as the files keep it, on a branch or detached; undefined when they do not say it plainly. */
+function headShaInFiles(dirs: { git: string; common: string }): string | undefined {
+  let head: string;
+  try { head = readFileSync(join(dirs.git, "HEAD"), "utf8").trim(); } catch { return undefined; }
+  const named = /^ref:\s*(refs\/heads\/.+)$/.exec(head);
+  if (named !== null) return shaInFiles(dirs.common, named[1] as string);
+  return /^[0-9a-f]{40,64}$/.test(head) ? head : undefined;
+}
+
+/**
+ * The working tree `dir` is in, from the `.git` it or a directory above it holds — as `git rev-parse --show-toplevel`
+ * finds it; undefined where the files do not say it plainly (a variable that redirects git, a directory inside .git
+ * itself, one that is not there), and git is asked.
+ */
+function topInFiles(dir: string): string | undefined {
+  if (!existsSync(dir)) return undefined;
+  const from = resolve(dir);
+  for (let d = from; ; d = dirname(d)) {
+    if (existsSync(join(d, ".git"))) {
+      const dirs = gitDirsOf(d);
+      if (dirs === undefined || !filesAreAll(dirs.common)) return undefined;
+      const inGit = relative(dirs.git, from);
+      return inGit === "" || (!inGit.startsWith("..") && !isAbsolute(inGit)) ? undefined : d;
+    }
+    if (dirname(d) === d) return undefined;
   }
 }
 
@@ -178,24 +231,40 @@ function readDefaultBranch(root: string): string | undefined {
       if (named !== null) return named[1] as string;
     } catch { /* not a file: asked below */ }
   }
-  const origin = run("git", ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], root);
-  if (origin.ok && origin.out !== "") return origin.out.replace(/^origin\//, "");
+  // A symbolic ref is never packed: where the files are all there is, no origin/HEAD file means none, and git is not asked.
+  if (dirs === undefined || !filesAreAll(dirs.common)) {
+    const origin = run("git", ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], root);
+    if (origin.ok && origin.out !== "") return origin.out.replace(/^origin\//, "");
+  }
   for (const name of ["main", "master"]) {
     if (refExists(root, `refs/heads/${name}`)) return name;
   }
   return undefined;
 }
 
-/** Whether a ref exists: from .git's files where they say so, else git's rev-parse --verify. */
+/** Whether a ref exists: from .git's files where they say so, either way where they are all there is, else git's rev-parse --verify. */
 function refExists(root: string, ref: string): boolean {
   const dirs = gitDirsOf(root);
   if (dirs !== undefined && refInFiles(dirs.common, ref)) return true;
+  if (dirs !== undefined && filesAreAll(dirs.common)) return false;
   return run("git", ["rev-parse", "--verify", "--quiet", ref], root).ok;
 }
 
-/** How many commits HEAD has that the default branch has not: its local branch, or failing that the remote's. */
+/**
+ * How many commits HEAD has that the default branch has not: its local branch, or failing that the remote's. A
+ * branch whose tip is the default branch's own commit has none, read from the files; a base the files do not have
+ * is not there; git counts the rest.
+ */
 function commitsAhead(root: string, defaultBranch: string): number | undefined {
+  const dirs = gitDirsOf(root);
+  const files = dirs !== undefined && filesAreAll(dirs.common) ? dirs : undefined;
+  const head = files !== undefined ? headShaInFiles(files) : undefined;
   for (const base of [`refs/heads/${defaultBranch}`, `refs/remotes/origin/${defaultBranch}`]) {
+    if (files !== undefined) {
+      const at = shaInFiles(files.common, base);
+      if (at === undefined && !refInFiles(files.common, base)) continue;
+      if (at !== undefined && at === head) return 0;
+    }
     const r = run("git", ["rev-list", "--count", `${base}..HEAD`], root);
     if (r.ok && /^\d+$/.test(r.out)) return Number(r.out);
   }
@@ -242,9 +311,17 @@ function readRepoFacts(root: string): RepoFacts {
  * change nothing. Undefined when git cannot say (no repository, git missing).
  */
 export function treeFingerprint(root: string): string | undefined {
-  const top = remembered(`top\0${root}`, () => run("git", ["rev-parse", "--show-toplevel"], root));
+  // The top and its index from .git's files where they say them plainly (no git started), else from git.
+  const top = remembered(`top\0${root}`, (): Ran => {
+    const found = topInFiles(root);
+    return found !== undefined ? { ok: true, out: found, err: "", missing: false } : run("git", ["rev-parse", "--show-toplevel"], root);
+  });
   if (!top.ok || top.out === "") return undefined;
-  const index = remembered(`index\0${top.out}`, () => run("git", ["rev-parse", "--path-format=absolute", "--git-path", "index"], top.out));
+  const index = remembered(`index\0${top.out}`, (): Ran => {
+    const dirs = gitDirsOf(top.out);
+    return dirs !== undefined && filesAreAll(dirs.common) ? { ok: true, out: join(dirs.git, "index"), err: "", missing: false }
+      : run("git", ["rev-parse", "--path-format=absolute", "--git-path", "index"], top.out);
+  });
   if (!index.ok || index.out === "") return undefined;
   const dir = mkdtempSync(join(tmpdir(), "gemworks-tree-"));
   try {
@@ -327,6 +404,14 @@ export interface Checkout {
  * working tree: no repository, a bare one, git missing, the directory gone.
  */
 export function checkoutOf(dir: string): Checkout | undefined {
+  // From .git's files where they say it plainly: the `.git` above the directory, and the common directory it names.
+  const found = topInFiles(dir);
+  const dirs = found !== undefined ? gitDirsOf(found) : undefined;
+  if (found !== undefined && dirs !== undefined) {
+    const top = realPath(found);
+    const common = realPath(dirs.common);
+    return basename(common) === ".git" ? { top, common, main: dirname(common) } : { top, common };
+  }
   const r = run("git", ["-C", dir, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"], dir);
   if (!r.ok) return undefined;
   const lines = r.out.split(/\r?\n/).filter((l) => l !== "");
@@ -606,7 +691,9 @@ export function branchesFacts(root: string): { ok: boolean; base?: string; branc
   const counted = refs?.ok === true;
   if (!counted) refs = run("git", ["for-each-ref", "refs/heads", "--format=%(refname:short)%09%(objectname)"], root);
   if (refs === undefined || !refs.ok) return { ok: false, branches };
-  const merged = new Set(base === undefined ? [] : run("git", ["branch", "--merged", base, "--format=%(refname:short)"], root).out.split(/\r?\n/).filter((b) => b !== ""));
+  // The default branch holds a branch exactly when the branch has nothing it has not: with ahead-behind counted, that
+  // is its ahead of 0, and `git branch --merged` would only say it again; before git 2.41, git is asked.
+  const merged = counted ? undefined : new Set(base === undefined ? [] : run("git", ["branch", "--merged", base, "--format=%(refname:short)"], root).out.split(/\r?\n/).filter((b) => b !== ""));
   for (const line of refs.out.split(/\r?\n/)) {
     const [branch, tip, aheadBehind] = line.split("\t");
     if (branch === undefined || branch === "" || tip === undefined) continue;
@@ -615,7 +702,8 @@ export function branchesFacts(root: string): { ok: boolean; base?: string; branc
       const c = run("git", ["rev-list", "--count", `${base}..refs/heads/${branch}`], root);
       ahead = c.ok ? Number(c.out) : undefined;
     }
-    branches.set(branch, { tip, ...(ahead !== undefined && Number.isFinite(ahead) ? { ahead } : {}), inDefault: merged.has(branch) });
+    const known = ahead !== undefined && Number.isFinite(ahead);
+    branches.set(branch, { tip, ...(known ? { ahead } : {}), inDefault: merged !== undefined ? merged.has(branch) : known && ahead === 0 });
   }
   // The linked worktrees: the main working tree comes first in the list, and a branch checked out there is in no worktree of its own.
   const wt = run("git", ["worktree", "list", "--porcelain"], root);
