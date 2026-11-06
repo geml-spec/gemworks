@@ -41,7 +41,7 @@ test("the package ships the plugin folders, builds the bundle and pins esbuild",
   assert.ok(!pkg.files.includes(".claude-plugin"), "the manifest by name, so .claude-plugin/types/ stays out of the package");
   assert.match(readFileSync(at(".gitignore"), "utf8"), /^\.claude-plugin\/types\/$/m);
   assert.equal(pkg.scripts.build, "tsc && node scripts/bundle.mjs");
-  assert.equal(pkg.scripts.test, "npm run build && node --test test/*.test.mjs");
+  assert.equal(pkg.scripts.test, "npm run build && node test/all.mjs", "the suite runs through test/all.mjs: lanes, a lower priority, every failure listed");
   assert.equal(pkg.scripts["test:claude"], "npm run build && claude plugin validate . && claude plugin test .");
   assert.equal(pkg.devDependencies.esbuild, "0.28.2");
 });

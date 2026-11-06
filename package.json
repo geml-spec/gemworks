@@ -35,7 +35,7 @@
   "files": ["dist", "spec", "skills", "examples", "workflows", "coach", "host-skills", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md", ".claude-plugin/plugin.json", "hooks", "types", "cordis.patch.yml", "LICENSE", ".codex-plugin/plugin.json", "codex", ".codexignore", "client.js"],
   "scripts": {
     "build": "tsc && node scripts/bundle.mjs",
-    "test": "npm run build && node --test test/*.test.mjs",
+    "test": "npm run build && node test/all.mjs",
     "test:claude": "npm run build && claude plugin validate . && claude plugin test .",
     "release": "node scripts/publish.mjs",
     "walkthrough": "node examples/walkthrough.mjs"

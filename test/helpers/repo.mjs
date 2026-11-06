@@ -19,15 +19,26 @@ export function copyBundle(dir) {
   return join(dir, "gemworks.mjs");
 }
 
-/** A git repository with one empty commit on main, checked out on `branch`. */
+/**
+ * A git repository with one empty commit on main, checked out on `branch`. Made once per branch name in this process
+ * and copied for each call: init, two configs, a commit and a checkout are five git processes, and the suites ask for
+ * some hundred and fifty repositories. The copy holds no file in its index, so nothing in it depends on where it lies.
+ */
+const repoTemplates = new Map();
 export function gitRepo(branch = "feat/x") {
+  let template = repoTemplates.get(branch);
+  if (template === undefined) {
+    template = mkdtempSync(join(tmpdir(), "gemworks-repo-template-"));
+    const git = (...a) => spawnSync("git", ["-C", template, ...a], { encoding: "utf8" });
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "t@t");
+    git("config", "user.name", "t");
+    git("commit", "-q", "--allow-empty", "-m", "init");
+    if (branch !== "main") git("checkout", "-qb", branch);
+    repoTemplates.set(branch, template);
+  }
   const root = mkdtempSync(join(tmpdir(), "gemworks-repo-"));
-  const git = (...a) => spawnSync("git", ["-C", root, ...a], { encoding: "utf8" });
-  git("init", "-q", "-b", "main");
-  git("config", "user.email", "t@t");
-  git("config", "user.name", "t");
-  git("commit", "-q", "--allow-empty", "-m", "init");
-  if (branch !== "main") git("checkout", "-qb", branch);
+  cpSync(template, root, { recursive: true });
   return root;
 }
 
