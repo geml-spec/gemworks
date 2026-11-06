@@ -97,9 +97,11 @@ test("the bundle patch contributes the runtime row alongside the MCP server and 
   assert.ok(!lines.some((l) => l.startsWith("statechart:")), "the workflow is resolved from the project, not pinned to one path");
 });
 
-test("one build, three names on npm: gemworks; gemwork, so that a name typed without its last letter installs ours; gwx, so that npx gwx runs ours", () => {
+test("one build, two names on npm: gemworks; gemwork, so that a name typed without its last letter installs ours (npm refuses gwx)", () => {
   const script = readFileSync(new URL("../scripts/publish.mjs", here), "utf8");
-  assert.match(script, /const NAMES = \["gemworks", "gemwork", "gwx"\];/);
+  assert.match(script, /const NAMES = \["gemworks", "gemwork"\];/);
+  const workflow = readFileSync(new URL("../.github/workflows/publish.yml", here), "utf8");
+  assert.match(workflow, /for name in gemworks gemwork; do/, "the Publish workflow publishes the same names");
   assert.match(script, /finally \{\s*writeFileSync\(file, original\);/, "the name is always put back");
   assert.equal(pkg.name, "gemworks");
   assert.equal(pkg.scripts.release, "node scripts/publish.mjs");

@@ -5,15 +5,17 @@ name: Publish
 # (`node scripts/bump.mjs <version>`), let CI pass on all three systems, then run this.
 #
 # One build goes out twice:
-# - to npm, under the three names scripts/publish.mjs publishes by hand: `gemworks`; `gemwork`, so that a name typed
-#   without its last letter installs ours; and `gwx`, the short command's name. The gemworks marketplace
-#   (.claude-plugin/marketplace.json) installs the plugin from the `gemworks` package.
+# - to npm, under the two names scripts/publish.mjs publishes by hand: `gemworks`; and `gemwork`, so that a name typed
+#   without its last letter installs ours. (npm refuses `gwx` as too like other names; the `gwx` command comes with
+#   the `gemworks` package.) The gemworks marketplace (.claude-plugin/marketplace.json) installs the plugin from the
+#   `gemworks` package.
 # - to the `plugin` branch: the files of that same `gemworks` package, committed, for Anthropic's plugin directory. The
 #   directory reads a plugin from a GitHub branch and people get only that folder, so it cannot follow main, where
 #   dist/ is built and gitignored.
 #
-# One-time setup: add an npm **automation** token as the repo secret NPM_TOKEN (npmjs.com → Access Tokens → Generate →
-# Automation) with publish rights on the three names. Nothing else is stored in the repo.
+# One-time setup: an npm token that can publish both names (npmjs.com → Access Tokens → Generate New Token: read and
+# write on all packages, bypassing two-factor authentication) as the secret NPM_TOKEN. geml-spec keeps it as an
+# organization secret shared with geml. Nothing else is stored in the repo.
 #
 # Three jobs, so the token never shares a runner with an install script. `build` installs, tests and packs with nothing
 # to steal; `npm` installs nothing and runs no script, it hands npm the tarballs `build` packed (a tarball's lifecycle
@@ -63,7 +65,7 @@ jobs:
           version=$(node -p "require('./package.json').version")
           mkdir -p "$RUNNER_TEMP/pack"
           npm pack --ignore-scripts --silent --pack-destination "$RUNNER_TEMP/pack"
-          for name in gemwork gwx; do
+          for name in gemwork; do
             npm pkg set name="$name"
             npm pack --ignore-scripts --silent --pack-destination "$RUNNER_TEMP/pack"
           done
@@ -104,7 +106,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
-          for name in gemworks gemwork gwx; do
+          for name in gemworks gemwork; do
             # A version a name does not have prints nothing, and some npm releases still exit 0: the output is what counts.
             if [ -n "$(npm view "$name@$VERSION" version 2>/dev/null)" ]; then
               echo "$name@$VERSION is already on npm"
