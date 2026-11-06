@@ -7,7 +7,8 @@ export type BoardTab = "sessions" | "flow" | "items" | "made" | "journal" | "too
 export type JournalFilter = "all" | "artifacts" | "evidence" | "moves" | "refusals" | "depends";
 export type Dialog = "settings" | "upgrade" | "about" | "share";
 /** What the share dialog shares, and how. */
-export type ShareWhat = "status" | "journal" | "session" | "workflow";
+/** What the share dialog gives: where the work stands, a flow (a light one with its practices and rules, or the strict workflow), the session, a strict work item's journal. */
+export type ShareWhat = "status" | "journal" | "session" | "flow";
 export type ShareHow = "copy" | "file" | "pr";
 
 /** The question a press that cannot be taken back asks before it acts, and the word that says yes. */
@@ -189,7 +190,7 @@ export type BoardAction =
   | { op: "remove"; id: string }
   /** Under a `file:` unit, make this file the current work item (the shell's last written file). */
   | { op: "switch-file"; file: string; say?: string }
-  | { op: "share"; what: ShareWhat; how: ShareHow; strip: boolean };
+  | { op: "share"; what: ShareWhat; how: ShareHow; strip: boolean; flow?: string };
 
 /** A button as the pure modules describe it: its address, its label, whether it is the main one, and what it does. */
 export interface Pressable { key: string; label: string; primary?: boolean; action: BoardAction; /** A menu entry's weight: one that destroys, one that only closes. */ tone?: "danger" | "quiet" }

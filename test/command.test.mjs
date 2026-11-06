@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { COMMAND_HINT, COMMAND_USAGE, addText, boardFailure, boardText, commandText, parseCommand, statusText, usageText } from "../dist/hosts/claude-code/command.js";
+import { COMMAND_HINT, COMMAND_USAGE, addText, boardFailure, boardText, commandText, parseCommand, statusText, traceText, usageText } from "../dist/hosts/claude-code/command.js";
 import { wordsFor } from "../dist/hosts/claude-code/text.js";
 
 const status = {
@@ -31,8 +31,16 @@ test("the argument string becomes one intent", () => {
   assert.deepEqual(parseCommand("board nope"), { kind: "help", reason: "不认识的用法：/gemworks board nope" });
   assert.deepEqual(parseCommand("pause"), { kind: "pause" });
   assert.deepEqual(parseCommand("resume"), { kind: "resume" });
-  assert.equal(COMMAND_HINT, "[board [标签] | pause | resume | use <流程> | add [流程]]");
+  assert.deepEqual(parseCommand("trace on"), { kind: "trace", on: true });
+  assert.deepEqual(parseCommand("trace off"), { kind: "trace", on: false });
+  assert.deepEqual(parseCommand("trace"), { kind: "help", reason: "不认识的用法：/gemworks trace" }, "the diagnosis is switched on or off by name, never toggled blind");
+  assert.equal(COMMAND_HINT, "[board [标签] | pause | resume | use <流程> | add [流程] | trace on|off]");
   assert.match(COMMAND_USAGE, /\/gemworks pause/);
+  assert.match(COMMAND_USAGE, /sessions \| items \| made \| flow \| tools/, "the help names the board's tabs as they are");
+  assert.doesNotMatch(COMMAND_USAGE, /journal/);
+  assert.match(COMMAND_USAGE, /\/gemworks trace on\|off/);
+  assert.equal(traceText(true), "诊断已打开：点击和画面记到 .geml/trace.log");
+  assert.equal(traceText(false), "诊断已关闭");
 });
 
 test("/gemworks prints where the work stands: the stage with its uses, each variable with its source, the ways out", () => {

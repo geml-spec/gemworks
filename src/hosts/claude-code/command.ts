@@ -14,19 +14,21 @@ export type CommandIntent =
   | { kind: "resume" }
   | { kind: "use"; workflow: string }
   | { kind: "add"; workflow?: string }
+  | { kind: "trace"; on: boolean }
   | { kind: "help"; reason?: string };
 
-export const COMMAND_HINT = "[board [标签] | pause | resume | use <流程> | add [流程]]";
+export const COMMAND_HINT = "[board [标签] | pause | resume | use <流程> | add [流程] | trace on|off]";
 
 /** The usage, in the language chosen. */
 export function usageText(t: T = ZH): string {
   return [
     `/gemworks                 ${t("当前工作项、阶段、变量与下一步")}`,
-    `/gemworks board [标签]    ${t("打开流程看板（sessions | flow | items | journal | tools）")}`,
+    `/gemworks board [标签]    ${t("打开看板（sessions | items | made | flow | tools）")}`,
     `/gemworks pause           ${t("暂停当前工作项：照常记录，不推进阶段")}`,
     `/gemworks resume          ${t("继续")}`,
     `/gemworks use <流程>      ${t("设定新工作项的默认流程（已开始的工作项沿用自己的）")}`,
     `/gemworks add [流程]      ${t("列出内置流程；带名字时写入 .geml/workflows/")}`,
+    `/gemworks trace on|off    ${t("诊断：把点击和画面记到 .geml/trace.log，排查看板问题时用")}`,
   ].join("\n");
 }
 
@@ -45,6 +47,7 @@ export function parseCommand(args: string): CommandIntent {
   if (head === "resume" && rest.length === 0) return { kind: "resume" };
   if (head === "use" && rest.length === 1) return { kind: "use", workflow: rest[0]! };
   if (head === "add" && rest.length <= 1) return rest.length === 1 ? { kind: "add", workflow: rest[0]! } : { kind: "add" };
+  if (head === "trace" && rest.length === 1 && (rest[0] === "on" || rest[0] === "off")) return { kind: "trace", on: rest[0] === "on" };
   return { kind: "help", reason: `不认识的用法：/gemworks ${args.trim()}` };
 }
 
@@ -108,6 +111,11 @@ export function boardFailure(res: BridgeResponse | undefined, problem: string | 
   // No workflow of the project's own: the board opens on the light flows' work items.
   if (res.shell.status === null && res.shell.problem?.quiet === true) return undefined;
   return noStatusText(res.shell, t);
+}
+
+/** What /gemworks trace on|off answers: the diagnosis trace switched. */
+export function traceText(on: boolean, t: T = ZH): string {
+  return on ? t("诊断已打开：点击和画面记到 .geml/trace.log") : t("诊断已关闭");
 }
 
 export function commandText(intent: CommandIntent, res: BridgeResponse | undefined, problem: string | null, t: T = ZH): string {

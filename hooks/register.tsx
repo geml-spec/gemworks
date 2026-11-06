@@ -58,7 +58,7 @@ import { bandView, BRAND_RED, cellWidth, MARK, MARK_SVG, SEP, toneProps, truncat
 import type { BandView, Segment, Tone } from '../dist/hosts/claude-code/band.js'
 import { BOARD_ID, ciSuggestions, DIALOG_ID, glyphSvg, heldRows, HOME_TAB, hostName, ICON_CHAR, ICON_SVG, ICON_TONE, inputAction, paneRows, projectPath, sessionLabel, TAB_IDS, tabs, toolSuggestions } from '../dist/hosts/claude-code/board.js'
 import type { BoardRow, FlowEdgeRow, Glyph, Icon } from '../dist/hosts/claude-code/board.js'
-import { boardFailure, boardText, COMMAND_HINT, commandText, parseCommand } from '../dist/hosts/claude-code/command.js'
+import { boardFailure, boardText, COMMAND_HINT, commandText, parseCommand, traceText } from '../dist/hosts/claude-code/command.js'
 import { afterNeeded, beforeDecision, checkoutProbe, isOwnTool, matchesUnit, paramsToFill } from '../dist/hosts/claude-code/fastpath.js'
 import type { BeforeDecision, CallFacts } from '../dist/hosts/claude-code/fastpath.js'
 import { inboxItems, othersWaiting, pendingList, shortReason } from '../dist/hosts/claude-code/inbox.js'
@@ -80,7 +80,8 @@ import { DEFAULT_SETTINGS, settingsFrom, withSetting } from '../dist/hosts/claud
 import type { Settings } from '../dist/hosts/claude-code/settings.js'
 import { statusShareText } from '../dist/hosts/claude-code/share.js'
 import { HEADER_LOCKUP, LOCKUP_SVG } from '../dist/hosts/claude-code/brand.js'
-import { RELEASE_NOTES, isNewer } from '../dist/hosts/claude-code/release-notes.js'
+import { isNewer, releaseNotesOf } from '../dist/hosts/claude-code/release-notes.js'
+import { waitingNotices } from '../dist/hosts/claude-code/notices.js'
 import { asksJudgeRequest, judgementLine, judgeOptions, judgeRequest, JUDGEMENT_MS, readAsksJudgement, readJudgement } from '../dist/hosts/claude-code/judge.js'
 import type { Judgement, JudgeOption } from '../dist/hosts/claude-code/judge.js'
 import { langOf, wordsFor } from '../dist/hosts/claude-code/text.js'
@@ -156,6 +157,8 @@ const settingsAtom = atom({ plugin: 'gemworks', key: 'settings' } as const, null
 const latestAtom = atom({ plugin: 'gemworks', key: 'latest' } as const, null as GemworksJson)
 const notifiedAtom = atom({ plugin: 'gemworks', key: 'notified' } as const, {} as GemworksJson)
 const seenInboxAtom = atom({ plugin: 'gemworks', key: 'seenInbox' } as const, null as GemworksJson)
+/** What a turn's end told the desktop of (notices.ts keys): a question, a work item at the person's step; each once. */
+const notifiedWaitingAtom = atom({ plugin: 'gemworks', key: 'notifiedWaiting' } as const, [] as string[])
 const localeAtom = atom({ plugin: 'gemworks', key: 'locale' } as const, null as string | null)
 const workflowsAtom = atom({ plugin: 'gemworks', key: 'workflows' } as const, null as GemworksJson)
 const shareAtom = atom({ plugin: 'gemworks', key: 'share' } as const, { what: 'status', how: 'copy', strip: true } as GemworksJson)
@@ -259,10 +262,9 @@ const REGISTRY = 'https://registry.npmjs.org/gemworks/latest'
 /** This project's repository and license, as package.json names them (the smoke test holds them to it). */
 const REPO = 'https://github.com/geml-spec/gemworks'
 const LICENSE = 'AGPL-3.0-only'
-/** The about and upgrade dialogs' links; the docs and the flow spec in the reader's language where there is a Chinese page. */
+/** The about and upgrade dialogs' links; the docs in the reader's language where there is a Chinese page. */
 const LINKS = {
   docs: { zh: `${REPO}/blob/main/README.zh.md`, other: `${REPO}#readme` },
-  spec: { zh: `${REPO}/blob/main/spec/workflow_CN.md`, other: `${REPO}/blob/main/spec/workflow.md` },
   repo: REPO,
   feedback: `${REPO}/issues`,
   changelog: `${REPO}/blob/main/CHANGELOG.md`,
@@ -611,7 +613,8 @@ async function attentionOnPrompt($: EngineInterface, said: string, typed = true)
       const settled = (a.asks ?? []).filter((q) => !open.some((x) => x.question === q.question)).map((q) => q.question)
       const before = ((await read($, answeredAtom)) as string[] | null) ?? []
       await update($, answeredAtom, () => [...new Set([...before, ...settled])])
-      if (typed && open.length > 0) $.clock.after(0, () => { void judgeOpenAsks($, open, said).catch(() => undefined) })
+      // Typed answers off (settings): a question is settled by its press alone.
+      if (typed && open.length > 0 && (await readSettings($)).judge.enabled) $.clock.after(0, () => { void judgeOpenAsks($, open, said).catch(() => undefined) })
     }
     const news = newsOf((await read($, factsAtReplyAtom)) as unknown as AttentionFacts | null, await factsNow($), t)
     return news.length > 0 ? [`[gemworks] since your last reply: ${news.join('; ')}`] : []
@@ -991,6 +994,7 @@ async function ruleHold($: EngineInterface, tool: string, input: Record<string, 
     const held = ruleRefusal(rules, item, flows, keysOf(tool, input, CLAUDE_CODE_TOOLS.run, CLAUDE_CODE_TOOLS.write))
     if (held !== undefined) {
       if (held.rule.layer === 'project') await saveRules($, rules.map((r) => (r.id === held.rule.id ? { ...r, held: (r.held ?? 0) + 1 } : r)))
+      $.clock.after(0, () => { void notifyRefusal($, tool, held.reason).catch(() => undefined) })
       return held.reason
     }
   }
@@ -1074,6 +1078,8 @@ async function labelPrompt($: EngineInterface, p: { text: string; before: string
  */
 async function themeLedger($: EngineInterface): Promise<void> {
   if (theming) return
+  // Learning off (settings): the ledger is not themed, nor flows proposed from it.
+  if (!(await readSettings($)).learn.enabled) return
   theming = true
   try {
     const session = await $.session.id().catch(() => '')
@@ -1784,6 +1790,18 @@ async function notifyInbox($: EngineInterface): Promise<void> {
   try { await $.ui.notify(text, { title: 'Gemworks' }) } catch { /* no channel */ }
 }
 
+/** What waits on the person as a turn ends, when the settings say so: a question the band asks, a work item of this session at a step they judge. Each once. */
+async function notifyWaiting($: EngineInterface, asks: readonly Asked[]): Promise<void> {
+  const s = await readSettings($)
+  if (!s.notify.inbox && !s.notify.confirm) return
+  const [t, items, flows, session, seen] = await Promise.all([words($), workItems($), coachFlowsKept($), $.session.id().catch(() => ''), read($, notifiedWaitingAtom)])
+  const w = waitingNotices(asks, items, flows, session, (seen as string[] | null) ?? [], t)
+  await update($, notifiedWaitingAtom, () => w.keys)
+  for (const text of [s.notify.inbox ? w.ask : undefined, s.notify.confirm ? w.confirm : undefined]) {
+    if (text !== undefined) { try { await $.ui.notify(text, { title: 'Gemworks' }) } catch { /* no channel */ } }
+  }
+}
+
 /** A refusal: one notification per reason every few minutes, when the settings say so. */
 async function notifyRefusal($: EngineInterface, tool: string, reason: string): Promise<void> {
   if (!(await readSettings($)).notify.refusal) return
@@ -1924,7 +1942,10 @@ async function otherSessionText($: EngineInterface, id: string): Promise<{ text:
   return { text: logExport(summary, t), name: `session-${id.slice(0, 8)}`, label: sessionLabel(known, '', t) }
 }
 
-async function share($: EngineInterface, what: ShareWhat, how: ShareHow, strip: boolean, surface?: string): Promise<void> {
+/** The share dialog's pick for the strict workflow among the flows: no flow file is named so. */
+const STRICT_FLOW = '#strict'
+
+async function share($: EngineInterface, what: ShareWhat, how: ShareHow, strip: boolean, surface?: string, flowName?: string): Promise<void> {
   const t = await words($)
   const copy = async (text: string): Promise<void> => {
     const r = await $.ui.copy({ text, ...(surface !== undefined ? { surface: surface as never } : {}) })
@@ -1938,7 +1959,15 @@ async function share($: EngineInterface, what: ShareWhat, how: ShareHow, strip: 
     const s = await sessionText($, how === 'copy' ? 'md' : 'geml')
     if (s === undefined) return
     text = how === 'copy' ? s.text : await exportText($, 'text', 'geml', { name: s.name, text: s.text, strip })
-  } else text = await exportText($, what, what === 'journal' ? (how === 'copy' ? 'md' : 'geml') : 'geml', { strip })
+  } else if (what === 'flow' && flowName === STRICT_FLOW) {
+    text = await exportText($, 'workflow', 'geml', { strip })
+  } else if (what === 'flow') {
+    // A light flow, with its practices and rules: the flow tab's export, as text or into .geml/exports/.
+    const flow = (await coachFlowsKept($)).find((f) => f.name === flowName)
+    if (flow === undefined) { $.ui.toast(t('没有可导出的内容')); return }
+    const whole = flowExport(flow, (await practicesKept($))?.list ?? [], await rulesKept($))
+    text = how === 'file' ? await exportText($, 'text', 'geml', { name: `flow-${flow.name}`, text: whole, strip }) : whole
+  } else text = await exportText($, what, how === 'copy' ? 'md' : 'geml', { strip })
   if (text === undefined || text === '') { if (text === '') $.ui.toast(t('没有可导出的内容')); return }
   if (how === 'copy' && surface !== undefined && surface !== 'terminal') { await update($, sharedTextAtom, () => text as string); return }
   if (how === 'copy') await copy(text)
@@ -2603,7 +2632,7 @@ async function act($: EngineInterface, action: BoardAction, surface?: string): P
       $.ui.toast(t('已交给模型，结果看对话'))
       return
     }
-    case 'share': await share($, action.what, action.how, action.strip, surface); return
+    case 'share': await share($, action.what, action.how, action.strip, surface, action.flow); return
     default: return
   }
 }
@@ -3177,24 +3206,28 @@ async function dialogRows($: EngineInterface, t: T, dialog: Dialog, columns: num
   ])
   const version = stored ?? shell?.versions?.gemworks ?? '?'
   if (dialog === 'settings') {
-    if (terminal) rows.push(section('notify', t('桌面提醒')),
-      { kind: 'buttons', items: [toggle(t('有事项需要决定或验收时'), 'notify.inbox', s.notify.inbox)] },
-      { kind: 'buttons', items: [toggle(t('模型被拦时'), 'notify.refusal', s.notify.refusal)] }, text(`    ${t('同一原因 3 分钟内只提一次')}`, 'dim'),
-      { kind: 'buttons', items: [toggle(t('阶段变更时'), 'notify.stage', s.notify.stage)] })
-    rows.push(section('judge', t('判定')), { kind: 'buttons', items: [toggle(t('每一轮判定：打字就是按按钮'), 'judge.enabled', s.judge.enabled)] }, text(t('用小模型把输入匹配到待处理事项：把握大则直接选中，否则先确认。'), 'dim'))
-    rows.push(section('trace', t('诊断')), { kind: 'buttons', items: [toggle(t('把点击和画面记到 .geml/trace.log'), 'trace.enabled', s.trace.enabled)] },
-text(t('排查看板问题时打开；开着会在对话里刷诊断行。'), 'dim'))
+    // Only what works on the light flows; a strict workflow's own (its stage changes) shows where one is open. The
+    // diagnosis is /gemworks trace: it is for chasing a board problem, not for the person.
     const system = langOf('system', shell?.locale ?? locale ?? undefined)
     const names: Record<string, string> = { zh: '中文', en: 'English', ja: '日本語' }
     rows.push(section('language', t('语言')), { kind: 'buttons', items: ([['system', t('跟随系统（{0}）', names[system] ?? system)], ['zh', '中文'], ['en', 'English'], ['ja', '日本語']] as const).map(([v, label]): Pressable => ({ key: `lang-${v}`, label, ...(s.language === v ? { primary: true } : {}), action: { op: 'setting', key: 'language', value: v } })) })
     rows.push(text(t('状态带、看板、提醒的文字跟着换；流程自己的标题和说明保持作者写的语言。'), 'dim'))
-    rows.push(text(t('流程在「流程」页换和调整，工具在「工具」页归类，都存在项目的 .geml/ 目录里。'), 'dim'))
+    rows.push(section('judge', t('状态带')), { kind: 'buttons', items: [toggle(t('打字就能回答状态带上的问题'), 'judge.enabled', s.judge.enabled)] }, text(t('用小模型把你打的字对上等你定的问题；有把握直接选，否则先问。'), 'dim'))
+    rows.push(section('learn', t('学习')), { kind: 'buttons', items: [toggle(t('从你的纠正里提议做法和流程步骤'), 'learn.enabled', s.learn.enabled)] }, text(t('每条提示词交给小模型归类，攒成纠正账本、提议流程步骤；关掉后不再读你的提示词。'), 'dim'))
+    if (terminal) {
+      rows.push(section('notify', t('桌面提醒')),
+        { kind: 'buttons', items: [toggle(t('有问题等你定'), 'notify.inbox', s.notify.inbox)] },
+        { kind: 'buttons', items: [toggle(t('工作项到了要你确认的一步'), 'notify.confirm', s.notify.confirm)] },
+        { kind: 'buttons', items: [toggle(t('被规定拦下'), 'notify.refusal', s.notify.refusal)] }, text(`    ${t('同一原因 3 分钟内只提一次')}`, 'dim'))
+      if (shell?.status !== null && shell?.status !== undefined) rows.push(section('strict', t('严格流程')), { kind: 'buttons', items: [toggle(t('阶段变更时提醒'), 'notify.stage', s.notify.stage)] })
+    }
   } else if (dialog === 'upgrade') {
     const latest = known as unknown as { version?: string; error?: string } | null
     rows.push({ kind: 'heading', key: 'version', text: t('当前 {0}', version), sub: '' })
     if (latest === null) rows.push(text('…', 'dim'))
     else if (latest.version !== undefined) rows.push(isNewer(latest.version, version) ? text(t('● 可更新 {0}', latest.version), 'warning') : latest.version === version ? text(t('已是最新'), 'success') : text(t('已发布 {0}', latest.version), 'dim'))
-    else rows.push(text(t('无法检查更新：{0}', latest.error ?? '?'), 'dim'))
+    // npm answers 404 for a package not published yet: that is what to say, not the status code.
+    else rows.push(text(latest.error === 'HTTP 404' ? t('尚未发布到 npm，无法检查更新') : t('无法检查更新：{0}', latest.error ?? '?'), 'dim'))
     const market = marketplaceOf($.plugin.root)
     const command = `claude plugin update gemworks${market !== undefined ? `@${market}` : ''}`
     rows.push({ kind: 'buttons', items: [
@@ -3202,9 +3235,12 @@ text(t('排查看板问题时打开；开着会在对话里刷诊断行。'), 'd
       ...(terminal && latest?.version !== undefined && isNewer(latest.version, version) ? [{ key: 'copy-update', label: `${t('更新')}: ${command}`, primary: true, action: { op: 'copy', text: command } } as Pressable] : []),
     ] })
     if (!terminal && latest?.version !== undefined && isNewer(latest.version, version)) rows.push(text(t('更新命令（在终端里运行）'), 'dim'), { kind: 'prose', key: 'update-command', text: command })
-    if (RELEASE_NOTES.version === version) {
+    // What this version brings: its section of the CHANGELOG the plugin ships, as written; nothing when it has none.
+    let notes: string[] = []
+    try { notes = releaseNotesOf(String(await $.fs.read(`${$.plugin.root}/CHANGELOG.md`)), version) } catch { /* no CHANGELOG beside the plugin */ }
+    if (notes.length > 0) {
       rows.push(section('notes', t('这一版有什么')))
-      for (const line of RELEASE_NOTES.lines) rows.push(text(`· ${t(line)}`))
+      for (const line of notes) rows.push(text(`· ${line}`))
     }
     rows.push({ kind: 'link', key: 'link-changelog', href: LINKS.changelog, label: t('完整 CHANGELOG') })
     if (market !== undefined) rows.push(text(t('装在 marketplace {0}', market), 'dim'))
@@ -3213,30 +3249,35 @@ text(t('排查看板问题时打开；开着会在对话里刷诊断行。'), 'd
   } else if (dialog === 'about') {
     rows.push({ kind: 'image', key: 'lockup', svg: LOCKUP_SVG, alt: 'Gemworks', width: 180 })
     rows.push(text(t('把写下一条提示词前要看的信息放在一处：工作进度、待决定事项、产物。流程用 GEML 编写，可替换、调整、导入。')))
-    rows.push(text(t('插件 gemworks {0}', version), 'dim'), text(t('解析器 @geml/geml {0}', shell?.versions?.parser ?? '?'), 'dim'))
-    rows.push(text(t('流程格式 geml-statechart/v1'), 'dim'), text(t('许可 {0}', LICENSE), 'dim'))
+    rows.push(text(t('插件 gemworks {0}', version), 'dim'), text(t('许可 {0}', LICENSE), 'dim'))
     const zh = langOf(s.language, shell?.locale ?? locale ?? undefined) === 'zh'
     rows.push(
       { kind: 'link', key: 'link-docs', href: zh ? LINKS.docs.zh : LINKS.docs.other, label: t('说明文档') },
-      { kind: 'link', key: 'link-spec', href: zh ? LINKS.spec.zh : LINKS.spec.other, label: t('流程规范') },
       { kind: 'link', key: 'link-repo', href: LINKS.repo, label: t('仓库') },
       { kind: 'link', key: 'link-feedback', href: LINKS.feedback, label: t('反馈') },
     )
   } else {
     const here = shell?.status
     if (here?.item.kind === 'item') rows.push({ kind: 'heading', key: 'share-title', text: t('分享 {0}', here.title ?? here.item.id), sub: '' })
-    // A journal and a workflow copy are a statechart workflow's: a project on the light flows alone has neither, and exporting them would only fail.
+    // A flow is a light one with its practices and rules, or the strict workflow where one is open; a work item's
+    // journal is a strict workflow's only: on the light flows alone there is none, and exporting it would only fail.
     const strict = here !== null && here !== undefined
+    const [flows, practices, own] = await Promise.all([coachFlowsKept($), practicesKept($), $.session.id().then(async (id) => turnItem(await workItems($), id)?.flow).catch(() => undefined)])
+    const flowChoices = [...flows.map((f) => ({ name: f.name, title: f.title })), ...(strict ? [{ name: STRICT_FLOW, title: t('{0}（严格流程）', here.workflow.title) }] : [])]
+    const kept = (picked as unknown as { what: ShareWhat; how: ShareHow; strip: boolean; flow?: string } | null) ?? { what: 'status', how: 'copy', strip: true }
+    const flowName = flowChoices.some((f) => f.name === kept.flow) ? kept.flow : (flowChoices.find((f) => f.name === own) ?? flowChoices[0])?.name
+    const flowTitle = flowChoices.find((f) => f.name === flowName)?.title ?? ''
+    const flowPractices = (practices?.list ?? []).filter((p) => p.flow === flowName && p.deleted !== true && p.layer !== 'personal').length
     const whats: [ShareWhat, string, string][] = [
       ['status', t('现在在哪'), t('进度、待办、最近产物')],
-      ...(strict ? [['journal', t('这个工作项的记录'), t('每次阶段变更、凭据、产物、被拦，带哈希链，对方能校验')] as [ShareWhat, string, string]] : []),
+      ...(flowName !== undefined ? [['flow', t('一条流程'), flowName === STRICT_FLOW ? t('{0} · 状态机和它用的工具，给别的项目用', flowTitle) : t('{0} · 含 {1} 条做法，给别的项目或同事用', flowTitle, flowPractices)] as [ShareWhat, string, string]] : []),
       ['session', t('本会话'), t('提示词和那一轮做了什么；工具调用的输出不带')],
-      ...(strict ? [['workflow', t('流程与工具词典'), t('流程文件和它用的工具，给别的项目用')] as [ShareWhat, string, string]] : []),
+      ...(strict ? [['journal', t('这个工作项的记录'), t('每次阶段变更、凭据、产物、被拦，带哈希链，对方能校验')] as [ShareWhat, string, string]] : []),
     ]
-    const kept = (picked as unknown as { what: ShareWhat; how: ShareHow; strip: boolean } | null) ?? { what: 'status', how: 'copy', strip: true }
     const choice = whats.some(([w]) => w === kept.what) ? kept : { ...kept, what: 'status' as ShareWhat }
     rows.push(section('what', t('分享什么')))
     for (const [what, label, note] of whats) rows.push({ kind: 'button', key: `what-${what}`, label: `${choice.what === what ? '(•)' : '( )'} ${label}  ${note}`, action: { op: 'share-pick', what } as unknown as BoardAction })
+    if (choice.what === 'flow' && flowChoices.length > 1) rows.push({ kind: 'buttons', items: flowChoices.map((f): Pressable => ({ key: `flow-${f.name}`, label: f.title, ...(f.name === flowName ? { primary: true } : {}), action: { op: 'share-pick', flow: f.name } as unknown as BoardAction })) })
     rows.push(section('how', t('怎么给')), { kind: 'buttons', items: ([['copy', terminal ? t('复制文字') : t('显示文字')], ['file', t('存成文件')], ['pr', t('PR 评论')]] as const).map(([how, label]): Pressable => ({ key: `how-${how}`, label, ...(choice.how === how ? { primary: true } : {}), action: { op: 'share-pick', how } as unknown as BoardAction })) })
     if (choice.what === 'status') {
       for (const line of status.split('\n')) if (line !== '') rows.push(text(`  ${line}`, 'dim'))
@@ -3244,7 +3285,7 @@ text(t('排查看板问题时打开；开着会在对话里刷诊断行。'), 'd
     rows.push({ kind: 'buttons', items: [{ key: 'strip', label: `${choice.strip ? '[x]' : '[ ]'} ${t('去掉命令行里的绝对路径')}`, action: { op: 'share-pick', strip: !choice.strip } as unknown as BoardAction }] })
     rows.push({ kind: 'buttons', items: [
       { key: 'share-cancel', label: t('取消'), action: { op: 'dialog', dialog: null } },
-      { key: 'share-go', label: choice.how === 'copy' ? (terminal ? t('复制') : t('显示')) : choice.how === 'file' ? t('存成文件') : t('发 PR 评论'), primary: true, action: { op: 'share', what: choice.what, how: choice.how, strip: choice.strip } },
+      { key: 'share-go', label: choice.how === 'copy' ? (terminal ? t('复制') : t('显示')) : choice.how === 'file' ? t('存成文件') : t('发 PR 评论'), primary: true, action: { op: 'share', what: choice.what, how: choice.how, strip: choice.strip, ...(choice.what === 'flow' && flowName !== undefined ? { flow: flowName } : {}) } },
     ] })
     if (shown !== null && shown !== '') rows.push(text(t('选中后复制'), 'dim'), { kind: 'prose', key: 'shared-text', text: shown })
   }
@@ -3654,6 +3695,7 @@ export const register: Register = (on) => {
           await update($, answeredAtom, () => [] as string[])
           const kept: Attention = { reply: e.answer, replyAt: at, memory: was?.memory ?? NO_MEMORY, consumed: false, ...(asks.length > 0 ? { asks } : {}) }
           await update($, attentionAtom, () => kept as unknown as GemworksJson)
+          $.clock.after(0, () => { void notifyWaiting($, asks).catch(() => undefined) })
           const facts = await read($, factsAtom)
           await update($, factsAtReplyAtom, () => facts)
           $.clock.after(0, () => { void loadFacts($) })
@@ -3729,7 +3771,8 @@ export const register: Register = (on) => {
           const flow = item !== undefined ? (await coachFlowsKept($)).find((f) => f.name === item.flow) : undefined
           const step = item !== undefined && flow !== undefined ? itemProgress(item, flow).here ?? undefined : undefined
           const said = { text: words, before: (await readAttention($))?.reply ?? '', at: record.at, session, project: root, ...(flow !== undefined && step !== undefined ? { flow: flow.name, step } : {}) }
-          if (session !== '') $.clock.after(0, () => { void labelPrompt($, said).catch(() => undefined) })
+          // Learning off (settings): the prompt is not read by the small model.
+          if (session !== '' && (await readSettings($)).learn.enabled) $.clock.after(0, () => { void labelPrompt($, said).catch(() => undefined) })
         } catch { /* this prompt stays unlabelled; gemworks corrections pending finds it */ }
       }
       // A typed prompt is judged (an option pressed said what it chose already), after it is on its way.
@@ -4071,10 +4114,10 @@ export const register: Register = (on) => {
 
   // The share dialog's picks are the module's own, not the board's: they change the dialog, nothing else.
   on('ui.press', { plugin: 'gemworks', requestId: 'gemworks-dialog' }, async ($, e, next) => {
-    const m = e.element.match(/^(what|how|strip)(?:-(.+))?$/)
+    const m = e.element.match(/^(what|how|strip|flow)(?:-(.+))?$/)
     if (m === null) return next(e)
-    const choice = ((await read($, shareAtom)) as unknown as { what: ShareWhat; how: ShareHow; strip: boolean } | null) ?? { what: 'status', how: 'copy', strip: true }
-    const value = m[1] === 'what' ? { ...choice, what: m[2] as ShareWhat } : m[1] === 'how' ? { ...choice, how: m[2] as ShareHow } : { ...choice, strip: !choice.strip }
+    const choice = ((await read($, shareAtom)) as unknown as { what: ShareWhat; how: ShareHow; strip: boolean; flow?: string } | null) ?? { what: 'status', how: 'copy', strip: true }
+    const value = m[1] === 'what' ? { ...choice, what: m[2] as ShareWhat } : m[1] === 'how' ? { ...choice, how: m[2] as ShareHow } : m[1] === 'flow' ? { ...choice, flow: m[2] ?? '' } : { ...choice, strip: !choice.strip }
     await update($, shareAtom, () => value as unknown as GemworksJson)
     return next(e)
   })
@@ -4089,6 +4132,11 @@ export const register: Register = (on) => {
       if (failure !== null) return { text: boardText(undefined, failure, t) }
       const opened = await openBoard($, intent.tab, false)
       return { text: boardText(opened.isPlaced ? undefined : opened.reason, undefined, t) }
+    }
+    // The diagnosis: a setting the dialog no longer shows, switched by name.
+    if (intent.kind === 'trace') {
+      await act($, { op: 'setting', key: 'trace.enabled', value: intent.on })
+      return { text: traceText(intent.on, t) }
     }
     const op: BridgeOp | undefined = intent.kind === 'status' ? { op: 'status' }
       : intent.kind === 'pause' ? { op: 'pause' }

@@ -114,10 +114,12 @@ declare module 'claude-code' {
       notified: GemworksJson
       /** The inbox keys already notified (string[]). */
       seenInbox: GemworksJson
+      /** What a turn's end told the desktop of (notices.ts keys): a question, a work item at the person's step. */
+      notifiedWaiting: string[]
       locale: string | null
       /** The bundled and installed workflows ({ bundled, installed }), once asked. */
       workflows: GemworksJson
-      /** The share dialog's choice ({ what, how, strip }). */
+      /** The share dialog's choice ({ what, how, strip, flow }). */
       share: GemworksJson
       version: string | null
       /** The band's attention (attention.ts): the last reply ({ reply, replyAt, asked, memory, consumed }). */

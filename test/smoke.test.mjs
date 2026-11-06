@@ -19,7 +19,7 @@ test("package identity: the renamed bundle", () => {
   assert.equal(pkg.bugs, `${pkg.homepage}/issues`, "the about dialog's feedback link is the package's bugs page");
   assert.equal(pkg.bin["gemworks"], "dist/cli.js");
   assert.equal(pkg.dsh.bundle.patch, "./cordis.patch.yml");
-  assert.deepEqual([...pkg.files].sort(), [".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".codexignore", "LICENSE", "THIRD_PARTY_NOTICES.md", "client.js", "coach", "codex", "cordis.patch.yml", "dist", "examples", "hooks", "host-skills", "skills", "spec", "types", "workflows"]);
+  assert.deepEqual([...pkg.files].sort(), [".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".codexignore", "CHANGELOG.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "client.js", "coach", "codex", "cordis.patch.yml", "dist", "examples", "hooks", "host-skills", "skills", "spec", "types", "workflows"]);
   assert.equal(pkg.scripts.postinstall, undefined, "no lifecycle scripts: installing must never need allowBuilds");
 });
 
