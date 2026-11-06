@@ -1,14 +1,23 @@
 // Projects on disk for the tests that go through the bundled CLI.
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { answerRequest } from "../../dist/bridge.js";
 import { forgetGitFacts } from "../../dist/host-git.js";
 import { decodeRequest } from "../../dist/hosts/claude-code/protocol.js";
 
 export const BUNDLE = fileURLToPath(new URL("../../dist/gemworks.mjs", import.meta.url));
+
+/** The bundle copied into `dir` by itself (its gemworks*.mjs files and the parser's copy, nothing else of the
+ * package): the path of its gemworks.mjs there. */
+export function copyBundle(dir) {
+  const dist = dirname(BUNDLE);
+  for (const f of readdirSync(dist)) if (f === "gemworks.mjs" || /^gemworks-.*\.mjs$/.test(f)) copyFileSync(join(dist, f), join(dir, f));
+  cpSync(join(dist, "vendor", "geml"), join(dir, "vendor", "geml"), { recursive: true });
+  return join(dir, "gemworks.mjs");
+}
 
 /** A git repository with one empty commit on main, checked out on `branch`. */
 export function gitRepo(branch = "feat/x") {

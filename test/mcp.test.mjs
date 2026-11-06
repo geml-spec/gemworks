@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BUNDLE, fakeGh, gitRepo, withWorkflow } from "./helpers/repo.mjs";
+import { BUNDLE, copyBundle, fakeGh, gitRepo, withWorkflow } from "./helpers/repo.mjs";
 import { flowDoc } from "./helpers/flow.mjs";
 
 const WS_DEV = fileURLToPath(new URL("./fixtures/ws-dev/", import.meta.url));
@@ -214,8 +214,7 @@ test("the server reads its version when asked, so the bundle answers on its own"
   const init = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } };
   assert.equal(mcp(root, [init]).get(1).result.serverInfo.version, VERSION);
   const alone = mkdtempSync(join(tmpdir(), "gemworks-mcp-bundle-"));
-  copyFileSync(BUNDLE, join(alone, "gemworks.mjs"));
-  const out = mcp(root, [init, call(2, "status")], [], { bundle: join(alone, "gemworks.mjs") });
+  const out = mcp(root, [init, call(2, "status")], [], { bundle: copyBundle(alone) });
   assert.equal(out.get(1).result.serverInfo.version, "unknown");
   assert.match(out.get(2).result.content[0].text, /state build/);
 });

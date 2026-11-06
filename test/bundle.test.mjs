@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { copyBundle } from "./helpers/repo.mjs";
 
 // The CLI the Claude Code plugin starts: dist/gemworks.mjs, the gemworks-*.mjs files it loads, and the parser
 // copied into dist/vendor/geml/ (scripts/bundle.mjs).
@@ -17,8 +18,7 @@ const FILES = [...OWN.map((f) => join(DIST, f)), ...readdirSync(VENDOR).filter((
 
 test("the bundle runs with no node_modules beside it: its own files and the parser's copy are all it needs", () => {
   const dir = mkdtempSync(join(tmpdir(), "gemworks-bundle-"));
-  for (const f of OWN) copyFileSync(join(DIST, f), join(dir, f));
-  cpSync(VENDOR, join(dir, "vendor", "geml"), { recursive: true });
+  copyBundle(dir);
   copyFileSync(CODING, join(dir, "flow.geml"));
   const usage = spawnSync(process.execPath, [join(dir, "gemworks.mjs")], { cwd: dir, encoding: "utf8" });
   assert.equal(usage.status, 2, usage.stderr);
