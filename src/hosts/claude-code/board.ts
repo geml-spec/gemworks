@@ -52,7 +52,21 @@ export type BoardRow =
   | { kind: "text"; text: string; tone: Tone }
   | { kind: "button"; key: string; label: string; action: BoardAction; primary?: boolean }
   /** Several buttons on one line. */
-  | { kind: "buttons"; items: Pressable[] }
+  | { kind: "buttons"; items: Pressable[]; end?: true }
+  /**
+   * A dialog's parts, drawn as the 2026-10-13 dialogs are: a small grey label over a group; a switch (a box, its words,
+   * a dim note under them) and one of several (a round mark, the same) whose whole row takes the press; a pick from a
+   * list (a Select where the surface has one, else its options as buttons, `actions` by option); facts in two
+   * columns; a shaded panel with a press at its end; links on one line; a thin rule.
+   */
+  | { kind: "label"; key: string; text: string }
+  | { kind: "check"; key: string; label: string; note?: string; on: boolean; action: BoardAction }
+  | { kind: "radio"; key: string; label: string; note?: string; on: boolean; action: BoardAction }
+  | { kind: "select"; key: string; label: string; options: { value: string; label: string }[]; value: string; actions: Record<string, BoardAction> }
+  | { kind: "facts"; key: string; rows: [string, string][] }
+  | { kind: "panel"; key: string; lines: { text: string; tone: Tone; bold?: true }[]; action?: Pressable }
+  | { kind: "linkrow"; key: string; items: { href: string; label: string }[] }
+  | { kind: "rule"; key: string }
   | { kind: "link"; key: string; href: string; label: string }
   /** A field: what it is for, the key it acts on (a tool, for a new use), and for a search its text so far, read as typed. */
   | { kind: "input"; key: string; placeholder: string; field: InputField; target?: string; value?: string }
@@ -124,7 +138,7 @@ export const ICON_SVG: Readonly<Record<Icon, string>> = { ask: iconSvg("ask"), d
  * The pane's line icons, drawn as the design draws them (docs/design/ui/2026-10-13-gemworks-ui): a tab's, a dialog's,
  * and each kind of journal entry's. Only where the surface draws pictures; elsewhere the words stand alone.
  */
-export type Glyph = BoardTab | "share" | "settings" | "upgrade" | "about" | "artifact" | "evidence" | "move" | "refused" | "start" | "waits" | "done" | "board" | "split" | "delete" | "locate" | "unfold" | "fold" | "box" | "boxon" | "go";
+export type Glyph = BoardTab | "share" | "settings" | "upgrade" | "about" | "radio" | "radioon" | "artifact" | "evidence" | "move" | "refused" | "start" | "waits" | "done" | "board" | "split" | "delete" | "locate" | "unfold" | "fold" | "box" | "boxon" | "go";
 const GLYPH_PATH: Readonly<Record<Glyph, string>> = {
   sessions: '<path d="M4 5h16v11H9l-5 4z"/>',
   flow: '<rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v5h11v3"/>',
@@ -147,6 +161,8 @@ const GLYPH_PATH: Readonly<Record<Glyph, string>> = {
   split: '<path d="M13 5h7v14h-7"/><path d="M3 12h10M10 9l3 3-3 3"/>',
   box: '<rect x="4" y="4" width="16" height="16" rx="4"/>',
   boxon: '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8.5 12.2l2.4 2.4 4.6-5"/>',
+  radio: '<circle cx="12" cy="12" r="8"/>',
+  radioon: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2" stroke-width="4"/>',
   go: '<path d="M9.5 6l6 6-6 6"/>',
   delete: '<path d="M5 7h14M9.5 7V4.5h5V7M7.5 7l.8 13h7.4l.8-13"/>',
   locate: '<circle cx="12" cy="12" r="3.5"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/>',

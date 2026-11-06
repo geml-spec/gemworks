@@ -190,7 +190,9 @@ export type BoardAction =
   | { op: "remove"; id: string }
   /** Under a `file:` unit, make this file the current work item (the shell's last written file). */
   | { op: "switch-file"; file: string; say?: string }
-  | { op: "share"; what: ShareWhat; how: ShareHow; strip: boolean; flow?: string };
+  | { op: "share"; what: ShareWhat; how: ShareHow; strip: boolean; flow?: string }
+  /** A pick in the share dialog: what to share, how, whether paths are stripped, which flow; the dialog redraws, nothing else. */
+  | { op: "share-pick"; what?: ShareWhat; how?: ShareHow; strip?: boolean; flow?: string };
 
 /** A button as the pure modules describe it: its address, its label, whether it is the main one, and what it does. */
 export interface Pressable { key: string; label: string; primary?: boolean; action: BoardAction; /** A menu entry's weight: one that destroys, one that only closes. */ tone?: "danger" | "quiet" }

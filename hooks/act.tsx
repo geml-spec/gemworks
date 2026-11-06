@@ -76,6 +76,7 @@ const sessionFlowAtom = atom({ plugin: 'gemworks', key: 'sessionFlow' } as const
 const sessionRunsAtom = atom({ plugin: 'gemworks', key: 'sessionRuns' } as const, [] as GemworksJson)
 const sessionsAllAtom = atom({ plugin: 'gemworks', key: 'sessionsAll' } as const, false as boolean)
 const settingsAtom = atom({ plugin: 'gemworks', key: 'settings' } as const, null as GemworksJson)
+const shareAtom = atom({ plugin: 'gemworks', key: 'share' } as const, { what: 'status', how: 'copy', strip: true } as GemworksJson)
 const tabAtom = atom({ plugin: 'gemworks', key: 'tab' } as const, HOME_TAB as GemworksTab)
 const tidyingAtom = atom({ plugin: 'gemworks', key: 'tidying' } as const, false as boolean)
 const toolMenuAtom = atom({ plugin: 'gemworks', key: 'toolMenu' } as const, null as string | null)
@@ -737,6 +738,12 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
       return
     }
     case 'share': await share($, action.what, action.how, action.strip, surface, action.flow); return
+    // A pick in the share dialog changes the dialog, nothing else.
+    case 'share-pick': {
+      const { op: _op, ...pick } = action
+      await update($, shareAtom, (was) => ({ ...(((was as unknown) as Record<string, unknown> | null) ?? { what: 'status', how: 'copy', strip: true }), ...pick }) as unknown as GemworksJson)
+      return
+    }
     default: return
   }
 }

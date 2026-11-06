@@ -2063,7 +2063,7 @@ function press($: EngineInterface, action: BoardAction): (e: { surface: string }
 // ---- the drawings ---------------------------------------------------------------------
 
 /** The elements, loosely typed: the pane is drawn on every surface, and only some have Input or Link. */
-type Els = { Box: any; Text: any; Button: any; Link?: any; Input?: any; Svg?: any; Markdown?: any }
+type Els = { Box: any; Text: any; Button: any; Link?: any; Input?: any; Select?: any; Svg?: any; Markdown?: any }
 
 /** A link that opens `href`; its words and the address where the surface draws no links. */
 function drawLink(els: Els, key: string, href: string, label: string): unknown {
@@ -2274,10 +2274,76 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
           : <Text dimColor wrap="truncate-end">{row.detail}</Text>}
       </Box>
     )
+    // The dialogs' parts, as the 2026-10-13 dialogs draw them (BoardRow says what each is).
+    case 'label': return (
+      <Box key={row.key} marginTop={i > 0 ? 1 : 0}>
+        <Text dimColor size="caption" weight="semibold">{row.text}</Text>
+      </Box>
+    )
+    case 'check':
+    case 'radio': {
+      const on = row.on
+      if (els.Svg === undefined) {
+        const mark = row.kind === 'check' ? (on ? '[x]' : '[ ]') : (on ? '(•)' : '( )')
+        return (
+          <Box key={`${row.key}-row`} flexDirection="column">
+            <Button key={row.key} plain label={`${mark} ${row.label}`} onPress={press($, row.action)} />
+            {row.note !== undefined && <Text dimColor>{`    ${row.note}`}</Text>}
+          </Box>
+        )
+      }
+      // The mark takes the press laid over it and the words are a button of the same press; the note under them wraps.
+      const glyph: Glyph = row.kind === 'check' ? (on ? 'boxon' : 'box') : (on ? 'radioon' : 'radio')
+      return (
+        <Box key={`${row.key}-row`} gap={1} alignItems="flex-start" hover={{ backgroundColor: SHADE }}>
+          {iconButton($, els, { key: `${row.key}-mark`, label: row.label, action: row.action }, glyph, { tone: on ? 'active' : 'dim', from: 'left', size: 16, tip: false })}
+          <Box flexDirection="column" flexGrow={1} minWidth={0}>
+            <Button key={row.key} plain label={row.label} onPress={press($, row.action)} />
+            {/* The note as words that wrap: a long one in a button might be cut at the pane's edge. */}
+            {row.note !== undefined && <Text dimColor size="footnote" wrap="wrap">{row.note}</Text>}
+          </Box>
+        </Box>
+      )
+    }
+    case 'select': {
+      const { Select } = els
+      const pick = (value: string): void => { const a = row.actions[value]; if (a !== undefined) void act($, a).catch((err: unknown) => $.ui.toast(`gemworks：${reasonOf(err)}`)) }
+      if (Select === undefined) return (
+        <Box key={row.key} gap={1} flexWrap="wrap">
+          {row.options.map((o) => <Button key={`${row.key}-${o.value}`} label={o.label} {...(o.value === row.value ? { variant: 'primary' } : {})} onPress={() => pick(o.value)} />)}
+        </Box>
+      )
+      return <Select key={row.key} label={row.label} options={row.options} value={row.value} onSelect={(value: string) => pick(value)} />
+    }
+    case 'facts': return (
+      <Box key={row.key} flexDirection="column">
+        {row.rows.map(([name, value], n) => (
+          <Box key={`${row.key}-${n}`} gap={2}>
+            <Box width={Math.max(...row.rows.map(([k]) => cellWidth(k))) + 1} flexShrink={0}><Text dimColor>{name}</Text></Box>
+            <Text>{value}</Text>
+          </Box>
+        ))}
+      </Box>
+    )
+    case 'panel': return (
+      <Box key={row.key} gap={1} borderStyle="round" {...(els.Svg !== undefined ? { borderColor: RULE, backgroundColor: SHADE } : { borderDimColor: true })} paddingX={1} alignItems="center">
+        <Box flexDirection="column" flexGrow={1} minWidth={0}>
+          {row.lines.map((l, n) => <Text key={`${row.key}-${n}`} {...toneProps(l.tone)} {...(l.bold === true ? { weight: 'semibold' as const } : {})} wrap="wrap">{l.text}</Text>)}
+        </Box>
+        {row.action !== undefined && <Button key={row.action.key} label={row.action.label} onPress={press($, row.action.action)} />}
+      </Box>
+    )
+    case 'linkrow': return (
+      <Box key={row.key} gap={3} flexWrap="wrap">
+        {row.items.map((x, n) => drawLink(els, `${row.key}-${n}`, x.href, x.label))}
+      </Box>
+    )
+    case 'rule': return hairline(els, row.key)
     case 'text': return <Text key={`r${i}`} {...toneProps(row.tone)}>{row.text}</Text>
     case 'button': return <Button key={row.key} plain label={row.label} {...(row.primary ? { variant: 'primary' } : {})} onPress={press($, row.action)} />
     case 'buttons': return (
       <Box key={`b${i}`} gap={2}>
+        {row.end === true && <Box flexGrow={1} />}
         {row.items.map((b) => <Button key={b.key} label={b.label} {...(b.primary ? { variant: 'primary' } : {})} onPress={press($, b.action)} />)}
       </Box>
     )
@@ -2541,11 +2607,13 @@ async function headerRows($: EngineInterface, t: T): Promise<Header> {
 
 /** The settings, upgrade, about and share dialogs as rows. */
 async function dialogRows($: EngineInterface, t: T, dialog: Dialog, columns: number, surface: string): Promise<BoardRow[]> {
-  // The terminal has a clipboard and desktop notifications; the desktop app gives a plugin neither.
+  // Drawn as the 2026-10-13 dialogs (docs/design/ui): a small grey label over each group, switches and one-of-several
+  // whose whole row takes the press, a Select for a pick from a list, a shaded panel, facts in two columns, links on
+  // one line. The terminal has a clipboard and desktop notifications; the desktop app gives a plugin neither.
   const terminal = surface === 'terminal'
   const text = (s: string, tone: Tone = 'normal'): BoardRow => ({ kind: 'text', text: truncate(s, columns), tone })
-  const section = (key: string, s: string): BoardRow => ({ kind: 'section', key, text: s })
-  const toggle = (label: string, key: string, on: boolean): Pressable => ({ key: `set-${key}`, label: `${on ? '[x]' : '[ ]'} ${label}`, action: { op: 'setting', key, value: !on } })
+  const label = (key: string, s: string): BoardRow => ({ kind: 'label', key, text: s })
+  const check = (key: string, on: boolean, words: string, note?: string): BoardRow => ({ kind: 'check', key: `set-${key}`, label: words, ...(note !== undefined ? { note } : {}), on, action: { op: 'setting', key, value: !on } })
   const rows: BoardRow[] = []
   const [shell, stored, s, locale, known, picked, shown, status] = await Promise.all([
     readShell($), read($, versionAtom), readSettings($), read($, localeAtom), read($, latestAtom), read($, shareAtom), read($, sharedTextAtom),
@@ -2557,52 +2625,55 @@ async function dialogRows($: EngineInterface, t: T, dialog: Dialog, columns: num
     // diagnosis is /gemworks trace: it is for chasing a board problem, not for the person.
     const system = langOf('system', shell?.locale ?? locale ?? undefined)
     const names: Record<string, string> = { zh: '中文', en: 'English', ja: '日本語' }
-    rows.push(section('language', t('语言')), { kind: 'buttons', items: ([['system', t('跟随系统（{0}）', names[system] ?? system)], ['zh', '中文'], ['en', 'English'], ['ja', '日本語']] as const).map(([v, label]): Pressable => ({ key: `lang-${v}`, label, ...(s.language === v ? { primary: true } : {}), action: { op: 'setting', key: 'language', value: v } })) })
-    rows.push(text(t('状态带、看板、提醒的文字跟着换；流程自己的标题和说明保持作者写的语言。'), 'dim'))
-    rows.push(section('judge', t('状态带')), { kind: 'buttons', items: [toggle(t('打字就能回答状态带上的问题'), 'judge.enabled', s.judge.enabled)] }, text(t('用小模型把你打的字对上等你定的问题；有把握直接选，否则先问。'), 'dim'))
-    rows.push(section('learn', t('学习')), { kind: 'buttons', items: [toggle(t('从你的纠正里提议做法和流程步骤'), 'learn.enabled', s.learn.enabled)] }, text(t('每条提示词交给小模型归类，攒成纠正账本、提议流程步骤；关掉后不再读你的提示词。'), 'dim'))
+    const languages: [string, string][] = [['system', t('跟随系统（{0}）', names[system] ?? system)], ['zh', '中文'], ['en', 'English'], ['ja', '日本語']]
+    rows.push(label('language', t('语言')), {
+      kind: 'select', key: 'lang', label: t('偏好语言'), value: s.language,
+      options: languages.map(([value, l]) => ({ value, label: l })),
+      actions: Object.fromEntries(languages.map(([value]) => [value, { op: 'setting', key: 'language', value } as BoardAction])),
+    }, text(t('状态带、看板、提醒的文字跟着换；流程自己的标题和说明保持作者写的语言。'), 'dim'))
+    rows.push(label('judge', t('状态带')), check('judge.enabled', s.judge.enabled, t('打字就能回答状态带上的问题'), t('用小模型把你打的字对上等你定的问题；有把握直接选，否则先问。')))
+    rows.push(label('learn', t('学习')), check('learn.enabled', s.learn.enabled, t('从你的纠正里提议做法和流程步骤'), t('每条提示词交给小模型归类，攒成纠正账本、提议流程步骤；关掉后不再读你的提示词。')))
     if (terminal) {
-      rows.push(section('notify', t('桌面提醒')),
-        { kind: 'buttons', items: [toggle(t('有问题等你定'), 'notify.inbox', s.notify.inbox)] },
-        { kind: 'buttons', items: [toggle(t('工作项到了要你确认的一步'), 'notify.confirm', s.notify.confirm)] },
-        { kind: 'buttons', items: [toggle(t('被规定拦下'), 'notify.refusal', s.notify.refusal)] }, text(`    ${t('同一原因 3 分钟内只提一次')}`, 'dim'))
-      if (shell?.status !== null && shell?.status !== undefined) rows.push(section('strict', t('严格流程')), { kind: 'buttons', items: [toggle(t('阶段变更时提醒'), 'notify.stage', s.notify.stage)] })
+      rows.push(label('notify', t('桌面提醒')),
+        check('notify.inbox', s.notify.inbox, t('有问题等你定')),
+        check('notify.confirm', s.notify.confirm, t('工作项到了要你确认的一步')),
+        check('notify.refusal', s.notify.refusal, t('被规定拦下'), t('同一原因 3 分钟内只提一次')))
+      if (shell?.status !== null && shell?.status !== undefined) rows.push(label('strict', t('严格流程')), check('notify.stage', s.notify.stage, t('阶段变更时提醒')))
     }
   } else if (dialog === 'upgrade') {
     const latest = known as unknown as { version?: string; error?: string } | null
-    rows.push({ kind: 'heading', key: 'version', text: t('当前 {0}', version), sub: '' })
-    if (latest === null) rows.push(text('…', 'dim'))
-    else if (latest.version !== undefined) rows.push(isNewer(latest.version, version) ? text(t('● 可更新 {0}', latest.version), 'warning') : latest.version === version ? text(t('已是最新'), 'success') : text(t('已发布 {0}', latest.version), 'dim'))
+    const newer = latest?.version !== undefined && isNewer(latest.version, version) ? latest.version : undefined
     // npm answers 404 for a package not published yet: that is what to say, not the status code.
-    else rows.push(text(latest.error === 'HTTP 404' ? t('尚未发布到 npm，无法检查更新') : t('无法检查更新：{0}', latest.error ?? '?'), 'dim'))
+    const where = latest === null ? { text: '…', tone: 'dim' as Tone }
+      : latest.version !== undefined ? (newer !== undefined ? { text: t('● 可更新 {0}', newer), tone: 'warning' as Tone } : latest.version === version ? { text: t('已是最新'), tone: 'success' as Tone } : { text: t('已发布 {0}', latest.version), tone: 'dim' as Tone })
+      : { text: latest.error === 'HTTP 404' ? t('尚未发布到 npm，无法检查更新') : t('无法检查更新：{0}', latest.error ?? '?'), tone: 'dim' as Tone }
+    rows.push({ kind: 'panel', key: 'version', lines: [{ text: t('当前 {0}', version), tone: 'normal', bold: true }, where], action: { key: 'check-update', label: t('检查更新'), action: { op: 'check-update' } } })
     const market = marketplaceOf($.plugin.root)
     const command = `claude plugin update gemworks${market !== undefined ? `@${market}` : ''}`
-    rows.push({ kind: 'buttons', items: [
-      { key: 'check-update', label: t('检查更新'), action: { op: 'check-update' } },
-      ...(terminal && latest?.version !== undefined && isNewer(latest.version, version) ? [{ key: 'copy-update', label: `${t('更新')}: ${command}`, primary: true, action: { op: 'copy', text: command } } as Pressable] : []),
-    ] })
-    if (!terminal && latest?.version !== undefined && isNewer(latest.version, version)) rows.push(text(t('更新命令（在终端里运行）'), 'dim'), { kind: 'prose', key: 'update-command', text: command })
+    if (newer !== undefined) {
+      if (terminal) rows.push({ kind: 'buttons', items: [{ key: 'copy-update', label: `${t('更新')}: ${command}`, primary: true, action: { op: 'copy', text: command } }] })
+      else rows.push(text(t('更新命令（在终端里运行）'), 'dim'), { kind: 'prose', key: 'update-command', text: command })
+    }
     // What this version brings: its section of the CHANGELOG the plugin ships, as written; nothing when it has none.
     let notes: string[] = []
     try { notes = releaseNotesOf(String(await $.fs.read(`${$.plugin.root}/CHANGELOG.md`)), version) } catch { /* no CHANGELOG beside the plugin */ }
     if (notes.length > 0) {
-      rows.push(section('notes', t('这一版有什么')))
+      rows.push(label('notes', t('这一版有什么')))
       for (const line of notes) rows.push(text(`· ${line}`))
     }
-    rows.push({ kind: 'link', key: 'link-changelog', href: LINKS.changelog, label: t('完整 CHANGELOG') })
+    rows.push({ kind: 'linkrow', key: 'link-changelog', items: [{ href: LINKS.changelog, label: t('完整 CHANGELOG') }] }, { kind: 'rule', key: 'rule-upgrade' })
     if (market !== undefined) rows.push(text(t('装在 marketplace {0}', market), 'dim'))
-    rows.push(text(t('更新后下一个会话生效；本会话不受影响'), 'dim'))
-    rows.push({ kind: 'buttons', items: [toggle(t('有新版本时在看板上提示'), 'notify.update', s.notify.update)] })
+    rows.push(text(t('更新后下一个会话生效；本会话不受影响'), 'dim'), check('notify.update', s.notify.update, t('有新版本时在看板上提示')))
   } else if (dialog === 'about') {
     rows.push({ kind: 'image', key: 'lockup', svg: LOCKUP_SVG, alt: 'Gemworks', width: 180 })
     rows.push(text(t('把写下一条提示词前要看的信息放在一处：工作进度、待决定事项、产物。流程用 GEML 编写，可替换、调整、导入。')))
-    rows.push(text(t('插件 gemworks {0}', version), 'dim'), text(t('许可 {0}', LICENSE), 'dim'))
+    rows.push({ kind: 'facts', key: 'facts', rows: [[t('插件'), `gemworks ${version}`], [t('许可'), LICENSE]] }, { kind: 'rule', key: 'rule-about' })
     const zh = langOf(s.language, shell?.locale ?? locale ?? undefined) === 'zh'
-    rows.push(
-      { kind: 'link', key: 'link-docs', href: zh ? LINKS.docs.zh : LINKS.docs.other, label: t('说明文档') },
-      { kind: 'link', key: 'link-repo', href: LINKS.repo, label: t('仓库') },
-      { kind: 'link', key: 'link-feedback', href: LINKS.feedback, label: t('反馈') },
-    )
+    rows.push({ kind: 'linkrow', key: 'links', items: [
+      { href: zh ? LINKS.docs.zh : LINKS.docs.other, label: t('说明文档') },
+      { href: LINKS.repo, label: t('仓库') },
+      { href: LINKS.feedback, label: t('反馈') },
+    ] })
   } else {
     const here = shell?.status
     if (here?.item.kind === 'item') rows.push({ kind: 'heading', key: 'share-title', text: t('分享 {0}', here.title ?? here.item.id), sub: '' })
@@ -2622,15 +2693,15 @@ async function dialogRows($: EngineInterface, t: T, dialog: Dialog, columns: num
       ...(strict ? [['journal', t('这个工作项的记录'), t('每次阶段变更、凭据、产物、被拦，带哈希链，对方能校验')] as [ShareWhat, string, string]] : []),
     ]
     const choice = whats.some(([w]) => w === kept.what) ? kept : { ...kept, what: 'status' as ShareWhat }
-    rows.push(section('what', t('分享什么')))
-    for (const [what, label, note] of whats) rows.push({ kind: 'button', key: `what-${what}`, label: `${choice.what === what ? '(•)' : '( )'} ${label}  ${note}`, action: { op: 'share-pick', what } as unknown as BoardAction })
-    if (choice.what === 'flow' && flowChoices.length > 1) rows.push({ kind: 'buttons', items: flowChoices.map((f): Pressable => ({ key: `flow-${f.name}`, label: f.title, ...(f.name === flowName ? { primary: true } : {}), action: { op: 'share-pick', flow: f.name } as unknown as BoardAction })) })
-    rows.push(section('how', t('怎么给')), { kind: 'buttons', items: ([['copy', terminal ? t('复制文字') : t('显示文字')], ['file', t('存成文件')], ['pr', t('PR 评论')]] as const).map(([how, label]): Pressable => ({ key: `how-${how}`, label, ...(choice.how === how ? { primary: true } : {}), action: { op: 'share-pick', how } as unknown as BoardAction })) })
-    if (choice.what === 'status') {
-      for (const line of status.split('\n')) if (line !== '') rows.push(text(`  ${line}`, 'dim'))
+    rows.push(label('what', t('分享什么')))
+    for (const [what, words, note] of whats) {
+      rows.push({ kind: 'radio', key: `what-${what}`, label: words, note, on: choice.what === what, action: { op: 'share-pick', what } })
+      if (what === 'flow' && choice.what === 'flow' && flowChoices.length > 1) rows.push({ kind: 'buttons', items: flowChoices.map((f): Pressable => ({ key: `flow-${f.name}`, label: f.title, ...(f.name === flowName ? { primary: true } : {}), action: { op: 'share-pick', flow: f.name } })) })
     }
-    rows.push({ kind: 'buttons', items: [{ key: 'strip', label: `${choice.strip ? '[x]' : '[ ]'} ${t('去掉命令行里的绝对路径')}`, action: { op: 'share-pick', strip: !choice.strip } as unknown as BoardAction }] })
-    rows.push({ kind: 'buttons', items: [
+    rows.push(label('how', t('怎么给')), { kind: 'buttons', items: ([['copy', terminal ? t('复制文字') : t('显示文字')], ['file', t('存成文件')], ['pr', t('PR 评论')]] as const).map(([how, words]): Pressable => ({ key: `how-${how}`, label: words, ...(choice.how === how ? { primary: true } : {}), action: { op: 'share-pick', how } })) })
+    if (choice.what === 'status') rows.push({ kind: 'panel', key: 'preview', lines: status.split('\n').filter((line) => line !== '').map((line) => ({ text: line, tone: 'normal' as Tone })) })
+    rows.push({ kind: 'check', key: 'strip', label: t('去掉命令行里的绝对路径'), on: choice.strip, action: { op: 'share-pick', strip: !choice.strip } })
+    rows.push({ kind: 'buttons', end: true, items: [
       { key: 'share-cancel', label: t('取消'), action: { op: 'dialog', dialog: null } },
       { key: 'share-go', label: choice.how === 'copy' ? (terminal ? t('复制') : t('显示')) : choice.how === 'file' ? t('存成文件') : t('发 PR 评论'), primary: true, action: { op: 'share', what: choice.what, how: choice.how, strip: choice.strip, ...(choice.what === 'flow' && flowName !== undefined ? { flow: flowName } : {}) } },
     ] })
@@ -3457,16 +3528,6 @@ export const register: Register = (on) => {
         {dialog === null && <Text dimColor> </Text>}
       </Box>
     )
-  })
-
-  // The share dialog's picks are the module's own, not the board's: they change the dialog, nothing else.
-  on('ui.press', { plugin: 'gemworks', requestId: 'gemworks-dialog' }, async ($, e, next) => {
-    const m = e.element.match(/^(what|how|strip|flow)(?:-(.+))?$/)
-    if (m === null) return next(e)
-    const choice = ((await read($, shareAtom)) as unknown as { what: ShareWhat; how: ShareHow; strip: boolean; flow?: string } | null) ?? { what: 'status', how: 'copy', strip: true }
-    const value = m[1] === 'what' ? { ...choice, what: m[2] as ShareWhat } : m[1] === 'how' ? { ...choice, how: m[2] as ShareHow } : m[1] === 'flow' ? { ...choice, flow: m[2] ?? '' } : { ...choice, strip: !choice.strip }
-    await update($, shareAtom, () => value as unknown as GemworksJson)
-    return next(e)
   })
 
   // /gemworks (spec §8.3). The board opens only when asked, so it is placed at any width.
