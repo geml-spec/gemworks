@@ -1,6 +1,6 @@
 # Third-party notices
 
-gemworks is licensed under the GNU Affero General Public License v3.0 (see LICENSE). Its bundle (`dist/gemworks.mjs`) carries the code below under its own license.
+gemworks is licensed under the GNU Affero General Public License v3.0 (see LICENSE). The package carries the code below, unchanged, in `dist/vendor/geml/`, under its own license (a copy of the license is there too); the bundle (`dist/gemworks.mjs` and the `dist/gemworks-*.mjs` files it loads) imports it.
 
 ## @geml/geml
 

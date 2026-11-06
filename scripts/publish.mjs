@@ -1,11 +1,11 @@
-// Publish this package three times, the same build under three names: `gemworks`; `gemwork`, so that a name typed
-// without its last letter installs ours; and `gwx`, the short command's name, so that `npx gwx` runs ours and never a
-// stranger's package. The name is changed in package.json for each later publish and always put back.
+// Publish this package twice, the same build under two names: `gemworks`; and `gemwork`, so that a name typed without
+// its last letter installs ours. (npm refuses `gwx` as too like other names; the `gwx` command comes with `gemworks`.)
+// The name is changed in package.json for the later publish and always put back.
 // Usage: node scripts/publish.mjs [npm publish options…]   (e.g. --dry-run, --tag beta, --otp 123456)
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
-const NAMES = ["gemworks", "gemwork", "gwx"];
+const NAMES = ["gemworks", "gemwork"];
 const file = new URL("../package.json", import.meta.url);
 const original = readFileSync(file, "utf8");
 const pkg = JSON.parse(original);

@@ -1,21 +1,28 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { copyBundle } from "./helpers/repo.mjs";
 
-const BUNDLE = fileURLToPath(new URL("../dist/gemworks.mjs", import.meta.url));
+// The CLI the Claude Code plugin starts: dist/gemworks.mjs, the gemworks-*.mjs files it loads, and the parser
+// copied into dist/vendor/geml/ (scripts/bundle.mjs).
+const DIST = fileURLToPath(new URL("../dist/", import.meta.url));
 const CODING = fileURLToPath(new URL("../workflows/coding/flow.geml", import.meta.url));
+const OWN = readdirSync(DIST).filter((f) => f === "gemworks.mjs" || /^gemworks-.*\.mjs$/.test(f));
+const VENDOR = join(DIST, "vendor", "geml");
+const FILES = [...OWN.map((f) => join(DIST, f)), ...readdirSync(VENDOR).filter((f) => f.endsWith(".js")).map((f) => join(VENDOR, f))];
 
-test("the bundle is one file that runs with no node_modules beside it", () => {
+test("the bundle runs with no node_modules beside it: its own files and the parser's copy are all it needs", () => {
   const dir = mkdtempSync(join(tmpdir(), "gemworks-bundle-"));
-  copyFileSync(BUNDLE, join(dir, "gemworks.mjs"));
+  copyBundle(dir);
   copyFileSync(CODING, join(dir, "flow.geml"));
   const usage = spawnSync(process.execPath, [join(dir, "gemworks.mjs")], { cwd: dir, encoding: "utf8" });
-  assert.equal(usage.status, 2);
-  assert.match(usage.stderr, /^usage: gemworks /);
+  assert.equal(usage.status, 2, usage.stderr);
+  assert.match(usage.stderr, /^usage: gemworks /, "the parser's CLI hand-off fires only when its own geml.js is the script run");
   const check = spawnSync(process.execPath, [join(dir, "gemworks.mjs"), "check", "flow.geml"], { cwd: dir, encoding: "utf8" });
   assert.equal(check.status, 0, check.stderr);
 });
@@ -24,15 +31,25 @@ test("the bundle, run from the plugin's dist/, says the parser's own version, no
   const parser = JSON.parse(readFileSync(new URL("../node_modules/@geml/geml/package.json", import.meta.url), "utf8")).version;
   const gemworks = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
   const dir = mkdtempSync(join(tmpdir(), "gemworks-bundle-"));
-  const r = spawnSync(process.execPath, [BUNDLE, "hook"], { cwd: dir, encoding: "utf8", input: `${JSON.stringify({ v: 1, op: "status", root: dir })}\n` });
+  const r = spawnSync(process.execPath, [join(DIST, "gemworks.mjs"), "hook"], { cwd: dir, encoding: "utf8", input: `${JSON.stringify({ v: 1, op: "status", root: dir })}\n` });
   const answer = JSON.parse(r.stdout.trim().split("\n").pop());
   assert.deepEqual(answer.shell?.versions, { gemworks, parser }, r.stderr);
 });
 
-test("the bundle imports only Node's built-ins and carries no parser CLI hand-off", () => {
-  const src = readFileSync(BUNDLE, "utf8");
-  const specs = [...src.matchAll(/^import\s[^;]*?from\s*"([^"]+)";?$/gm)].map((m) => m[1]);
-  assert.ok(specs.length > 0);
-  for (const s of specs) assert.match(s, /^node:/, s);
-  assert.doesNotMatch(src, /if \(isCliInvocation\(\)\) \{/);
+test("the bundle's files import only Node's built-ins and each other", () => {
+  const IMPORT = /(?:^|[\s;])(?:import|export)\s[^;]*?from\s*["']([^"']+)["']|(?:^|[\s;])import\s*\(?\s*["']([^"']+)["']/gm;
+  for (const file of FILES) {
+    const code = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const specs = [...code.matchAll(IMPORT)].map((m) => m[1] ?? m[2]);
+    for (const s of specs) {
+      if (isBuiltin(s)) continue;
+      if (s.includes("${")) continue; // text the parser writes into a page it renders, not an import of its own
+      assert.match(s, /^\.\.?\//, `${file}: ${s} is neither a built-in nor a file of the bundle`);
+      assert.ok(existsSync(resolve(dirname(file), s)), `${file}: ${s} is missing`);
+    }
+  }
+  const parser = JSON.parse(readFileSync(join(VENDOR, "package.json"), "utf8"));
+  const installed = JSON.parse(readFileSync(new URL("../node_modules/@geml/geml/package.json", import.meta.url), "utf8"));
+  assert.deepEqual([parser.name, parser.version, parser.type], ["@geml/geml", installed.version, "module"], "the copy is the installed parser's release, as ES modules");
+  assert.ok(existsSync(join(VENDOR, "LICENSE")), "the parser's MIT license travels with its copy");
 });
