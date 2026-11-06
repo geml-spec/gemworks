@@ -17,13 +17,13 @@ the published `@geml/geml` parser and nothing else at runtime.
 
 ## Build and check
 
-Run each gate as its own command and report it; all four take 4–6 minutes on Windows.
+Run each gate as its own command and report it; together they take about 6 minutes on Windows, the suite about 4.
 
 ```sh
 npm run build                                     # tsc + bundle
 claude plugin validate .
 claude plugin test .
-node --test --test-concurrency=2 test/*.test.mjs  # includes the hooks type check
+node test/all.mjs                                 # six lanes at low priority; includes the hooks type check
 ```
 
 A gate that finds nothing to check (no type declarations, no prerequisite) has failed, not passed.
