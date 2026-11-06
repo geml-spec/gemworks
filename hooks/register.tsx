@@ -47,7 +47,7 @@ import { COACH_FLOWS, coachBand, goneOnAfterTurn, itemProgress, readCoachFlow, s
 import type { CoachFlow, CoachFocus, Doing, GoneOn, WorkGroup, WorkItem } from '../dist/hosts/claude-code/coach.js'
 import { memoryMoveContext, PRACTICE_PROMPT, PRACTICE_TOOL, practiceContext } from '../dist/hosts/claude-code/practice.js'
 import { isNew, newPractices, type Practice } from '../dist/core/practices.js'
-import { expireEvent, expiring, flowText, GROWTH_PROMPT, isRulesFile, newProposals, parseProposals, parseRules, PROPOSE_TOOL, proposalsText, RULE_TOOL, ruleRefusal, rulesText, skippedSteps, type Proposal, type Rule } from '../dist/hosts/claude-code/growth.js'
+import { expireEvent, expiring, exportText as flowExport, flowText, GROWTH_PROMPT, isRulesFile, newProposals, parseProposals, parseRules, PROPOSE_TOOL, proposalsText, RULE_TOOL, ruleRefusal, rulesText, skippedSteps, type Proposal, type Rule } from '../dist/hosts/claude-code/growth.js'
 import { keysOf } from '../dist/core/dictionary.js'
 import { isVisualTool, visualFileName, visualPage } from '../dist/hosts/claude-code/visual.js'
 import { transcriptEvents, type Transcript } from '../dist/core/transcript.js'
