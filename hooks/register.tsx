@@ -256,7 +256,17 @@ const REFUSAL_NOTIFY_MS = 3 * 60_000
 const PROMPTS_KEPT = 300
 const STORE_SETTINGS = 'settings'
 const REGISTRY = 'https://registry.npmjs.org/gemworks/latest'
-const LINKS = { spec: 'https://github.com/geml-spec/geml/tree/main/integrations/gemworks/spec', repo: 'https://github.com/geml-spec/geml/tree/main/integrations/gemworks', feedback: 'https://github.com/geml-spec/geml/issues', changelog: 'https://github.com/geml-spec/geml/blob/main/CHANGELOG.md' }
+/** This project's repository and license, as package.json names them (the smoke test holds them to it). */
+const REPO = 'https://github.com/geml-spec/gemworks'
+const LICENSE = 'AGPL-3.0-only'
+/** The about and upgrade dialogs' links; the docs and the flow spec in the reader's language where there is a Chinese page. */
+const LINKS = {
+  docs: { zh: `${REPO}/blob/main/README.zh.md`, other: `${REPO}#readme` },
+  spec: { zh: `${REPO}/blob/main/spec/workflow_CN.md`, other: `${REPO}/blob/main/spec/workflow.md` },
+  repo: REPO,
+  feedback: `${REPO}/issues`,
+  changelog: `${REPO}/blob/main/CHANGELOG.md`,
+}
 
 /**
  * Whether a directory holds a `.git` entry, as `$.fs.stat` first answered for
@@ -3178,7 +3188,7 @@ text(t('排查看板问题时打开；开着会在对话里刷诊断行。'), 'd
     const names: Record<string, string> = { zh: '中文', en: 'English', ja: '日本語' }
     rows.push(section('language', t('语言')), { kind: 'buttons', items: ([['system', t('跟随系统（{0}）', names[system] ?? system)], ['zh', '中文'], ['en', 'English'], ['ja', '日本語']] as const).map(([v, label]): Pressable => ({ key: `lang-${v}`, label, ...(s.language === v ? { primary: true } : {}), action: { op: 'setting', key: 'language', value: v } })) })
     rows.push(text(t('状态带、看板、提醒的文字跟着换；流程自己的标题和说明保持作者写的语言。'), 'dim'))
-    rows.push(text(t('流程在「流程」页换和调整，工具在「工具」页归类，都写回仓库里的文件。'), 'dim'))
+    rows.push(text(t('流程在「流程」页换和调整，工具在「工具」页归类，都存在项目的 .geml/ 目录里。'), 'dim'))
   } else if (dialog === 'upgrade') {
     const latest = known as unknown as { version?: string; error?: string } | null
     rows.push({ kind: 'heading', key: 'version', text: t('当前 {0}', version), sub: '' })
@@ -3204,18 +3214,27 @@ text(t('排查看板问题时打开；开着会在对话里刷诊断行。'), 'd
     rows.push({ kind: 'image', key: 'lockup', svg: LOCKUP_SVG, alt: 'Gemworks', width: 180 })
     rows.push(text(t('把写下一条提示词前要看的信息放在一处：工作进度、待决定事项、产物。流程用 GEML 编写，可替换、调整、导入。')))
     rows.push(text(t('插件 gemworks {0}', version), 'dim'), text(t('解析器 @geml/geml {0}', shell?.versions?.parser ?? '?'), 'dim'))
-    rows.push(text(t('流程格式 geml-statechart/v1'), 'dim'), text(t('许可 MIT'), 'dim'))
-    rows.push({ kind: 'link', key: 'link-spec', href: LINKS.spec, label: t('规范与文档') }, { kind: 'link', key: 'link-repo', href: LINKS.repo, label: t('仓库') }, { kind: 'link', key: 'link-feedback', href: LINKS.feedback, label: t('反馈') })
+    rows.push(text(t('流程格式 geml-statechart/v1'), 'dim'), text(t('许可 {0}', LICENSE), 'dim'))
+    const zh = langOf(s.language, shell?.locale ?? locale ?? undefined) === 'zh'
+    rows.push(
+      { kind: 'link', key: 'link-docs', href: zh ? LINKS.docs.zh : LINKS.docs.other, label: t('说明文档') },
+      { kind: 'link', key: 'link-spec', href: zh ? LINKS.spec.zh : LINKS.spec.other, label: t('流程规范') },
+      { kind: 'link', key: 'link-repo', href: LINKS.repo, label: t('仓库') },
+      { kind: 'link', key: 'link-feedback', href: LINKS.feedback, label: t('反馈') },
+    )
   } else {
-    const choice = (picked as unknown as { what: ShareWhat; how: ShareHow; strip: boolean } | null) ?? { what: 'status', how: 'copy', strip: true }
     const here = shell?.status
     if (here?.item.kind === 'item') rows.push({ kind: 'heading', key: 'share-title', text: t('分享 {0}', here.title ?? here.item.id), sub: '' })
+    // A journal and a workflow copy are a statechart workflow's: a project on the light flows alone has neither, and exporting them would only fail.
+    const strict = here !== null && here !== undefined
     const whats: [ShareWhat, string, string][] = [
       ['status', t('现在在哪'), t('进度、待办、最近产物')],
-      ['journal', t('这个工作项的记录'), t('每次阶段变更、凭据、产物、被拦，带哈希链，对方能校验')],
+      ...(strict ? [['journal', t('这个工作项的记录'), t('每次阶段变更、凭据、产物、被拦，带哈希链，对方能校验')] as [ShareWhat, string, string]] : []),
       ['session', t('本会话'), t('提示词和那一轮做了什么；工具调用的输出不带')],
-      ['workflow', t('流程与工具词典'), t('流程文件和它用的工具，给别的项目用')],
+      ...(strict ? [['workflow', t('流程与工具词典'), t('流程文件和它用的工具，给别的项目用')] as [ShareWhat, string, string]] : []),
     ]
+    const kept = (picked as unknown as { what: ShareWhat; how: ShareHow; strip: boolean } | null) ?? { what: 'status', how: 'copy', strip: true }
+    const choice = whats.some(([w]) => w === kept.what) ? kept : { ...kept, what: 'status' as ShareWhat }
     rows.push(section('what', t('分享什么')))
     for (const [what, label, note] of whats) rows.push({ kind: 'button', key: `what-${what}`, label: `${choice.what === what ? '(•)' : '( )'} ${label}  ${note}`, action: { op: 'share-pick', what } as unknown as BoardAction })
     rows.push(section('how', t('怎么给')), { kind: 'buttons', items: ([['copy', terminal ? t('复制文字') : t('显示文字')], ['file', t('存成文件')], ['pr', t('PR 评论')]] as const).map(([how, label]): Pressable => ({ key: `how-${how}`, label, ...(choice.how === how ? { primary: true } : {}), action: { op: 'share-pick', how } as unknown as BoardAction })) })
