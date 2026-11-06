@@ -27,6 +27,15 @@ test("the bundle runs with no node_modules beside it: its own files and the pars
   assert.equal(check.status, 0, check.stderr);
 });
 
+test("the bundle, run from the plugin's dist/, says the parser's own version, not gemworks's", () => {
+  const parser = JSON.parse(readFileSync(new URL("../node_modules/@geml/geml/package.json", import.meta.url), "utf8")).version;
+  const gemworks = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+  const dir = mkdtempSync(join(tmpdir(), "gemworks-bundle-"));
+  const r = spawnSync(process.execPath, [join(DIST, "gemworks.mjs"), "hook"], { cwd: dir, encoding: "utf8", input: `${JSON.stringify({ v: 1, op: "status", root: dir })}\n` });
+  const answer = JSON.parse(r.stdout.trim().split("\n").pop());
+  assert.deepEqual(answer.shell?.versions, { gemworks, parser }, r.stderr);
+});
+
 test("the bundle's files import only Node's built-ins and each other", () => {
   const IMPORT = /(?:^|[\s;])(?:import|export)\s[^;]*?from\s*["']([^"']+)["']|(?:^|[\s;])import\s*\(?\s*["']([^"']+)["']/gm;
   for (const file of FILES) {

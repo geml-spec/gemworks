@@ -113,8 +113,9 @@ function unitsOf(root: string, view: ShellView): string[] {
   return [...new Set([...(own !== undefined ? [own] : []), ...sideFlows(root, wf.path).map((f) => f.glob), ...(view.policy.unit.kind === "file" ? [view.policy.unit.glob] : [])])];
 }
 
+/** No workflow to open: still the versions, which the about dialog shows whatever the project runs. */
 function problemShell(text: string, quiet: boolean): ShellStatus {
-  return { status: null, policy: null, contextKey: null, problem: { text, quiet } };
+  return { status: null, policy: null, contextKey: null, problem: { text, quiet }, versions: { gemworks: gemworksVersion(), parser: PARSER_VERSION } };
 }
 
 /** The shell for a workspace that did not open: quiet when the project simply has no workflow. */

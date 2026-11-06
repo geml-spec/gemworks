@@ -87,7 +87,8 @@ const result = await build({
 mkdirSync(vendor, { recursive: true });
 for (const f of parserFiles) copyFileSync(join(parserDir, f), join(vendor, f));
 copyFileSync(join(parserDir, "..", "LICENSE"), join(vendor, "LICENSE"));
-// The copy's own package.json: its .js files are ES modules, and it says which release they came from.
+// The copy's own package.json: its .js files are ES modules, and it says which release they came from. The parser
+// reads its version from it (PARSER_VERSION looks beside and above geml.js), so the about dialog says the parser's.
 writeFileSync(join(vendor, "package.json"), `${JSON.stringify({ name: parserPkg.name, version: parserPkg.version, type: "module", license: parserPkg.license }, null, 2)}\n`);
 
 const written = [...Object.keys(result.metafile.outputs).map((o) => resolve(o)), ...[...parserFiles].map((f) => join(vendor, f))];
