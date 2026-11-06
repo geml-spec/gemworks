@@ -542,13 +542,17 @@ shape of constraint is one you want.
 ### Claude Code
 
 ```text
-/plugin install gemworks --marketplace geml-spec/geml
+/plugin marketplace add geml-spec/geml
+/plugin marketplace add geml-spec/gemworks
+/plugin install gemworks@gemworks
 ```
 
-Type it at the prompt of a terminal session; `y` adds the marketplace, then pick
-a scope. The marketplace entry installs the published `gemworks` package,
-so the line works once that package is on npm — it is not published yet. Until
-then, load the plugin from this repository (below).
+Type them at the prompt of a session, one at a time, and pick a scope at the
+last. The first adds the marketplace of GEML's own plugin: gemworks depends on
+`geml`, and with that marketplace added, installing gemworks installs geml too;
+without it gemworks installs but does not load. The gemworks marketplace
+installs the published `gemworks` package from npm. From a shell, the same is
+`claude plugin marketplace add …` and `claude plugin install gemworks@gemworks`.
 
 What you get:
 

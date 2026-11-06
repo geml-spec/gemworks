@@ -460,12 +460,16 @@ npm run walkthrough
 ### Claude Code
 
 ```text
-/plugin install gemworks --marketplace geml-spec/geml
+/plugin marketplace add geml-spec/geml
+/plugin marketplace add geml-spec/gemworks
+/plugin install gemworks@gemworks
 ```
 
-在终端会话的输入框里输入这一行；按 `y` 添加 marketplace，再选范围。marketplace 里的
-条目安装的是已发布的 `gemworks` 包，所以包发布到 npm 之后这一行才能装上——目前
-还没有发布。在那之前，从本仓库载入插件（见下）。
+在会话的输入框里逐行输入，最后一行装的时候选范围。第一行加的是 GEML 自己的插件市场：
+gemworks 依赖 geml 插件，加了这个市场，装 gemworks 时会一并装上 geml；没加的话
+gemworks 能装上，但加载不起来。gemworks 市场里的条目从 npm 装已发布的 `gemworks` 包。
+在命令行里用 `claude plugin marketplace add …` 和 `claude plugin install gemworks@gemworks`
+也一样。
 
 装上之后：
 
