@@ -3,6 +3,7 @@
 // install. Node's built-ins stay external.
 import { build } from "esbuild";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -12,13 +13,24 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 // would fire and start dist/cli.js beside the bundle. The line goes; when it
 // moves, the build fails here instead of in a person's session.
 const HANDOFF = "if (isCliInvocation()) {";
-const noParserHandoff = {
-  name: "no-parser-cli-handoff",
+// The parser reads its version from the package.json above its own file. Inlined,
+// its file is the bundle, and the package.json above it is gemworks's: the about
+// dialog said the parser was gemworks's version. The version goes in as written
+// in the parser's package.json at build time; when the line moves, the build fails.
+const PARSER_VERSION_LINE = "export const PARSER_VERSION = (() => {";
+const parserFixes = {
+  name: "parser-inlined",
   setup(b) {
     b.onLoad({ filter: /[\\/]dist[\\/]geml\.js$/ }, (args) => {
       const src = readFileSync(args.path, "utf8");
       if (!src.includes(HANDOFF)) throw new Error(`${args.path}: the parser's CLI hand-off moved; update scripts/bundle.mjs`);
-      return { contents: src.replace(HANDOFF, "if (false) {"), loader: "js" };
+      if (!src.includes(PARSER_VERSION_LINE)) throw new Error(`${args.path}: the parser's version lookup moved; update scripts/bundle.mjs`);
+      const { version } = JSON.parse(readFileSync(join(dirname(args.path), "..", "package.json"), "utf8"));
+      if (typeof version !== "string" || version === "") throw new Error(`${args.path}: no version in the parser's package.json`);
+      const contents = src
+        .replace(HANDOFF, "if (false) {")
+        .replace(PARSER_VERSION_LINE, `export const PARSER_VERSION = ${JSON.stringify(version)};\nconst parserVersionLookup = (() => {`);
+      return { contents, loader: "js" };
     });
   },
 };
@@ -31,5 +43,5 @@ await build({
   format: "esm",
   target: "node22",
   logLevel: "warning",
-  plugins: [noParserHandoff],
+  plugins: [parserFixes],
 });
