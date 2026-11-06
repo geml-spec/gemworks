@@ -47,12 +47,16 @@ const ordered = [...files].sort((a, b) => rank(a) - rank(b));
 
 const LANES = Number(process.env.GEMWORKS_TEST_LANES) || Math.max(1, Math.min(6, cpus().length - 1));
 
-/** A file's own run: its output kept whole, its counts read from node:test's summary. */
+/**
+ * A file's own run: its output kept whole, its counts read from node:test's summary. The spec reporter by name: Node
+ * 22 falls back to TAP when its output is not a terminal (`# tests 53`), and a summary read as 0 tests would pass
+ * a file that tested nothing. A file whose run counts no test has failed.
+ */
 function runFile(file) {
   return new Promise((done) => {
     const chunks = [];
     const began = Date.now();
-    const p = spawn(process.execPath, ["--test", file], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(process.execPath, ["--test", "--test-reporter=spec", file], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
     try { if (p.pid !== undefined) setPriority(p.pid, constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* inherited already, or not allowed */ }
     p.stdout.on("data", (d) => chunks.push(d));
     p.stderr.on("data", (d) => chunks.push(d));
@@ -60,7 +64,9 @@ function runFile(file) {
     p.on("close", (code) => {
       const out = Buffer.concat(chunks).toString();
       const count = (name) => Number(out.match(new RegExp(`^ℹ ${name} (\\d+)`, "m"))?.[1] ?? 0);
-      done({ file, code: code ?? 1, ms: Date.now() - began, out, tests: count("tests"), pass: count("pass"), fail: count("fail"), skipped: count("skipped") });
+      const tests = count("tests");
+      const ran = { file, ms: Date.now() - began, tests, pass: count("pass"), fail: count("fail"), skipped: count("skipped") };
+      done(code === 0 && tests === 0 ? { ...ran, code: 1, out: `${out}\nno test ran in this file: a gate that checks nothing has not passed\n` } : { ...ran, code: code ?? 1, out });
     });
   });
 }
