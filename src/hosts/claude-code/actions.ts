@@ -85,6 +85,8 @@ export type BoardAction =
   | { op: "dialog"; dialog: Dialog | null }
   /** `expand`: the flows whose practices the flow tab lists as it opens (`*` those for every flow): 新学到 n 条 pressed. */
   | { op: "open-board"; tab?: BoardTab; expand?: string[] }
+  /** The band's screenshot button: the system's region capture on `platform` (win32, darwin or linux, as the bridge reported it). */
+  | { op: "capture"; platform: string }
   | { op: "use"; workflow: string }
   | { op: "add"; workflow: string }
   /** Write a workflow directory or file from a path into the project's .geml/workflows/. */

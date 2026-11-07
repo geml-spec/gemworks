@@ -21,6 +21,7 @@ import type { PromptRecord } from '../dist/hosts/claude-code/sessions.js'
 import { MADE_PAGE, MADE_VIEW } from '../dist/hosts/claude-code/made.js'
 import type { MemoryList } from '../dist/memory-store.js'
 import { hhmm } from '../dist/hosts/claude-code/time.js'
+import { captureFailed, capturesFor, captureStarted } from '../dist/hosts/claude-code/screenshot.js'
 import { withSetting } from '../dist/hosts/claude-code/settings.js'
 import type { Judgement } from '../dist/hosts/claude-code/judge.js'
 import { HOME_TAB } from '../dist/hosts/claude-code/board.js'
@@ -87,6 +88,30 @@ const turnsShownAtom = atom({ plugin: 'gemworks', key: 'turnsShown' } as const, 
 const workOpenAtom = atom({ plugin: 'gemworks', key: 'workOpen' } as const, [] as string[])
 const workUnfoldedAtom = atom({ plugin: 'gemworks', key: 'workUnfolded' } as const, null as string | null)
 const workflowsAtom = atom({ plugin: 'gemworks', key: 'workflows' } as const, null as GemworksJson)
+
+/** How long a region capture may stay open: the longest a command may run (the engine's ten minutes). */
+const CAPTURE_MS = 10 * 60 * 1000
+
+/**
+ * The band's screenshot button: the toast saying which key pastes goes first, then the system's region capture. Each
+ * way is tried until one starts; one that starts is the person's (how it ends, a cancel included, says nothing); when
+ * none starts, the toast says why.
+ */
+async function capture($: EngineInterface, platform: string): Promise<void> {
+  const t = await words($)
+  $.ui.toast(captureStarted(platform, t))
+  let why = ''
+  for (const c of capturesFor(platform)) {
+    try {
+      await $.process.run(c.argv, { timeoutMs: CAPTURE_MS })
+      return
+    } catch (err) {
+      why = reasonOf(err)
+      if (/still running|timed out/i.test(why)) return
+    }
+  }
+  $.ui.toast(captureFailed(platform, why, t))
+}
 
 /** A press on the band or the board: what it does. */
 export async function act($: EngineInterface, action: BoardAction, surface?: string): Promise<void> {
@@ -332,6 +357,7 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
     case 'memory-more': await update($, memoryShownAtom, () => action.shown); return
     case 'artifact-menu': await update($, artifactMenuAtom, () => action.key); return
     case 'open-file': await openFile($, action.path, action.reveal === true, surface); return
+    case 'capture': await capture($, action.platform); return
     case 'filter': await update($, filterAtom, () => action.filter); return
     case 'expand': await update($, expandedAtom, () => action.entry); return
     case 'evidence': await update($, evidenceAtom, () => action.entry); return

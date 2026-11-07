@@ -37,6 +37,7 @@ import { answered, asksAfterTurn, bandLine, heldSteps, leadOf, newsOf, NO_FACTS,
 import type { Queued } from '../dist/hosts/claude-code/attention.js'
 import type { AttentionFacts, AttentionMemory } from '../dist/hosts/claude-code/attention.js'
 import { envParts, remoteInPlay } from '../dist/hosts/claude-code/env.js'
+import { captureHint, offersCapture } from '../dist/hosts/claude-code/screenshot.js'
 import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, isStatusLine, legacyLogName, logName, nextTurn, NOTE_TOOL, parseLog, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
 import type { SessionEvent, SessionSummary } from '../dist/core/session-log.js'
 import { flowRequest, labelRequest, linkKey, promptId, readFlowDraft, readLabels, readThemes, themeRequest, typedWords } from '../dist/core/corrections.js'
@@ -3341,7 +3342,12 @@ export const register: Register = (on) => {
     const columns: number = e.props.bodyColumns
     const env = await envNow($, t, e.surface).catch(() => ({ parts: [] as string[], host: null as HostInfo | null, remote: false }))
     const at = env.remote && env.host !== null ? `@${env.host.name}` : ''
-    const reserve = [...options, ...tail].reduce((w, b) => w + (b.key === 'board' && Svg !== undefined ? 4 : cellWidth(b.label) + 5), 0) + (at !== '' ? cellWidth(at) + 1 : 0)
+    // The screenshot button, left of the board's icon: on the desktop app, at the machine the session runs on.
+    const platform = env.host?.platform
+    const capture: Pressable | undefined = Svg !== undefined && tail.some((b) => b.key === 'board') && offersCapture({ surface: e.surface, remote: env.remote, platform })
+      ? { key: 'capture', label: t('截图'), action: { op: 'capture', platform: platform ?? '' } }
+      : undefined
+    const reserve = [...options, ...tail].reduce((w, b) => w + (b.key === 'board' && Svg !== undefined ? 4 : cellWidth(b.label) + 5), 0) + (at !== '' ? cellWidth(at) + 1 : 0) + (capture !== undefined ? 4 : 0)
     const lead = 2 + (view.verb !== '' ? cellWidth(view.verb) + 1 : 0)
     const room = Math.max(8, columns - reserve - lead)
     const noteRoom = view.note !== '' ? Math.min(cellWidth(view.note) + 3, Math.floor(room / 3)) : 0
@@ -3361,6 +3367,10 @@ export const register: Register = (on) => {
         : <Button key={b.key} label={b.label} {...(b.primary ? { variant: 'primary' } : {})} onPress={press($, b.action)} />)
       : <Button key={b.key} plain hotkey={String(i + 1)} label={b.label} {...(b.primary ? { variant: 'primary' } : {})} onPress={press($, b.action)} />
     const board = tail.find((b) => b.key === 'board')
+    // Under the pointer the line says how it goes, the paste key for this system with it; the icon's own tip is off.
+    const shot = capture !== undefined && (
+      <Box key="band-capture">{iconButton($, els, capture, 'capture', { from: 'right', size: 15, tip: false })}{card(captureHint(platform, t), { right: 0 }, columns - 4)}</Box>
+    )
     if (question !== undefined && cellWidth(question) > room) {
       const lines = wrapCells(question, Math.max(20, columns - lead - 1), QUESTION_ROWS)
       return stack(
@@ -3386,6 +3396,7 @@ export const register: Register = (on) => {
             <Box flexGrow={1} />
             {options.map(pressable)}
             {at !== '' && <Text dimColor>{at}</Text>}
+            {shot}
             {board !== undefined && pressable(board, options.length + tail.indexOf(board))}
           </Box>
         </Box>
@@ -3440,6 +3451,7 @@ export const register: Register = (on) => {
         {board !== undefined && <Box key="band-push" flexGrow={1} />}
         {learned !== undefined && <Button key={learned.key} plain label={learned.label} onPress={press($, learned.action)}><Text {...toneProps('warning')}>{learned.label}</Text></Button>}
         {aside !== '' && <Text key="band-aside" {...toneProps('warning')}>{aside}</Text>}
+        {shot}
         {board !== undefined && pressable(board, options.length + tail.indexOf(board))}
       </Box>
     )

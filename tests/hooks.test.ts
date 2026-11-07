@@ -130,6 +130,8 @@ function world(on: On) {
     artifacts: null as unknown,
     /** The opener commands run, by argument vector. */
     launched: [] as string[][],
+    /** The machine the bridge reports (process.platform). */
+    platform: 'linux',
     /** The messages typed mid-turn the transcript holds, as turn-ids answers them. */
     queued: [] as { uuid: string; text: string; at: string }[],
     /** The project's memory the bridge answers. */
@@ -252,7 +254,7 @@ function world(on: On) {
     if (req.op === 'refresh') return { v: 1, ok: true, shell: shell(), todo: w.todo }
     if (req.op === 'status' && w.practices !== null) return { v: 1, ok: true, shell: shell(), practices: w.practices, ...(w.sessionsDir !== null ? { sessions: w.sessionsDir } : {}) }
     if (req.op === 'status' && w.sessionsDir !== null) return { v: 1, ok: true, shell: shell(), sessions: w.sessionsDir }
-    if (req.op === 'attention') return { v: 1, ok: true, shell: shell(), attention: { ahead: w.ahead, prs: w.prs, ...(w.unread.length > 0 ? { unread: w.unread } : {}), ...(w.bump !== null ? { bump: w.bump } : {}) }, ...(w.sessionsDir !== null ? { sessions: w.sessionsDir } : {}), host: { name: 'build-box', platform: 'linux', user: 'dev', branch: 'feat/x' } }
+    if (req.op === 'attention') return { v: 1, ok: true, shell: shell(), attention: { ahead: w.ahead, prs: w.prs, ...(w.unread.length > 0 ? { unread: w.unread } : {}), ...(w.bump !== null ? { bump: w.bump } : {}) }, ...(w.sessionsDir !== null ? { sessions: w.sessionsDir } : {}), host: { name: 'build-box', platform: w.platform, user: 'dev', branch: 'feat/x' } }
     return { v: 1, ok: true, shell: shell(), ...(req.op === 'before' ? { recorded: false } : {}), ...(req.op === 'after' ? handoff(req) : {}) }
   }
   const ran = (stdout: string, exitCode = 0) => ({ exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false })
@@ -274,7 +276,7 @@ function world(on: On) {
       if (w.error !== null) return { value: ran(`${JSON.stringify({ v: 1, ok: false, error: `gemworks: ${w.error}` })}\n`) }
       return { value: ran(`${JSON.stringify(answer(JSON.parse(e.init?.stdin ?? '{}') as Req))}\n`) }
     }
-    if (['explorer.exe', 'open', 'xdg-open'].includes(e.argv[0] ?? '')) { w.launched.push([...e.argv]); return { value: ran('') } }
+    if (['explorer.exe', 'open', 'xdg-open', 'screencapture'].includes(e.argv[0] ?? '')) { w.launched.push([...e.argv]); return { value: ran('') } }
     return { deny: `unexpected ${e.argv.join(' ')}` }
   })
   // .geml/context.geml as the CLI writes it: the stage's text in `text {#current}`, the item, state and rev in `data {#stage}`.
@@ -512,7 +514,8 @@ test('the band and /gemworks, on terminal and desktop', async ($, on) => {
   await start($, on)
   // The mark is a character on the terminal, a picture on a desktop; the rest reads the same.
   expect(await bandText($)).toBe('» 我在做 feat/x · build [看板]')
-  expect(await bandText($, 'desktop')).toBe('[　　] 我在做 feat/x · build [　　　] [　　]')
+  // On a desktop the screenshot icon stands left of the board's (the bridge reports linux, the session is local).
+  expect(await bandText($, 'desktop')).toBe('[　　] 我在做 feat/x · build [　　　] [　　] [　　]')
   const desktop = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
   expect(await desktop.find({ type: 'Svg' })).toBeDefined()
   await desktop.unmount()
@@ -860,8 +863,8 @@ test('an approval edge that holds: the band offers the approval, the inbox lists
   expect(w.notified).toEqual(['需验收：feat/x\nreview'])
   const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
   expect(await band.find({ type: 'Svg' })).toBeDefined()
-  expect(await bandText($, 'desktop')).toBe('[　　] 验收 feat/x [　　　] [通过] [　　]')
-  expect((await band.findAll({ type: 'Button' })).map((b) => b.key)).toEqual(['band-mark-open', 'title', 'approve-done', 'board'])
+  expect(await bandText($, 'desktop')).toBe('[　　] 验收 feat/x [　　　] [通过] [　　] [　　]')
+  expect((await band.findAll({ type: 'Button' })).map((b) => b.key)).toEqual(['band-mark-open', 'title', 'approve-done', 'capture', 'board'])
   await band.press({ key: 'approve-done' })
   expect(w.sent.filter((r) => r.op === 'advance').at(-1)).toMatchObject({ to: 'done' })
   expect(w.state).toBe('done')
@@ -2695,4 +2698,47 @@ test('the band keeps the line a plugin below it drew (gemsbang\'s) under its own
     expect(at > 0 && text.endsWith('@ xiaoping 空闲'), `${surface}: ${text}`).toBe(true)
     expect(text.slice(0, at), surface).toContain('我在做 feat/x · build')
   }
+})
+
+test('the band\'s screenshot button, on the desktop app only: it says which key pastes, and a press starts the system\'s region capture', async ($, on) => {
+  const w = world(on)
+  w.platform = 'win32'
+  const clock = await start($, on)
+  const desktop = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  expect(await desktop.find({ type: 'Button', key: 'capture' }), 'left of the board\'s icon').toBeDefined()
+  expect(await desktop.find({ type: 'Text', text: /^截一块给 Claude 看：框选要截的地方，截好后在输入框按 Ctrl\+V$/ }), 'under the pointer, in the line\'s place').toBeDefined()
+  await desktop.press({ key: 'capture' })
+  await clock.settle()
+  expect(w.toasts.at(-1)).toBe('截好后在输入框按 Ctrl+V')
+  expect(w.launched, 'Snipping Tool\'s region capture, as Win+Shift+S starts it').toEqual([['explorer.exe', 'ms-screenclip:']])
+  await desktop.unmount()
+  for (const surface of ['terminal', 'mobile'] as const) {
+    const band = await $.ui.mount({ plugin: 'gemworks', surface, component: 'AbovePrompt', props: BAND })
+    expect(await band.find({ type: 'Button', key: 'capture' }), surface).toBeUndefined()
+    await band.unmount()
+  }
+})
+
+test('the screenshot button on macOS says ⌘V and asks for the permission once', async ($, on) => {
+  const w = world(on)
+  w.platform = 'darwin'
+  const clock = await start($, on)
+  const mac = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  expect(await mac.find({ type: 'Text', text: /截好后在输入框按 ⌘V（第一次会问屏幕录制权限）$/ })).toBeDefined()
+  await mac.press({ key: 'capture' })
+  await clock.settle()
+  expect(w.launched).toEqual([['screencapture', '-i', '-c']])
+  expect(w.toasts.at(-1)).toBe('截好后在输入框按 ⌘V')
+  await mac.unmount()
+})
+
+test('the screenshot button on Linux with no capture tool installed: a press says which to install', async ($, on) => {
+  const w = world(on)
+  const clock = await start($, on)
+  const linux = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  await linux.press({ key: 'capture' })
+  await clock.settle()
+  expect(w.launched, 'flameshot, gnome-screenshot and spectacle are not installed here').toEqual([])
+  expect(w.toasts.at(-1)).toBe('没找到截图工具：装 flameshot 或 gnome-screenshot 后再点')
+  await linux.unmount()
 })

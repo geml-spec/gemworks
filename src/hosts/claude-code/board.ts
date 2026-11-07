@@ -138,7 +138,7 @@ export const ICON_SVG: Readonly<Record<Icon, string>> = { ask: iconSvg("ask"), d
  * The pane's line icons, drawn as the design draws them (docs/design/ui/2026-10-13-gemworks-ui): a tab's, a dialog's,
  * and each kind of journal entry's. Only where the surface draws pictures; elsewhere the words stand alone.
  */
-export type Glyph = BoardTab | "share" | "settings" | "upgrade" | "about" | "radio" | "radioon" | "artifact" | "evidence" | "move" | "refused" | "start" | "waits" | "done" | "board" | "split" | "delete" | "locate" | "unfold" | "fold" | "box" | "boxon" | "go";
+export type Glyph = BoardTab | "share" | "settings" | "upgrade" | "about" | "radio" | "radioon" | "artifact" | "evidence" | "move" | "refused" | "start" | "waits" | "done" | "board" | "capture" | "split" | "delete" | "locate" | "unfold" | "fold" | "box" | "boxon" | "go";
 const GLYPH_PATH: Readonly<Record<Glyph, string>> = {
   sessions: '<path d="M4 5h16v11H9l-5 4z"/>',
   flow: '<rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v5h11v3"/>',
@@ -158,6 +158,8 @@ const GLYPH_PATH: Readonly<Record<Glyph, string>> = {
   waits: '<circle cx="12" cy="12" r="8.5"/><path d="M10 9v6M14 9v6"/>',
   done: '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.2l2.4 2.4 4.6-5"/>',
   board: '<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="11" rx="1"/><rect x="17" y="4" width="4" height="7" rx="1"/>',
+  // A region being captured: four corners round a dot.
+  capture: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="12" r="2.5"/>',
   split: '<path d="M13 5h7v14h-7"/><path d="M3 12h10M10 9l3 3-3 3"/>',
   box: '<rect x="4" y="4" width="16" height="16" rx="4"/>',
   boxon: '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8.5 12.2l2.4 2.4 4.6-5"/>',
