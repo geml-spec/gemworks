@@ -38,8 +38,22 @@ export function gitRepo(branch = "feat/x") {
     repoTemplates.set(branch, template);
   }
   const root = mkdtempSync(join(tmpdir(), "gemworks-repo-"));
-  cpSync(template, root, { recursive: true });
+  copyTree(template, root);
   return root;
+}
+
+/**
+ * A directory's files copied into another, directory by directory. Not cpSync: into a directory that already exists,
+ * Node 22 copies through its native fast path, which on macOS failed to make `.git/objects` (ENOENT, CI, 2026-11-07).
+ */
+function copyTree(from, to) {
+  mkdirSync(to, { recursive: true });
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    const source = join(from, entry.name);
+    const target = join(to, entry.name);
+    if (entry.isDirectory()) copyTree(source, target);
+    else copyFileSync(source, target);
+  }
 }
 
 /** Copy a workflow directory into the project and make it the active one. */
