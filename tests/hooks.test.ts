@@ -549,6 +549,11 @@ test('the board draws its header and its four tabs on every surface, opening on 
     }
     expect(await pane.find({ type: 'Button', key: 'tab-journal' }), '记录 is gone').toBeUndefined()
     expect(await pane.find({ type: 'Button', key: 'tab-pending' }), 'what waits is on the work items tab, not a tab of its own').toBeUndefined()
+    if (surface === 'desktop') {
+      // The work item's row between the header's rule and the tabs': a rule on each side of it.
+      const rules = (el: Drawn | string): string[] => typeof el === 'string' ? [] : [...(/^rule-/.test(String(keyOf(el) ?? '')) ? [String(keyOf(el))] : []), ...(el.children ?? []).flatMap(rules)]
+      expect(rules((await pane.drawn()) as unknown as Drawn).slice(0, 3)).toEqual(['rule-top', 'rule-head', 'rule-tabs'])
+    }
     const texts = async (): Promise<string> => (await pane.findAll({ type: 'Text' })).map((x) => x.text).join(' | ')
     // The mark and the name: characters on the terminal; where the surface draws pictures, the wide lockup says both.
     if (surface === 'terminal') {
@@ -2807,6 +2812,13 @@ test('a project on the light flows, with no workflow of its own: the band still 
   await pane.press({ key: 'tab-sessions' })
   expect(shown((await pane.drawn()) as unknown as Drawn)).toContain('运行于 build-box · app · feat/x')
   await pane.unmount()
+  // No work item's row under the header: its own rule alone above the tabs, not two in a row.
+  const desk = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+  const rules = (el: Drawn | string): string[] => typeof el === 'string' ? [] : [...(/^rule-/.test(String(keyOf(el) ?? '')) ? [String(keyOf(el))] : []), ...(el.children ?? []).flatMap(rules)]
+  const drawnRules = rules((await desk.drawn()) as unknown as Drawn)
+  expect(drawnRules.slice(0, 2)).toEqual(['rule-top', 'rule-tabs'])
+  expect(drawnRules).not.toContain('rule-head')
+  await desk.unmount()
 })
 
 test('the screenshot button on macOS says ⌘V and asks for the permission once', async ($, on) => {

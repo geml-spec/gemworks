@@ -3538,7 +3538,8 @@ export const register: Register = (on) => {
     return (
       <Box flexDirection="column">
         {header}
-        {hairline(els, 'rule-head')}
+        {/* Under the header's own rule nothing else is drawn when no work item's row or reason is: a second rule there doubles it. */}
+        {(head === undefined || head.name !== undefined || head.reason !== undefined) && hairline(els, 'rule-head')}
         <Box gap={els.Svg !== undefined ? 3 : 2} flexWrap="wrap" alignItems="center">
           {tabs(t).map((x) => els.Svg !== undefined
             ? iconButton($, els, { key: `tab-${x.id}`, label: x.label, action: { op: 'tab', tab: x.id } }, x.id, { tone: x.id === tab ? 'active' : 'dim', from: 'left' })
