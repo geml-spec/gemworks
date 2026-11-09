@@ -13,14 +13,20 @@
 // the session opens a log and the model is told about the note tool; each
 // prompt is a turn, the other sessions' decisions not yet read beside it as a
 // transient message; the files a write tool wrote and a commit a command made
-// go in; the turn's answer goes in at its end. The MCP server, which
-// Antigravity starts outside the project, learns the conversation and its
-// project from a pointer the hooks keep. Nothing here ends a turn: whatever
+// go in; the turn's answer goes in at its end. The work loop (loop.ts) rides
+// on the same events: the session's start tells the model the loop's tools and
+// the flows' steps and opens the GEML board when it has work on it; a prompt's
+// transient message carries the work items on the way and the step's practices;
+// the board is written again at each prompt and each turn's end. The MCP
+// server, which Antigravity starts outside the project, learns the conversation
+// and its project from a pointer the hooks keep. Nothing here ends a turn: whatever
 // fails, nothing is printed and the hook exits 0.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { decisionsContext, SESSIONS_PROMPT } from "./core/session-log.js";
+import { boardHasWork, openBoardOnce, writeBoard } from "./board-file.js";
+import { coachFlowsAt, loopContext, loopPrompt } from "./loop.js";
 import { normalised } from "./hosts/claude-code/readers.js";
 import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "./session-store.js";
 
@@ -122,7 +128,12 @@ export function runAntigravity(event: string, text: string, home: string = homed
   switch (event) {
     case "SessionStart": {
       appendSession(root, ANTIGRAVITY_HOST, cid, () => [], now);
-      return out({ injectSteps: [{ systemMessage: { systemMessage: SESSIONS_PROMPT.replace("gemworks `note` tool", "`note` tool of the gemworks MCP server") } }] });
+      // The work loop's standing instructions, with the flows' steps; the GEML board, when it has work on it.
+      let loop: string[] = [];
+      try { loop = loopPrompt(coachFlowsAt(root)); } catch { /* the tools' own descriptions say it */ }
+      try { if (boardHasWork(root)) openBoardOnce(root, cid); } catch { /* not opened this time */ }
+      const told = [SESSIONS_PROMPT.replace("gemworks `note` tool", "`note` tool of the gemworks MCP server"), ...loop].join("\n\n");
+      return out({ injectSteps: [{ systemMessage: { systemMessage: told } }] });
     }
     case "PreInvocation": {
       // A new prompt in the transcript: a turn, and beside it the other sessions' decisions not yet read.
@@ -133,8 +144,13 @@ export function runAntigravity(event: string, text: string, home: string = homed
       const fresh = decisionsFor(root, cid, state.decisionsSeen, now);
       state.decisionsSeen = now;
       save();
-      if (fresh.length === 0) return { stdout: "" };
-      return out({ injectSteps: [{ ephemeralMessage: decisionsContext(fresh, (d) => `${hostLabel(d.host)}${d.branch !== undefined ? ` · ${d.branch}` : ""}，${new Date(d.at).toTimeString().slice(0, 5)}`) }] });
+      // The board says the last turn's questions are answered; the work items on the way and the step's practices beside the prompt.
+      try { writeBoard(root); } catch { /* written at the turn's end */ }
+      let loop: string[] = [];
+      try { loop = loopContext(root, cid); } catch { /* the model reports them anew */ }
+      const said = [...(fresh.length > 0 ? [decisionsContext(fresh, (d) => `${hostLabel(d.host)}${d.branch !== undefined ? ` · ${d.branch}` : ""}，${new Date(d.at).toTimeString().slice(0, 5)}`)] : []), ...loop];
+      if (said.length === 0) return { stdout: "" };
+      return out({ injectSteps: [{ ephemeralMessage: said.join("\n\n") }] });
     }
     case "PostToolUse": {
       const call = isRecord(ev["toolCall"]) ? ev["toolCall"] : {};
@@ -150,6 +166,7 @@ export function runAntigravity(event: string, text: string, home: string = homed
       if (ev["fullyIdle"] === false) return { stdout: "" };
       recordAnswer(root, ANTIGRAVITY_HOST, cid, answerOf(stepsOf(transcript)), state.committed, now);
       if (state.committed) { state.committed = false; save(); }
+      try { writeBoard(root); } catch { /* written at the next prompt */ }
       return { stdout: "" };
     }
     default:

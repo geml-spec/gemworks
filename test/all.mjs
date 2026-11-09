@@ -35,6 +35,8 @@ try { setPriority(constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not al
 //    on whether this machine has gh, signed in or not.
 process.env.NODE_COMPILE_CACHE ??= join(tmpdir(), "gemworks-test-compile-cache");
 process.env.GEMWORKS_GH ??= "gh-definitely-not-installed";
+// A host with no panel opens the GEML board when its session starts: never a window from a test.
+process.env.GEMWORKS_OPEN_BOARD ??= "0";
 
 const named = process.argv.slice(2).map((f) => resolve(f));
 const files = named.length > 0 ? named : readdirSync(here).filter((f) => f.endsWith(".test.mjs")).sort().map((f) => join(here, f));

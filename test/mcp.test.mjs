@@ -15,7 +15,7 @@ const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.u
 function serve(root, messages, args = [], { env = {}, bundle = BUNDLE, cwd = root } = {}) {
   const lines = messages.map((m) => (typeof m === "string" ? m : JSON.stringify(m)));
   const r = spawnSync(process.execPath, [bundle, "mcp", ...args], {
-    cwd, input: `${lines.join("\n")}\n`, encoding: "utf8", timeout: 60_000, env: { ...process.env, ...env },
+    cwd, input: `${lines.join("\n")}\n`, encoding: "utf8", timeout: 60_000, env: { ...process.env, GEMWORKS_OPEN_BOARD: "0", ...env },
   });
   assert.equal(r.status, 0, r.stderr);
   const replies = r.stdout.trim().split("\n").filter((l) => l.length > 0).map((l) => JSON.parse(l));
@@ -315,6 +315,7 @@ test("the work loop over MCP: what the model is told once, a work item recorded 
   assert.doesNotMatch(status.content[0].text, /看板用 GEML 页面/, "a decision is said once");
   assert.equal(out.get(4).result.isError, undefined);
   assert.equal(out.get(5).result.isError, true);
+  assert.match(readFileSync(join(root, ".geml", "board.geml"), "utf8"), /\| \\#\S+ 看板 \| 新功能 \|/, "the GEML board written after the record");
   // Codex's hooks say the decisions beside each prompt: its results leave them out.
   const codex = mcp(root, [call(1, "status")], ["--host", "codex"]);
   assert.doesNotMatch(codex.get(1).result.content[0].text, /看板用 GEML 页面/);

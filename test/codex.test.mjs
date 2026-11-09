@@ -13,6 +13,8 @@ import { allowCall, callOf, denyCall, exitCodeIn, isWrapped, patchPaths, readEve
 import { BUNDLE, fakeGh, gitRepo, hook, withWorkflow } from "./helpers/repo.mjs";
 
 const WS_DEV = fileURLToPath(new URL("./fixtures/ws-dev/", import.meta.url));
+// A session's start opens the GEML board: never a window from a test.
+process.env.GEMWORKS_OPEN_BOARD = "0";
 const here = new URL(".", import.meta.url);
 
 /** One Codex hook event through the bundle: the answer parsed, or undefined when the adapter said nothing. */
@@ -137,7 +139,9 @@ test("gemworks codex, in event order: the stage at the start, a refused command,
 test("gemworks codex says nothing, and exits 0, where there is nothing to say: no workflow, an event it does not read, no event at all", () => {
   const bare = gitRepo();
   const env = data();
-  assert.equal(codex(bare, { hook_event_name: "SessionStart", source: "startup" }, env).out, undefined);
+  const told = codex(bare, { hook_event_name: "SessionStart", source: "startup" }, env).out.hookSpecificOutput.additionalContext;
+  assert.match(told, /gemworks `work` tool/, "no workflow: the start tells only the work loop");
+  assert.doesNotMatch(told, /\[gemworks\] stage/);
   assert.equal(codex(bare, { hook_event_name: "PreToolUse", tool_name: "Bash", tool_use_id: "c1", tool_input: { command: "gemworks mark x" } }, env).out, undefined, "no workflow: nothing is refused");
   const root = project();
   assert.equal(codex(root, { hook_event_name: "Stop", stop_hook_active: false }, env).out, undefined);
@@ -163,8 +167,37 @@ test("the project's session record through Codex's hooks: the session opens a lo
   const again = codex(root, { hook_event_name: "UserPromptSubmit", prompt: "再来一句" }, env).out;
   assert.doesNotMatch(again?.hookSpecificOutput?.additionalContext ?? "", /本项目其他会话/, "heard once");
   codex(root, { hook_event_name: "PostToolUse", tool_name: "apply_patch", tool_use_id: "p1", tool_input: { command: "*** Begin Patch\n*** Add File: src/codex-made.ts\n+x\n*** End Patch" }, tool_response: "Done" }, env);
-  codex(root, { hook_event_name: "Stop", last_assistant_message: "接好了。", stop_hook_active: false }, env);
+  // The turn wrote a file and reported no work item: sent back once, its answer recorded when it ends.
+  assert.equal(codex(root, { hook_event_name: "Stop", last_assistant_message: "接好了。", stop_hook_active: false }, env).out.decision, "block");
+  codex(root, { hook_event_name: "Stop", last_assistant_message: "接好了。", stop_hook_active: true }, env);
   assert.deepEqual(log().map((e) => [e.t, e.turn ?? null, e.text ?? e.path ?? e.host]), [
     ["session", null, "codex"], ["prompt", 1, "接着做 Codex 接法"], ["prompt", 2, "再来一句"], ["file", 2, "src/codex-made.ts"], ["answer", 2, "接好了。"],
   ]);
+});
+
+test("the work loop through Codex's hooks: told at the start, the items beside a prompt, a turn that wrote and reported nothing sent back once, the board written", async () => {
+  const { recordWork } = await import("../dist/loop.js");
+  const root = gitRepo();
+  const env = data();
+  const start = codex(root, { hook_event_name: "SessionStart", source: "startup" }, env).out.hookSpecificOutput.additionalContext;
+  assert.match(start, /gemworks `note` tool/);
+  assert.match(start, /feature 新功能: mockup 样稿 \(you\) → build/);
+  assert.match(start, /`answer` tool/);
+  recordWork(root, "codex", "sess-1", { items: [{ title: "看板", flow: "feature", needs: "你看样稿" }] });
+  const prompt = codex(root, { hook_event_name: "UserPromptSubmit", prompt: "接着做" }, env).out.hookSpecificOutput.additionalContext;
+  assert.match(prompt, /\[gemworks\] work items on the way: #\S+ «看板» \(feature: at mockup 样稿, needs 你看样稿\)/);
+  assert.match(readFileSync(join(root, ".geml", "board.geml"), "utf8"), /看板/, "the board, written at the prompt");
+  // The turn writes a file and reports no work item: sent back once with the reminder, then let end.
+  codex(root, { hook_event_name: "PostToolUse", tool_name: "apply_patch", tool_use_id: "p1", tool_input: { command: "*** Begin Patch\n*** Add File: src/b.ts\n+x\n*** End Patch" }, tool_response: "Done" }, env);
+  const back = codex(root, { hook_event_name: "Stop", last_assistant_message: "做好了。", stop_hook_active: false }, env);
+  assert.deepEqual(back.out, { decision: "block", reason: (await import("../dist/core/work.js")).WORK_REMINDER });
+  assert.equal(codex(root, { hook_event_name: "Stop", last_assistant_message: "做好了。", stop_hook_active: true }, env).out, undefined, "once: the second stop ends the turn");
+  // The next turn writes and reports its item: it ends at once.
+  codex(root, { hook_event_name: "UserPromptSubmit", prompt: "再改一处" }, env);
+  codex(root, { hook_event_name: "PostToolUse", tool_name: "Bash", tool_use_id: "b1", tool_input: { command: "ls" }, tool_response: "a" }, env);
+  recordWork(root, "codex", "sess-1", { items: [{ title: "另一件", flow: "bugfix" }] });
+  assert.equal(codex(root, { hook_event_name: "Stop", last_assistant_message: "改好了。", stop_hook_active: false }, env).out, undefined);
+  // A turn that only talked is not sent back.
+  codex(root, { hook_event_name: "UserPromptSubmit", prompt: "问一句" }, env);
+  assert.equal(codex(root, { hook_event_name: "Stop", last_assistant_message: "答了。", stop_hook_active: false }, env).out, undefined);
 });

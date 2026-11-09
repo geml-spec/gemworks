@@ -23,6 +23,10 @@ export interface CodexEvent {
   prompt?: string;
   /** Stop: the turn's last answer. */
   last_assistant_message?: string;
+  /** SessionStart: startup, resume, clear, compact or fork. */
+  source?: string;
+  /** Stop: whether the turn already went back once from a Stop hook. */
+  stop_hook_active?: boolean;
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -43,6 +47,8 @@ export function readEvent(text: string): CodexEvent | undefined {
     ...("tool_response" in v ? { tool_response: v["tool_response"] } : {}),
     ...(str("prompt") !== undefined ? { prompt: str("prompt") } : {}),
     ...(str("last_assistant_message") !== undefined ? { last_assistant_message: str("last_assistant_message") } : {}),
+    ...(str("source") !== undefined ? { source: str("source") } : {}),
+    ...(typeof v["stop_hook_active"] === "boolean" ? { stop_hook_active: v["stop_hook_active"] } : {}),
   };
 }
 

@@ -11,6 +11,9 @@ import { logName, parseLog } from "../dist/core/session-log.js";
 import { recordDecisions, recordPrompt, sessionsDirOf } from "../dist/session-store.js";
 import { BUNDLE, gitRepo } from "./helpers/repo.mjs";
 
+// A session's start opens the GEML board: never a window from a test.
+process.env.GEMWORKS_OPEN_BOARD = "0";
+
 const step = (i, type, extra) => JSON.stringify({ step_index: i, source: type === "USER_INPUT" ? "USER_EXPLICIT" : "MODEL", type, status: "DONE", created_at: "2026-10-19T05:55:51Z", ...extra });
 const ask = (i, text) => step(i, "USER_INPUT", { content: `<USER_REQUEST>\n${text}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is: 2026-10-19T13:55:51+08:00.\n</ADDITIONAL_METADATA>` });
 
@@ -38,6 +41,7 @@ test("the hooks into the project's record: a session's log and its note tool tol
 
   const start = JSON.parse(runAntigravity("SessionStart", ev(), home).stdout);
   assert.match(start.injectSteps[0].systemMessage.systemMessage, /`note` tool of the gemworks MCP server/);
+  assert.match(start.injectSteps[0].systemMessage.systemMessage, /gemworks `work` tool[\s\S]*feature 新功能: mockup 样稿/, "and the work loop, with the flows' steps");
   assert.deepEqual(log().map((e) => [e.t, e.host]), [["session", "antigravity"]]);
   assert.deepEqual(activeOf(home), { conversationId: "conv-1", root, at: activeOf(home).at }, "the pointer the MCP server reads");
 
@@ -90,4 +94,18 @@ test("the MCP server for Antigravity, started outside the project: note writes t
   assert.match(JSON.parse(r.stdout.trim()).result.content[0].text, /^Recorded 1 decision/);
   const e = parseLog(readFileSync(join(sessionsDirOf(root), logName("antigravity", "conv-9")), "utf8"));
   assert.deepEqual(e.filter((x) => x.t === "decision").map((x) => x.text), ["Antigravity 也记进来"]);
+});
+
+test("the work loop through Antigravity's hooks: a new prompt's transient message carries the work items on the way and the step's practices; the board is written", async () => {
+  const { recordWork } = await import("../dist/loop.js");
+  const home = mkdtempSync(join(tmpdir(), "gemworks-agy-home-"));
+  const root = gitRepo();
+  const transcript = join(home, "transcript_full.jsonl");
+  const ev = (extra = {}) => JSON.stringify({ conversationId: "conv-2", workspacePaths: [root.split("\\").join("/")], transcriptPath: transcript, modelName: "m", ...extra });
+  runAntigravity("SessionStart", ev(), home);
+  recordWork(root, "antigravity", "conv-2", { items: [{ title: "看板", flow: "feature", needs: "你看样稿" }] });
+  writeFileSync(transcript, `${JSON.stringify({ step_index: 0, type: "USER_INPUT", source: "USER_EXPLICIT", content: "<USER_REQUEST>接着做</USER_REQUEST>" })}\n`);
+  const pre = JSON.parse(runAntigravity("PreInvocation", ev({ invocationNum: 0 }), home).stdout);
+  assert.match(pre.injectSteps[0].ephemeralMessage, /^\[gemworks\] work items on the way: #\S+ «看板» \(feature: at mockup 样稿, needs 你看样稿\)/);
+  assert.match(readFileSync(join(root, ".geml", "board.geml"), "utf8"), /看板/);
 });

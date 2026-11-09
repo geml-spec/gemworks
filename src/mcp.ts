@@ -19,6 +19,7 @@ import { HOST_TOOLS, NO_TOOLS } from "./core/host-tools.js";
 import { FLOW_TOOLS } from "./core/verb-specs.js";
 import { decisionsContext, NOTE_TOOL, SESSIONS_PROMPT } from "./core/session-log.js";
 import { callLoopTool, coachFlowsAt, isLoopTool, LOOP_TOOLS, loopContext, loopPrompt } from "./loop.js";
+import { boardHasWork, openBoardOnce } from "./board-file.js";
 import { decisionsFor, hostLabel, latestSessionOf, recordDecisions } from "./session-store.js";
 import { activeOf, ANTIGRAVITY_HOST } from "./antigravity.js";
 import { ghOncePerBranch } from "./host-git.js";
@@ -82,6 +83,8 @@ export async function answer(msg: unknown, o: McpOptions): Promise<Reply | undef
     // What the model is told once: the shared record, and the loop's tools with the flows' steps.
     let instructions = SESSIONS_PROMPT;
     try { instructions = [SESSIONS_PROMPT, ...loopPrompt(coachFlowsAt(o.root))].join("\n\n"); } catch { /* the tools' own descriptions say it */ }
+    // A host with no hooks starts its server with its session: the GEML board opens then, when it has work on it.
+    if (!HOOKED.has(o.host) && boardHasWork(o.root)) openBoardOnce(o.root, latestSessionOf(o.root, o.host) ?? `mcp-${process.pid}`);
     return result(id, { protocolVersion: version, capabilities: { tools: {} }, serverInfo: { name: "gemworks", version: packageVersion() }, instructions });
   }
   if (method === "ping") return result(id, {});
@@ -114,6 +117,8 @@ export async function answer(msg: unknown, o: McpOptions): Promise<Reply | undef
     const decisions = Array.isArray(given) ? given.filter((d): d is string => typeof d === "string") : [];
     try {
       const n = recordDecisions(root, o.host, sessionOf(), decisions);
+      // The GEML board says it now: opened the first time this session records something.
+      if (n > 0) openBoardOnce(root, sessionOf());
       return withNews(n === 0 ? "Nothing recorded: decisions is a list of short sentences." : `Recorded ${n} decision${n === 1 ? "" : "s"}; the project's other sessions will see ${n === 1 ? "it" : "them"}.`, n === 0);
     } catch (e) {
       return text(id, `gemworks: ${e instanceof Error ? e.message : String(e)}`, true);
@@ -123,6 +128,7 @@ export async function answer(msg: unknown, o: McpOptions): Promise<Reply | undef
     const given = m?.params?.["arguments"];
     const args = given !== null && typeof given === "object" && !Array.isArray(given) ? (given as Record<string, unknown>) : {};
     const r = await callLoopTool(root, o.host, sessionOf(), name, args);
+    if (r?.ok === true) openBoardOnce(root, sessionOf());
     return r === undefined ? failure(id, -32602, `unknown tool: ${name}`) : withNews(r.text, !r.ok);
   }
   const spec = FLOW_TOOLS.find((t) => t.name === name);
