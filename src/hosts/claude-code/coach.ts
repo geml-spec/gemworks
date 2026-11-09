@@ -25,6 +25,21 @@ export { COACH_FLOWS, readCoachFlow, metOf, itemProgress, workItemsOf, WORK_TOOL
 export type { CoachState, CoachEdge, CoachFlow, ItemEvent, WorkItem, CoachFocus };
 
 /**
+ * The flows as the person reads them: each title, need, pitfall and answer
+ * through the words of their language. Ids and the rest stay as they are, so
+ * every press still names the step it meant; a flow the project grew has no
+ * entry in the words and keeps its own wording.
+ */
+export function flowsIn(flows: readonly CoachFlow[], t: T): CoachFlow[] {
+  const say = (s: string): string => (s === "" ? "" : t(s));
+  return flows.map((f) => ({
+    ...f,
+    title: say(f.title),
+    states: f.states.map((s) => ({ ...s, title: say(s.title), need: say(s.need), prevents: say(s.prevents), answers: s.answers === null ? null : [say(s.answers[0]), say(s.answers[1])] as const })),
+  }));
+}
+
+/**
  * A question the person has not answered, as a card: its answers its buttons, the recommended first; a press says
  * "question：answer", the band's own words for it, so the turn and the record take it as the band's press.
  */
@@ -112,6 +127,7 @@ export function doingNote(i: WorkItem, doing: Doing | null | undefined, t: T): s
  * questions about it under it. A group lists its first WORK_SHOWN items until its heading's press lists it whole.
  */
 export function workRows(items: readonly WorkItem[], flows: readonly CoachFlow[], t: T, o: WorkRowsOptions = {}): BoardRow[] {
+  flows = flowsIn(flows, t);
   const asks = o.asks ?? [];
   const shown = items.filter((i) => i.status === "open" || i.status === "held");
   const loose = asks.filter((q) => q.item === undefined || !shown.some((i) => i.id === q.item));
@@ -209,6 +225,7 @@ function moveWords(mv: TurnMove, flows: readonly CoachFlow[], t: T): string {
 
 /** What a turn did, in words for the sessions tab: each work item it moved and how, each decision, each practice it learned. */
 export function turnWords(turn: SessionTurn, flows: readonly CoachFlow[], learned: readonly Practice[], t: T): string[] {
+  flows = flowsIn(flows, t);
   return [
     ...(turn.moved ?? []).map((mv) => `→ ${mv.title} ${moveWords(mv, flows, t)}`),
     ...turn.decisions.map((d) => t("定：{0}", d)),
@@ -218,6 +235,7 @@ export function turnWords(turn: SessionTurn, flows: readonly CoachFlow[], learne
 
 /** A work item's history, oldest first, across every session: each turn that moved it — how, and what that turn decided. */
 export function itemHistory(id: string, sessions: readonly SessionSummary[], flows: readonly CoachFlow[], t: T): { at: string; text: string }[] {
+  flows = flowsIn(flows, t);
   const out: { at: string; text: string }[] = [];
   for (const s of sessions) {
     for (const turn of s.turns) {
@@ -270,6 +288,7 @@ function quoteLines(quotes: readonly Quote[]): string[] {
  * step), a practice whose rule was said again since it was written (删除, 保留). 忽略 and 保留 put a card away.
  */
 export function ledgerCardRows(cards: readonly LedgerCard[], flows: readonly CoachFlow[], t: T): BoardRow[] {
+  flows = flowsIn(flows, t);
   const stepTitle = (flow: string, step: string): string => flows.find((f) => f.name === flow)?.states.find((s) => s.id === step)?.title ?? step;
   return cards.map((c): BoardRow => {
     const away = (label: string): Pressable => ({ key: `ledger-away-${c.key}`, label, action: { op: "ledger-dismiss", key: c.key, n: c.n } });
@@ -304,6 +323,7 @@ export function ledgerCardRows(cards: readonly LedgerCard[], flows: readonly Coa
  * practices for every flow and every step.
  */
 export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow[], practices: readonly Practice[], t: T, o: ManualOptions): BoardRow[] {
+  flows = flowsIn(flows, t);
   const live = practices.filter((p) => p.deleted !== true);
   const open = items.filter((i) => i.status === "open");
   const latest = (f: CoachFlow): string => open.filter((i) => i.flow === f.name).reduce((m, i) => (i.at > m ? i.at : m), "");
@@ -388,6 +408,7 @@ export interface CoachBandLine { verb: string; title: string; note: string; deta
  * no buttons: `doing`). The other items waiting on the person, in any session, are the ones more.
  */
 export function coachBand(items: readonly WorkItem[], flows: readonly CoachFlow[], session: string, t: T, since?: string, gone?: readonly GoneOn[], doing?: Doing | null): CoachBandLine | undefined {
+  flows = flowsIn(flows, t);
   const at = (i: WorkItem) => {
     const flow = flows.find((f) => f.name === i.flow);
     return { i, flow, p: flow !== undefined ? itemProgress(i, flow) : undefined };

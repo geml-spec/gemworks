@@ -431,7 +431,7 @@ test("the pane: rows for the tab, a problem above them, and the reason when ther
   assert.deepEqual(pane({ board: null, tab: "sessions", project }).filter((r) => r.kind === "section").map((r) => r.key), ["own", "others", "decisions"], "the sessions tab: this session, the others, what every session decided");
   assert.deepEqual(pane({ board: null, tab: "sessions", project, memory: { list: { dir: "/h/m", entries: [{ file: "a.md", title: "甲", hook: "一", type: "feedback", at }] }, group: null, menu: null, edit: null, shown: 10 } }).filter((r) => r.kind === "section").map((r) => r.key), ["own", "others", "memory", "decisions"], "the sessions tab: this session, the others, then memory and decisions, which 记录 had");
   assert.deepEqual(pane(), flow(), "a host that draws no light flows: the workflow alone");
-  assert.deepEqual(pane({ coach: { items: [], flows: [], focus: null } }).slice(2), [{ kind: "section", key: "strict", text: "严格流程", note: "只能你把事放进去，挂着的规定会真拦" }, ...flow()], "beside the light flows' manual: the project's own workflow under 严格流程");
+  assert.deepEqual(pane({ coach: { items: [], flows: [], focus: null } }).slice(2), [{ kind: "section", key: "strict", text: "固化流程", note: "只能你把事放进去，挂着的规定会真拦" }, ...flow()], "beside the light flows' manual: the project's own workflow under 固化流程");
   assert.deepEqual(pane({ tab: "tools" }), toolRows({ board: BOARD, columns: 100, t: wordsFor("zh"), usage: {}, suggestions: [], query: "", menu: null, naming: null, open: [] }));
   const stale = pane({ problem: "gemworks：桥接没有应答（timed out）", tab: "items", doneOpen: true });
   assert.deepEqual(stale[0], { kind: "text", text: "gemworks：桥接没有应答（timed out）", tone: "error" }, "the last board stays, under why it is not fresh");

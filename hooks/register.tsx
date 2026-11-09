@@ -339,7 +339,8 @@ async function findNode($: EngineInterface): Promise<{ node: string } | { proble
     if (m >= 22) return { node: bin }
     seen = seen === undefined ? m : Math.max(seen, m)
   }
-  return { problem: seen !== undefined ? `gemworks：Node ${seen} 太旧，需要 Node ≥ 22` : 'gemworks：找不到 node — 请安装 Node ≥ 22' }
+  const t = await words($)
+  return { problem: seen !== undefined ? t('gemworks：Node {0} 太旧 — 请到 nodejs.org 安装 Node ≥ 22', seen) : t('gemworks：找不到 node — 请到 nodejs.org 安装 Node ≥ 22') }
 }
 
 /**
@@ -2663,7 +2664,7 @@ async function dialogRows($: EngineInterface, t: T, dialog: Dialog, columns: num
         check('notify.inbox', s.notify.inbox, t('有问题等你定')),
         check('notify.confirm', s.notify.confirm, t('工作项到了要你确认的一步')),
         check('notify.refusal', s.notify.refusal, t('被规定拦下'), t('同一原因 3 分钟内只提一次')))
-      if (shell?.status !== null && shell?.status !== undefined) rows.push(label('strict', t('严格流程')), check('notify.stage', s.notify.stage, t('阶段变更时提醒')))
+      if (shell?.status !== null && shell?.status !== undefined) rows.push(label('strict', t('固化流程')), check('notify.stage', s.notify.stage, t('阶段变更时提醒')))
     }
   } else if (dialog === 'upgrade') {
     const latest = known as unknown as { version?: string; error?: string } | null
@@ -2706,7 +2707,7 @@ async function dialogRows($: EngineInterface, t: T, dialog: Dialog, columns: num
     // journal is a strict workflow's only: on the light flows alone there is none, and exporting it would only fail.
     const strict = here !== null && here !== undefined
     const [flows, practices, own] = await Promise.all([coachFlowsKept($), practicesKept($), $.session.id().then(async (id) => turnItem(await workItems($), id)?.flow).catch(() => undefined)])
-    const flowChoices = [...flows.map((f) => ({ name: f.name, title: f.title })), ...(strict ? [{ name: STRICT_FLOW, title: t('{0}（严格流程）', here.workflow.title) }] : [])]
+    const flowChoices = [...flows.map((f) => ({ name: f.name, title: f.title })), ...(strict ? [{ name: STRICT_FLOW, title: t('{0}（固化流程）', here.workflow.title) }] : [])]
     const kept = (picked as unknown as { what: ShareWhat; how: ShareHow; strip: boolean; flow?: string } | null) ?? { what: 'status', how: 'copy', strip: true }
     const flowName = flowChoices.some((f) => f.name === kept.flow) ? kept.flow : (flowChoices.find((f) => f.name === own) ?? flowChoices[0])?.name
     const flowTitle = flowChoices.find((f) => f.name === flowName)?.title ?? ''
@@ -3299,7 +3300,7 @@ export const register: Register = (on) => {
       // The initialization's count while it runs; its outcome, once, until the next prompt.
       const init = (await read($, initAtom)) as unknown as InitState | null
       notice = init === null ? null : init.state === 'running'
-        ? { text: t('初始化任务整理中…（{0}/{1}）', init.done, init.total), tone: 'dim' as const }
+        ? { text: t('正在了解这个项目以前的会话（{0}/{1}），只存在本机 .geml/ 目录', init.done, init.total), tone: 'dim' as const }
         : { text: `${t('初始化完毕。欢迎使用。')}${init.failed > 0 ? t('（{0} 个会话读不了）', init.failed) : ''}`, tone: 'normal' as const }
       view = bandView({
         shell, problem: await read($, problemAtom), setup: await read($, setupAtom), notice, todo: (await read($, todoAtom)) as unknown as TodoCount | null,

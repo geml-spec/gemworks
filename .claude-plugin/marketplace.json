@@ -4,7 +4,7 @@
     "name": "geml-spec",
     "url": "https://github.com/geml-spec"
   },
-  "description": "Gemworks for Claude Code: a coach for the person and the agent — the work items on the way, the flow each is in, what each still needs.",
+  "description": "Gemworks: a workbench right beside your agent chat.",
   "allowCrossMarketplaceDependenciesOn": [
     "geml"
   ],
@@ -15,7 +15,7 @@
         "source": "npm",
         "package": "gemworks"
       },
-      "description": "Gemworks: work items, their flows and what each still needs; a band above the prompt and a board; rules a flow may set on its states.",
+      "description": "A workbench right beside your agent chat: it keeps your artifacts in order, sums up what you've learned, remembers what you've decided, and lets your workflow grow on its own. A line above the prompt shows where the work stands; a board holds the work items, artifacts and flows.",
       "strict": true
     }
   ]

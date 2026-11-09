@@ -56,8 +56,8 @@ export function noStatusText(shell: ShellStatus, t: T = ZH): string {
   if (shell.problem?.quiet === true) {
     const s = shell.suggest;
     return s !== undefined
-      ? t("这个项目用四条轻流程（新设计、新功能、bugfix、优化）。要按顺序走的严格流程，建议添加 {0}（{1}）：/gemworks add {0}；/gemworks add 列出全部。", s.workflow, s.file ?? t("默认"))
-      : t("这个项目用四条轻流程（新设计、新功能、bugfix、优化）。要按顺序走的严格流程，用 /gemworks add 添加一类活。");
+      ? t("这个项目用四条轻流程（新设计、新功能、bugfix、优化）。要按顺序走的固化流程，建议添加 {0}（{1}）：/gemworks add {0}；/gemworks add 列出全部。", s.workflow, s.file ?? t("默认"))
+      : t("这个项目用四条轻流程（新设计、新功能、bugfix、优化）。要按顺序走的固化流程，用 /gemworks add 添加一类活。");
   }
   return `gemworks：${shell.problem?.text ?? t("没有状态")}`;
 }

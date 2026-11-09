@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { closeEvent, COACH_FLOWS, coachBand, doingNote, goneOnAfterTurn, goneOnNote, holdEvent, itemHistory, manualRows, turnWords, itemProgress, metOf, pressEvent, readCoachFlow, stripText, turnItem, WORK_SHOWN, workContext, workEvents, workItemsOf, workPrompt, workRows } from "../dist/hosts/claude-code/coach.js";
+import { closeEvent, COACH_FLOWS, coachBand, doingNote, flowsIn, goneOnAfterTurn, goneOnNote, holdEvent, itemHistory, manualRows, turnWords, itemProgress, metOf, pressEvent, readCoachFlow, stripText, turnItem, WORK_SHOWN, workContext, workEvents, workItemsOf, workPrompt, workRows } from "../dist/hosts/claude-code/coach.js";
 import { parseLog, summarize } from "../dist/core/session-log.js";
 import { wordsFor } from "../dist/hosts/claude-code/text.js";
 
@@ -303,4 +303,23 @@ test("an item of a session that ended is the person's to move: taken over it is 
     assert.deepEqual([closed.status, closed.next], [status, ""]);
     assert.equal(row(workRows([closed], flows, t, { own: "s1" })), undefined, `${status}: off the tab`);
   }
+});
+
+test("the four light flows speak the person's language: every title, need, pitfall and answer has its English and Japanese, ids stay", () => {
+  for (const lang of ["en", "ja"]) {
+    const shown = flowsIn(flows, wordsFor(lang));
+    const cjk = /[一-鿿]/;
+    for (const [i, f] of shown.entries()) {
+      assert.equal(f.name, flows[i].name);
+      for (const [j, st] of f.states.entries()) {
+        assert.equal(st.id, flows[i].states[j].id, "a press still names the step it meant");
+        if (lang === "en") for (const text of [f.title, st.title, st.need, st.prevents, ...(st.answers ?? [])]) assert.ok(!cjk.test(text), `${f.name}.${st.id}: ${text}`);
+      }
+    }
+  }
+  const feature = flowsIn(flows, wordsFor("en")).find((f) => f.name === "feature");
+  assert.deepEqual([feature.title, feature.states[0].title, feature.states[0].need, feature.states[0].answers], ["feature", "Mockup", "You've seen it and said yes", ["Yes", "Change it"]]);
+  const grown = { ...flow("bugfix"), states: [{ ...flow("bugfix").states[0], title: "先截图", need: "截图贴进来" }] };
+  assert.deepEqual(flowsIn([grown], wordsFor("en"))[0].states[0].title, "先截图", "a step the project grew keeps its own words");
+  assert.deepEqual(flowsIn(flows, t), flows, "in Chinese nothing changes");
 });
