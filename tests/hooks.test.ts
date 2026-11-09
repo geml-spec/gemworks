@@ -895,6 +895,12 @@ test('a line with options whose words do not fit beside them: the words on a row
   expect(shown(find(drawn, 'band-q-0') as Drawn), 'the words, whole, on their row').toEqual(['[　　]', '验收 feat/x'])
   const below = find(drawn, 'band-q-actions') as Drawn
   for (const key of ['approve-done', 'capture', 'board']) expect(holds(below, key), key).toBe(true)
+  const both = (el: Drawn | string): Drawn | undefined => typeof el === 'string' ? undefined : (el.children ?? []).some((c) => typeof c !== 'string' && keyOf(c) === 'band-q-actions') ? el : (el.children ?? []).map(both).find((x) => x !== undefined)
+  expect(both(drawn)?.props, 'a step of space between the words and the taller buttons').toMatchObject({ rowGap: 'sm' })
+  // The options start under the words: after a blank as wide as the mark, before the push to the right.
+  const order = (below.children ?? []).map((c) => typeof c === 'string' ? c : String(keyOf(c) ?? c.type))
+  expect(order.slice(0, 2)).toEqual(['band-q-indent', 'approve-done'])
+  expect(order.indexOf('approve-done')).toBeLessThan(order.indexOf('band-icons'))
   expect(await band.find({ type: 'Button', key: 'title' }), 'no title squeezed beside the options').toBeUndefined()
   await band.unmount()
 })

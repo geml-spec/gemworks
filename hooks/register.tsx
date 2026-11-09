@@ -2726,6 +2726,8 @@ async function shareStatus($: EngineInterface, t: T): Promise<string> {
 
 /** A question takes the rows it needs on the band: shown whole (past the engine's rows, the band scrolls). */
 const QUESTION_ROWS = Number.POSITIVE_INFINITY
+/** Nothing, as wide as the band's mark: the row of options under a question starts where its words do. */
+const BLANK_MARK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 13"></svg>'
 /** The fewest cells the band's one thing keeps on its row before what grew (新学到, 提议) gives way. */
 const ROOM_MIN = 16
 
@@ -3408,8 +3410,11 @@ export const register: Register = (on) => {
     )
     if (rows) {
       const lines = wrapCells(question ?? `${view.verb !== '' ? `${view.verb} ` : ''}${lineWords}`, Math.max(20, columns - 3), QUESTION_ROWS)
+      // A step of space between the words and the row of options, whose buttons stand taller than a line of words on
+      // the desktop (the terminal draws `sm` down as none); none between the words' own lines.
       return stack(
-        <Box flexDirection="column" flexGrow={1}>
+        <Box flexDirection="column" flexGrow={1} rowGap="sm">
+          <Box key="band-q-words" flexDirection="column">
           {lines.map((l, n) => (
             <Box key={`band-q-${n}`} gap={1}>
               {n === 0
@@ -3427,10 +3432,15 @@ export const register: Register = (on) => {
               <Text {...(Svg !== undefined ? { color: 'suggestion' } : {})} wrap="truncate-end">{l}</Text>
             </Box>
           ))}
+          </Box>
+          {/* The options start where the words do, under them: a blank as wide as the mark first; what grew and the icons at the right. */}
           <Box key="band-q-actions" gap={1} alignItems="center">
-            <Box flexGrow={1} />
+            {Svg !== undefined
+              ? <Box key="band-q-indent" flexShrink={0} paddingX={1}><Svg source={BLANK_MARK_SVG} alt="" width={13} height={13} /></Box>
+              : <Text key="band-q-indent">{' '.repeat(cellWidth(MARK.text))}</Text>}
             {options.map(pressable)}
             {at !== '' && <Text dimColor>{at}</Text>}
+            <Box flexGrow={1} />
             {grew}
             {icons}
           </Box>
