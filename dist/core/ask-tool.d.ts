@@ -44,3 +44,41 @@ export declare const ASK_PROMPT = "Gemworks: when a turn ends asking the person 
 export declare function askedOf(input: Readonly<Record<string, unknown>>): Asked | {
     error: string;
 };
+/**
+ * The ask tool on a host with no status band (Codex, Antigravity, an MCP-only host): the same question, which the GEML
+ * board lists under 等你 until the person's next prompt; the person answers in the conversation.
+ */
+export declare const ASK_TOOL_ON_BOARD: {
+    readonly name: "ask";
+    readonly inputSchema: {
+        readonly type: "object";
+        readonly properties: {
+            readonly question: {
+                readonly type: "string";
+                readonly description: "The question, whole, as the person should read it.";
+            };
+            readonly options: {
+                readonly type: "array";
+                readonly items: {
+                    readonly type: "string";
+                };
+                readonly minItems: 2;
+                readonly maxItems: 4;
+                readonly description: "The answers the person can give, each a few words.";
+            };
+            readonly recommended: {
+                readonly type: "string";
+                readonly description: "The answer you recommend: one of options.";
+            };
+            readonly item: {
+                readonly type: "string";
+                readonly description: "The work item on the way this question is about, by its id; leave it out when it is about none. The question then stands under that item on the board until answered.";
+            };
+        };
+        readonly required: readonly ["question", "options"];
+        readonly additionalProperties: false;
+    };
+    readonly description: "Register a question this turn ends with, so the Gemworks board lists it with its answers until the person's next prompt: the question in full, its real answers (two to four, short, in the reply's language), and the one you recommend. Ask it in your reply as well: the person answers in the conversation. Call it once per question, before the turn ends; do not register a question you answered yourself or one that needs no answer.";
+};
+/** What the model is told once about registering its questions, on a host with no status band. */
+export declare const ASK_PROMPT_ON_BOARD = "Gemworks: when a turn ends asking the person to decide something, ask it in your reply and register each question with the gemworks `ask` tool before the turn ends: the question in full, its real answers (two to four, short, in the reply's language) and the one you recommend. The Gemworks board lists a registered question with its answers until the person's next prompt; they answer in the conversation.";

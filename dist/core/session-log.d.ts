@@ -65,6 +65,19 @@ export type SessionEvent =
     status: ItemStatus;
     met?: MetStep[];
     next?: string;
+}
+/**
+ * A question the turn ends with, as the model registered it (the ask tool) on a host with no status band: what the
+ * GEML board lists under 等你 until the session's next prompt, which answers it or leaves it for the model to ask again.
+ */
+ | {
+    t: "ask";
+    turn: number;
+    at: string;
+    question: string;
+    options: string[];
+    recommended?: string;
+    item?: string;
 };
 /** Where a work item stands: on its way, put aside by the person, finished, or given up. */
 export type ItemStatus = "open" | "held" | "done" | "dropped";
@@ -146,6 +159,10 @@ export interface SessionSummary {
     /** The work items it reported, the newest event of each. */
     items?: Extract<SessionEvent, {
         t: "item";
+    }>[];
+    /** The questions its last turn ended with (the ask tool, on a host with no status band); gone at its next prompt. */
+    asks?: Extract<SessionEvent, {
+        t: "ask";
     }>[];
 }
 /** A log read as one session; undefined for a log with no session line. */

@@ -54,7 +54,7 @@ import { isVisualTool, visualFileName, visualPage } from '../dist/hosts/claude-c
 import { transcriptEvents, type Transcript } from '../dist/core/transcript.js'
 import type { Asked } from '../dist/core/ask-tool.js'
 import type { AttachedClient, HostInfo } from '../dist/hosts/claude-code/env.js'
-import { baseName, openersFor } from '../dist/hosts/claude-code/open-file.js'
+import { BROWSER_PROGID_ARGV, baseName, browserCommandArgv, browserExeOf, openersFor, opensInBrowser, progIdOf } from '../dist/hosts/claude-code/open-file.js'
 import { bandView, BRAND_RED, cellWidth, MARK, MARK_SVG, SEP, toneProps, truncate, wrapCells } from '../dist/hosts/claude-code/band.js'
 import type { BandView, Tone } from '../dist/hosts/claude-code/band.js'
 import { BOARD_ID, ciSuggestions, DIALOG_ID, glyphSvg, heldRows, HOME_TAB, hostName, ICON_CHAR, ICON_SVG, ICON_TONE, inputAction, paneRows, projectPath, sessionLabel, TAB_IDS, tabs, toolSuggestions } from '../dist/hosts/claude-code/board.js'
@@ -177,6 +177,8 @@ const reloadAtom = atom({ plugin: 'gemworks', key: 'reload' } as const, false)
 const reloadUnavailableAtom = atom({ plugin: 'gemworks', key: 'reloadUnavailable' } as const, false)
 /** The machine and checkout the session runs on, as the bridge read them ({ name, platform, user, branch }). */
 const hostAtom = atom({ plugin: 'gemworks', key: 'host' } as const, null as GemworksJson)
+/** The default browser's program on Windows, once asked: '' when there is none to name. */
+const browserAtom = atom({ plugin: 'gemworks', key: 'browser' } as const, null as string | null)
 /** The clients attached to the session (session.attach): [{ clientId, surface }]. */
 const clientsAtom = atom({ plugin: 'gemworks', key: 'clients' } as const, [] as GemworksJson)
 /** Where the last prompt came from: composer (this machine), bridge (Remote Control), sdk. */
@@ -337,7 +339,8 @@ async function findNode($: EngineInterface): Promise<{ node: string } | { proble
     if (m >= 22) return { node: bin }
     seen = seen === undefined ? m : Math.max(seen, m)
   }
-  return { problem: seen !== undefined ? `gemworks：Node ${seen} 太旧，需要 Node ≥ 22` : 'gemworks：找不到 node — 请安装 Node ≥ 22' }
+  const t = await words($)
+  return { problem: seen !== undefined ? t('gemworks：Node {0} 太旧 — 请到 nodejs.org 安装 Node ≥ 22', seen) : t('gemworks：找不到 node — 请到 nodejs.org 安装 Node ≥ 22') }
 }
 
 /**
@@ -2025,9 +2028,10 @@ const OPEN_MS = 10_000
  * artifacts' menu or the export (a `file:` link opens nothing on a remote
  * surface); with `reveal`, shows it selected in its folder. A missing path
  * says so and runs nothing; an opener that is not on the machine gives way to
- * the next; one still running at the timeout started. Pressed from the phone,
- * or with the last prompt over Remote Control, the toast says it opened on the
- * machine, where the person may not be.
+ * the next, and so does one that fails; one still running at the timeout
+ * started. At the machine nothing is said (the window that opens says it);
+ * pressed from the phone, or with the last prompt over Remote Control, the
+ * toast says it opened on the machine, where the person may not be.
  */
 async function openFile($: EngineInterface, path: string, reveal: boolean, surface?: string): Promise<void> {
   const t = await words($)
@@ -2036,17 +2040,33 @@ async function openFile($: EngineInterface, path: string, reveal: boolean, surfa
   const [h, o] = await Promise.all([read($, hostAtom), read($, originAtom)])
   const platform = (h as unknown as HostInfo | null)?.platform
   const away = remoteInPlay({ ...(surface !== undefined ? { surface } : {}), clients: [], ...(o !== null ? { origin: o } : {}) })
-  const done = reveal ? (away ? '已在本机的文件夹里显示：{0}' : '已在文件夹里显示：{0}') : (away ? '已在本机打开：{0}' : '已打开：{0}')
-  for (const opener of openersFor(platform, path, reveal)) {
+  const done = away ? (reveal ? '已在本机的文件夹里显示：{0}' : '已在本机打开：{0}') : undefined
+  const browser = platform === 'win32' && !reveal && opensInBrowser(path) ? await browserOf($) : undefined
+  for (const opener of openersFor(platform, path, reveal, browser)) {
     try {
       const r = await $.process.run(opener.argv, { timeoutMs: OPEN_MS, ...(opener.env !== undefined ? { env: opener.env } : {}) })
-      $.ui.toast(r.exitCode === 0 ? t(done, name) : t('打不开：{0}', name))
+      if (r.exitCode !== 0) continue
+      if (done !== undefined) $.ui.toast(t(done, name))
       return
     } catch (err) {
-      if (/timed out|still running/i.test(reasonOf(err))) { $.ui.toast(t(done, name)); return }
+      if (/timed out|still running/i.test(reasonOf(err))) { if (done !== undefined) $.ui.toast(t(done, name)); return }
     }
   }
   $.ui.toast(t('打不开：{0}', name))
+}
+
+/** The default browser's program on Windows, asked of the registry once (two quick `reg query`s) and kept; none when
+ * it cannot be told, and the file's own app opens it. */
+async function browserOf($: EngineInterface): Promise<string | undefined> {
+  const kept = await read($, browserAtom)
+  if (kept !== null) return kept === '' ? undefined : kept
+  let exe = ''
+  try {
+    const id = progIdOf(String((await $.process.run(BROWSER_PROGID_ARGV, { timeoutMs: 3000 })).stdout))
+    if (id !== undefined) exe = browserExeOf(String((await $.process.run(browserCommandArgv(id), { timeoutMs: 3000 })).stdout)) ?? ''
+  } catch { /* none to name */ }
+  await update($, browserAtom, () => exe)
+  return exe === '' ? undefined : exe
 }
 
 function press($: EngineInterface, action: BoardAction): (e: { surface: string }) => void {
@@ -2644,7 +2664,7 @@ async function dialogRows($: EngineInterface, t: T, dialog: Dialog, columns: num
         check('notify.inbox', s.notify.inbox, t('有问题等你定')),
         check('notify.confirm', s.notify.confirm, t('工作项到了要你确认的一步')),
         check('notify.refusal', s.notify.refusal, t('被规定拦下'), t('同一原因 3 分钟内只提一次')))
-      if (shell?.status !== null && shell?.status !== undefined) rows.push(label('strict', t('严格流程')), check('notify.stage', s.notify.stage, t('阶段变更时提醒')))
+      if (shell?.status !== null && shell?.status !== undefined) rows.push(label('strict', t('固化流程')), check('notify.stage', s.notify.stage, t('阶段变更时提醒')))
     }
   } else if (dialog === 'upgrade') {
     const latest = known as unknown as { version?: string; error?: string } | null
@@ -2687,7 +2707,7 @@ async function dialogRows($: EngineInterface, t: T, dialog: Dialog, columns: num
     // journal is a strict workflow's only: on the light flows alone there is none, and exporting it would only fail.
     const strict = here !== null && here !== undefined
     const [flows, practices, own] = await Promise.all([coachFlowsKept($), practicesKept($), $.session.id().then(async (id) => turnItem(await workItems($), id)?.flow).catch(() => undefined)])
-    const flowChoices = [...flows.map((f) => ({ name: f.name, title: f.title })), ...(strict ? [{ name: STRICT_FLOW, title: t('{0}（严格流程）', here.workflow.title) }] : [])]
+    const flowChoices = [...flows.map((f) => ({ name: f.name, title: f.title })), ...(strict ? [{ name: STRICT_FLOW, title: t('{0}（固化流程）', here.workflow.title) }] : [])]
     const kept = (picked as unknown as { what: ShareWhat; how: ShareHow; strip: boolean; flow?: string } | null) ?? { what: 'status', how: 'copy', strip: true }
     const flowName = flowChoices.some((f) => f.name === kept.flow) ? kept.flow : (flowChoices.find((f) => f.name === own) ?? flowChoices[0])?.name
     const flowTitle = flowChoices.find((f) => f.name === flowName)?.title ?? ''
@@ -3280,7 +3300,7 @@ export const register: Register = (on) => {
       // The initialization's count while it runs; its outcome, once, until the next prompt.
       const init = (await read($, initAtom)) as unknown as InitState | null
       notice = init === null ? null : init.state === 'running'
-        ? { text: t('初始化任务整理中…（{0}/{1}）', init.done, init.total), tone: 'dim' as const }
+        ? { text: t('正在了解这个项目以前的会话（{0}/{1}），只存在本机 .geml/ 目录', init.done, init.total), tone: 'dim' as const }
         : { text: `${t('初始化完毕。欢迎使用。')}${init.failed > 0 ? t('（{0} 个会话读不了）', init.failed) : ''}`, tone: 'normal' as const }
       view = bandView({
         shell, problem: await read($, problemAtom), setup: await read($, setupAtom), notice, todo: (await read($, todoAtom)) as unknown as TodoCount | null,

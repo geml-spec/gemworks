@@ -47,6 +47,8 @@ function isEvent(v) {
         case "decision": return typeof e["turn"] === "number" && typeof e["text"] === "string";
         case "file": return typeof e["turn"] === "number" && typeof e["path"] === "string";
         case "commit": return typeof e["turn"] === "number" && typeof e["sha"] === "string" && typeof e["subject"] === "string";
+        case "ask": return typeof e["turn"] === "number" && typeof e["question"] === "string" && Array.isArray(e["options"]) && e["options"].every((o) => typeof o === "string")
+            && (e["recommended"] === undefined || typeof e["recommended"] === "string") && (e["item"] === undefined || typeof e["item"] === "string");
         case "item": return typeof e["turn"] === "number" && ["id", "flow", "title", "state", "needs", "goal"].every((k) => typeof e[k] === "string")
             && (e["status"] === "open" || e["status"] === "held" || e["status"] === "done" || e["status"] === "dropped")
             && (e["met"] === undefined || (Array.isArray(e["met"]) && e["met"].every(isMetStep))) && (e["next"] === undefined || typeof e["next"] === "string");
@@ -119,6 +121,8 @@ export function summarize(events) {
         switch (e.t) {
             case "session": break;
             case "prompt": {
+                // A new prompt answers the questions the last turn ended with, or leaves them for the model to ask again.
+                delete s.asks;
                 const tn = turn(e.turn, e.at);
                 tn.prompt = e.text;
                 if (e.uuid !== undefined)
@@ -143,6 +147,9 @@ export function summarize(events) {
             case "commit":
                 if (!s.commits.some((c) => c.sha === e.sha))
                     s.commits.push({ sha: e.sha, subject: e.subject, at: e.at, ...(e.branch !== undefined ? { branch: e.branch } : {}) });
+                break;
+            case "ask":
+                s.asks = [...(s.asks ?? []).filter((q) => q.question !== e.question), e];
                 break;
             case "item": {
                 s.items = [...(s.items ?? []).filter((x) => x.id !== e.id), e];

@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import z from "@deepseek-ai/schemastery";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
+import { type CoachData } from "./board.js";
 import { type Statechart } from "../../core/statechart.js";
 import type { Run } from "../../core/run.js";
 import { Supervisor } from "../../core/supervisor.js";
@@ -47,15 +48,26 @@ export declare function apply(ctx: Context, config: Config): void;
  * other sessions' decisions of the last three days in its context. What fails
  * to be written is missed, never the agent's.
  */
-export declare function recordSession(agent: Agent): void;
+export declare function recordSession(agent: Agent, recorded?: Map<string, string>): void;
+/** The words the loop speaks in, as this host names its tools: the gemworks `work` tool is `gemworks_work` here. */
+export declare const dshWords: (text: string) => string;
+/**
+ * A tool's JSON Schema as this host declares parameters (dsh-tools' schema DSL): each property says itself whether it
+ * is required, every object whether it is open; a bound on an array's length is left to the tool, which checks it.
+ */
+export declare function dshParameters(schema: Record<string, unknown>): Record<string, unknown>;
+/** What the light flows put on a session's board, read from the project's record now. */
+export declare function coachDataOf(cwd: string, id: string): CoachData;
 /**
  * The board's routes (spec §8.10). `GET /api/gemworks/board?session=<id>&tab=…&filter=…&expanded=…&lang=…`
  * answers one tab's rows with the tabs and the header; `POST /api/gemworks/act`
  * with `{ session, action }` runs a press (a board action, or a field's typed
- * value as `{ op: "input", field, value }`). A session nobody supervises is 404;
- * a press the host cannot run is 400 with the reason. Exported for the tests.
+ * value as `{ op: "input", field, value }`). A session no workflow supervises
+ * is drawn from the project's record (its work items and flows) when it is one
+ * the plugin records, else 404; a press the host cannot run is 400 with the
+ * reason. Exported for the tests.
  */
-export declare function boardApi(sessions: ReadonlyMap<string, Attached>): (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+export declare function boardApi(sessions: ReadonlyMap<string, Attached>, recorded?: ReadonlyMap<string, string>): (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 /**
  * Put one agent under supervision. Exported so tests can drive it directly:
  * the harness testkit publishes an agent without running a turn, and this is

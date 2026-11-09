@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.3.0] — 2026-11-09
+
+The first release for people outside the project: a workbench beside your agent chat. It keeps track of the work, the
+things it makes and what you have learned, and lets your workflows grow from your own corrections. Claude Code is the
+host it is made for.
+
+- **Where the work stands.** A line above the prompt names the work item this session is on, the step it stands at and
+  what waits on you, with buttons for your answers. `/gemworks board` opens the board: sessions, work items, artifacts,
+  flows and tools.
+
+- **Work items on light flows.** The model reports each turn's work items on one of four flows — new design, new
+  feature, bugfix, optimize — or on one your project adds. A step you judge is met only by your word or your press.
+
+- **Artifacts.** The documents, pages, pictures and links the work made are kept under their work item; a file Git
+  does not keep has each version copied into `.geml/`.
+
+- **Lessons, and flows that grow.** A practice is recorded on the step it belongs to and comes back as a reminder when
+  the next work item reaches that step. Your typed corrections are labelled by a small model on your own Claude account
+  (you can turn this off in the settings) and gathered into themes. A kind of work you keep correcting gets a flow
+  proposed, and so does a step that keeps being done; nothing changes until you accept.
+
+- **Several sessions, one record.** A decision noted in one session is told to the project's other sessions, on other
+  branches and worktrees too.
+
+- **First start.** Gemworks reads the project's earlier sessions once, in the background; what it reads stays in
+  `.geml/` on this machine.
+
+- **Other hosts.** Codex, Antigravity, DeepSeek Harness, Pi and any MCP host get the same tools and record, with a GEML
+  page or their own panel as the board. They are new in this release and have not been tried on real installs yet.
+
+- Needs Node 22 and Claude Code 2.1.275 or later; install in two lines (see the README).
+
 ## [0.2.1] — 2026-10-16
 
 - **gemflow**: the board shows what a work item's work made. The files its

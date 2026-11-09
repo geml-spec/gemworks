@@ -186,3 +186,30 @@ export function unlabelledPrompts(ledger, transcripts, o = {}) {
     }
     return out.sort((a, b) => (a.at < b.at ? -1 : 1)).slice(0, o.limit ?? Infinity);
 }
+/**
+ * The prompts the project's other hosts recorded in its shared record (session-store.ts: Codex, Antigravity, DeepSeek
+ * Harness, Pi, an MCP-only host), with no label yet: what their sessions could not label themselves, for `gemworks
+ * corrections pending` and whatever labels later. Claude Code's own are its transcripts' (unlabelledPrompts); a turn
+ * read back from a transcript, or a prompt that was not the person's, is none. `before` is the answer of the turn before.
+ */
+export function recordedUnlabelled(ledger, sessions, o = {}) {
+    const now = o.now ?? new Date().toISOString();
+    const since = o.since ?? ledger.prompts[ledger.prompts.length - 1]?.at ?? new Date(Date.parse(now) - 30 * 86_400_000).toISOString();
+    const taken = new Set(ledger.prompts.map((p) => p.id));
+    const out = [];
+    for (const s of sessions) {
+        if (s.host === "claude-code" || s.backfilled === true)
+            continue;
+        s.turns.forEach((t, i) => {
+            const text = typedWords(t.prompt);
+            if (text === undefined || t.backfilled === true || t.kind !== undefined || t.at <= since)
+                return;
+            const row = { id: promptId(s.id, t.at, taken), at: t.at, session: s.id, text };
+            if (hasPrompt(ledger, row) || hasPrompt({ prompts: out }, row))
+                return;
+            taken.add(row.id);
+            out.push({ ...row, project: s.checkout ?? "", before: (s.turns[i - 1]?.answer ?? "").slice(-600) });
+        });
+    }
+    return out.sort((a, b) => (a.at < b.at ? -1 : 1)).slice(0, o.limit ?? Infinity);
+}

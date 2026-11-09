@@ -5,8 +5,12 @@ import { type Status } from "../../core/status.js";
 import { type Statechart } from "../../core/statechart.js";
 import type { Supervisor } from "../../core/supervisor.js";
 import type { BoardAction, BoardTab, JournalFilter } from "../claude-code/actions.js";
-import { type BoardRow, type InputField } from "../claude-code/board.js";
+import { paneRows, type BoardRow, type InputField } from "../claude-code/board.js";
 import type { BoardData, ShellStatus } from "../claude-code/protocol.js";
+import type { Asked } from "../../core/ask-tool.js";
+import type { Proposal } from "../../core/growth.js";
+import type { Practice } from "../../core/practices.js";
+import type { CoachFlow, WorkItem } from "../../core/work.js";
 /** One session under supervision, as the plugin keeps it. */
 export interface Supervision {
     sc: Statechart;
@@ -72,7 +76,7 @@ export interface BoardReply {
     pending: number;
 }
 /** One tab's rows, in the browser's language, with the tabs and the header around them. */
-export declare function boardReply(s: Supervision, q: BoardQuery, now: string, locale?: string, versions?: ShellStatus["versions"]): BoardReply;
+export declare function boardReply(s: Supervision, q: BoardQuery, now: string, locale?: string, versions?: ShellStatus["versions"], coach?: CoachData): BoardReply;
 /** What a press needs: the session's Supervisor, its statechart, and the workflow file whose dictionary a lesson is written into. */
 export interface Acting {
     sup: Supervisor;
@@ -91,3 +95,23 @@ export declare function actOnSession(s: Acting, action: DshAction, now: string):
     ok: false;
     error: string;
 };
+/** What the light flows put on a session's board: the work items, their flows, the practices, the proposals, its questions. */
+export interface CoachData {
+    items: readonly WorkItem[];
+    flows: readonly CoachFlow[];
+    practices: readonly Practice[];
+    proposals: readonly Proposal[];
+    asks: readonly Asked[];
+    /** The session's own id: its work items lead. */
+    own: string;
+}
+/** The tabs on this host for a session that runs no workflow of its own: the work items and the flows. */
+export declare const DSH_COACH_TABS: readonly BoardTab[];
+/** The light flows' part of a pane's input: what the work items and flow tabs draw first. */
+export declare const coachInput: (c: CoachData) => NonNullable<Parameters<typeof paneRows>[0]["coach"]>;
+/**
+ * The board of a session with no workflow of its own: the work items it and the project's other sessions reported,
+ * the flows with their practices and the proposals. A press this host cannot run is not drawn: the person answers a
+ * question, a step or a proposal in the conversation.
+ */
+export declare function coachBoardReply(c: CoachData, q: BoardQuery, now: string, locale?: string, versions?: ShellStatus["versions"]): BoardReply;

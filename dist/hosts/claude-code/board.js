@@ -193,7 +193,7 @@ export function paneRows(o) {
     if (o.board === null)
         return head.length > 0 ? [...head, ...coached] : [...coached, ...wait];
     if (o.tab === "flow")
-        return [...head, ...coached, ...(status !== null && o.coach !== undefined ? [{ kind: "section", key: "strict", text: t("严格流程"), note: t("只能你把事放进去，挂着的规定会真拦") }] : []), ...flowRows({ board: o.board, status, columns, t, ...(o.now !== undefined ? { now: o.now } : {}), selected: o.flowState, switching: o.switching, workflows: o.workflows })];
+        return [...head, ...coached, ...(status !== null && o.coach !== undefined ? [{ kind: "section", key: "strict", text: t("固化流程"), note: t("只能你把事放进去，挂着的规定会真拦") }] : []), ...flowRows({ board: o.board, status, columns, t, ...(o.now !== undefined ? { now: o.now } : {}), selected: o.flowState, switching: o.switching, workflows: o.workflows })];
     if (o.tab === "tools")
         return [...head, ...toolRows({ board: o.board, columns, t, usage: o.usage, suggestions, query: o.toolQuery, menu: o.toolMenu, naming: o.toolNaming, open: o.toolsOpen })];
     // The journal: the work item's events, then the project's memory, then what every session decided, each its own section.

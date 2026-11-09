@@ -10,6 +10,10 @@ export interface CodexEvent {
     prompt?: string;
     /** Stop: the turn's last answer. */
     last_assistant_message?: string;
+    /** SessionStart: startup, resume, clear, compact or fork. */
+    source?: string;
+    /** Stop: whether the turn already went back once from a Stop hook. */
+    stop_hook_active?: boolean;
 }
 /** The event Codex wrote to stdin; undefined when it is not one. */
 export declare function readEvent(text: string): CodexEvent | undefined;

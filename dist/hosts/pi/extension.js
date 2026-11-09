@@ -29,6 +29,7 @@ import { metaFor, openRun, Supervisor } from "../../core/supervisor.js";
 import { toParamEntry } from "../../core/tools.js";
 import { journalFromEntries, SNAPSHOT_ENTRY } from "./journal-entries.js";
 import { docReader, resolveWorkflow } from "../../workspace.js";
+import { attachLoop } from "./loop.js";
 /** One ParamEntry as JSON Schema, wrapped so TypeBox validates it verbatim. */
 function entrySchema(entry) {
     const schema = { type: entry.type, description: entry.description };
@@ -121,6 +122,11 @@ export function readSettings(env, cwd = process.cwd()) {
  */
 export default function gemworks(pi) {
     const cwd = process.cwd();
+    // The work loop needs no workflow: its tools, its band and board, in every project (loop.ts).
+    try {
+        attachLoop(pi, cwd);
+    }
+    catch { /* the workflow's supervision still stands */ }
     const settings = readSettings(process.env, cwd);
     if ("error" in settings.workflow) {
         const { error, kind } = settings.workflow;

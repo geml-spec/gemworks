@@ -2,10 +2,11 @@
 name: gemworks-mcp
 description: >-
   Work inside a project's Gemworks workflow through the gemworks MCP server
-  (tools status, move, set). Use when those tools are connected or the
-  project has a .geml/workflows/ directory: read the current stage before acting, let
-  status read PR, CI and file evidence, and move the workflow only along its
-  transitions.
+  (tools status, move, set, and the work loop's work, practice, propose,
+  answer, ask, artifact, note). Use when those tools are connected or the
+  project has a .geml/ directory: read status every turn, report the turn's
+  work items, let status read PR, CI and file evidence, and move the workflow
+  only along its transitions.
 ---
 
 # Gemworks over MCP
@@ -28,6 +29,18 @@ need not read it.)
 - `set` records the variables without a source, by name; a value of the wrong type writes nothing.
 - `gemworks mark`, `gemworks unmark` and `gemworks advance` are a person's commands. Never run them yourself: over MCP nothing refuses them, and the journal would credit a person with it.
 - The tool dictionary `.geml/tools.geml`, one for the project's workflows, binds each use a state declares to this project's tools, and a use is usable only in the states that declare it. Over MCP nothing refuses a tool for you: check the stage with `status` before you run one the stage does not list.
+
+## The work loop
+
+It needs no workflow file. Beside a host with hooks (Codex, Antigravity) the
+plugin hands you its lines beside each prompt; on any other host `status` is
+where you read them, so call it every turn:
+
+- `status` lists the work items on the way by id and the practices of the step your item stands at: follow them.
+- Before a turn ends, report the work items it was about with `work` (update one on the way by its id). A step the person judges is met only with their own words in `said`.
+- When a turn paid a price, or the person said how they want something done, record it with `practice` on the step it belongs to. When the same thing keeps being done at the same place, `propose` a step or a new kind of work; the person answers in the conversation, and you carry out their answer with `answer`, their words in `said`.
+- When the turn ends asking the person to decide, ask it in your reply and register it with `ask`. Record with `artifact` a link or a generated file the work made that is not a file you wrote.
+- The person follows all of it on the Gemworks board, `.geml/board.geml` in the main checkout: a GEML page that every record rewrites.
 
 Registering the server (stdio), in the host's MCP configuration:
 

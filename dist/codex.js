@@ -11,9 +11,14 @@
 // the model last read is kept per session under `PLUGIN_DATA` (Codex's data
 // directory for the plugin), else the temp directory. A person cannot be
 // asked from a hook, so a call the dictionary has no decision on goes
-// through with a note saying so. Nothing here ends the session: an event the
-// adapter cannot read, a project with no workflow, an error — exit 0, no
-// output, the reason on stderr.
+// through with a note saying so. The work loop (loop.ts) rides on the same
+// events: the session's start tells the model the loop's tools and the flows'
+// steps, and opens the GEML board when it has work on it; each prompt carries
+// the work items on the way and the step's practices; a turn that changed
+// things and reported no work item goes back once at its end; the board is
+// written again at each prompt and each turn's end. Nothing here ends the
+// session: an event the adapter cannot read, a project with no workflow, an
+// error — exit 0, no output, the reason on stderr.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -28,7 +33,10 @@ import { exists, readText } from "./host-fs.js";
 import { afterNeeded, beforeDecision, paramsToFill } from "./hosts/claude-code/fastpath.js";
 import { contextOf, normalised } from "./hosts/claude-code/readers.js";
 import { allowCall, callOf, contextFor, denyCall, exitCodeIn, isWrapped, patchPaths, readEvent, unwrapCommand, wrapCommand } from "./hosts/codex/hook.js";
-import { decisionsContext } from "./core/session-log.js";
+import { currentTurn, decisionsContext, SESSIONS_PROMPT } from "./core/session-log.js";
+import { WORK_REMINDER } from "./core/work.js";
+import { boardHasWork, openBoardOnce, writeBoard } from "./board-file.js";
+import { coachFlowsAt, loopContext, loopPrompt } from "./loop.js";
 import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "./session-store.js";
 const NOTHING = { stdout: "", code: 0 };
 function stateFileFor(env, session) {
@@ -38,7 +46,7 @@ function stateFileFor(env, session) {
 function readState(file) {
     try {
         const v = JSON.parse(readFileSync(file, "utf8"));
-        return { delivered: typeof v.delivered === "string" ? v.delivered : null, decisionsSeen: typeof v.decisionsSeen === "string" ? v.decisionsSeen : null, committed: v.committed === true };
+        return { delivered: typeof v.delivered === "string" ? v.delivered : null, decisionsSeen: typeof v.decisionsSeen === "string" ? v.decisionsSeen : null, committed: v.committed === true, ...(v.acted === true ? { acted: true } : {}) };
     }
     catch {
         return { delivered: null, decisionsSeen: null, committed: false };
@@ -104,12 +112,29 @@ export async function runCodex(text, env, platform = process.platform) {
     switch (ev.hook_event_name) {
         case "SessionStart": {
             record(() => { appendSession(root, "codex", sid, () => []); });
+            // The work loop's standing instructions, with the flows' steps: every start, a compaction's and a /clear's too.
+            let told = "";
+            try {
+                told = [SESSIONS_PROMPT, ...loopPrompt(coachFlowsAt(root))].join("\n\n");
+            }
+            catch { /* the tools' own descriptions say it */ }
+            // The GEML board, beside the conversation, when a new session starts on a project with work on the way.
+            if (ev.source === undefined || ev.source === "startup") {
+                try {
+                    if (boardHasWork(root))
+                        openBoardOnce(root, sid);
+                }
+                catch { /* not opened this time */ }
+            }
             const res = await ask({ op: "status" });
-            if (!res.ok || res.shell.status === null)
-                return NOTHING;
-            // The git facts first: a PR merged or CI finished since the last session may move the stage now.
-            const fresh = await ask({ op: "refresh" });
-            return out(deliver("SessionStart", (fresh.ok ? fresh.shell.status : null) ?? res.shell.status, true));
+            let stage;
+            if (res.ok && res.shell.status !== null) {
+                // The git facts first: a PR merged or CI finished since the last session may move the stage now.
+                const fresh = await ask({ op: "refresh" });
+                stage = deliver("SessionStart", (fresh.ok ? fresh.shell.status : null) ?? res.shell.status, true)?.hookSpecificOutput.additionalContext;
+            }
+            const said = [stage, told].filter((x) => x !== undefined && x !== "").join("\n\n");
+            return said === "" ? NOTHING : out(contextFor("SessionStart", said));
         }
         case "UserPromptSubmit": {
             // The prompt into the record; the other sessions' decisions not yet read beside it.
@@ -124,12 +149,22 @@ export async function runCodex(text, env, platform = process.platform) {
                 if (fresh.length > 0)
                     shared = decisionsContext(fresh, (d) => `${hostLabel(d.host)}${d.branch !== undefined ? ` · ${d.branch}` : ""}，${new Date(d.at).toTimeString().slice(0, 5)}`);
             });
+            // A new turn: nothing changed in it yet. The board says the last turn's questions are answered.
+            if (state.acted === true) {
+                state.acted = false;
+                record(() => writeState(file, state));
+            }
+            record(() => { writeBoard(root); });
+            // The work items on the way and the practices of the step this session's item stands at.
+            let loop = [];
+            try {
+                loop = loopContext(root, sid);
+            }
+            catch { /* the model reports them anew */ }
             const res = await ask({ op: "status" });
             const stage = res.ok && res.shell.status !== null ? deliver("UserPromptSubmit", res.shell.status) : undefined;
-            if (shared === undefined)
-                return out(stage);
-            const before = stage?.hookSpecificOutput.additionalContext;
-            return out(contextFor("UserPromptSubmit", before !== undefined ? `${before}\n\n${shared}` : shared));
+            const said = [stage?.hookSpecificOutput.additionalContext, shared, ...loop].filter((x) => x !== undefined && x !== "");
+            return said.length === 0 ? NOTHING : out(contextFor("UserPromptSubmit", said.join("\n\n")));
         }
         case "PreToolUse": {
             const tool = ev.tool_name;
@@ -184,6 +219,10 @@ export async function runCodex(text, env, platform = process.platform) {
                     state.committed = true;
                     writeState(file, state);
                 }
+                if ((CODEX_TOOLS.write.includes(tool) || CODEX_TOOLS.run.includes(tool)) && state.acted !== true) {
+                    state.acted = true;
+                    writeState(file, state);
+                }
             });
             const res = await ask({ op: "status" });
             if (!res.ok || res.shell.policy === null)
@@ -205,8 +244,23 @@ export async function runCodex(text, env, platform = process.platform) {
             }
             return out(contextFor("PostToolUse", after.handoff !== undefined ? `${after.handoff}\n${after.context}` : after.context));
         }
-        // The turn's end: its answer, and the commits a command in it made, into the record. Nothing is said back.
+        // The turn's end. One that changed things and reported no work item goes back once to report it (the record
+        // unread counts as reported: the reminder never comes from Gemworks' own failure). Else its answer and the commits
+        // a command in it made go into the record, and the board is written again; nothing is said back.
         case "Stop": {
+            if (state.acted === true && ev.stop_hook_active !== true) {
+                state.acted = false;
+                let reported = true;
+                record(() => {
+                    writeState(file, state);
+                    const events = appendSession(root, "codex", sid, () => []);
+                    const turn = currentTurn(events);
+                    reported = events.some((e) => e.t === "item" && e.turn === turn) || coachFlowsAt(root).length === 0;
+                });
+                if (!reported)
+                    return { stdout: `${JSON.stringify({ decision: "block", reason: WORK_REMINDER })}\n`, code: 0 };
+            }
+            record(() => { writeBoard(root); });
             record(() => {
                 recordAnswer(root, "codex", sid, ev.last_assistant_message ?? "", state.committed);
                 if (state.committed) {

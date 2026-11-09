@@ -24,7 +24,8 @@ import { serveMcp } from "./mcp.js";
 import { decodeRequest } from "./hosts/claude-code/protocol.js";
 import { docReader, openWorkspace, resolvePromptRef, resolveWorkflow } from "./workspace.js";
 import { defaultPeriods, LABEL_GUIDE, localDay, parsePeriod, report, reportText } from "./core/corrections.js";
-import { addLabelled, labelledRows, readLedger, unlabelledPrompts } from "./corrections-store.js";
+import { addLabelled, labelledRows, readLedger, recordedUnlabelled, unlabelledPrompts } from "./corrections-store.js";
+import { readSessions } from "./session-store.js";
 import { cellWidth } from "./hosts/claude-code/band.js";
 const USAGE = [
     "usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmark|advance|pause|resume|rollback|run|hook|mcp> ...",
@@ -225,7 +226,11 @@ function corrections(args) {
         if (!Number.isInteger(limit) || limit <= 0)
             fail("--limit needs a whole number", 2);
         const since = flag(rest, "--since");
-        for (const p of unlabelledPrompts(readLedger(), transcripts, { limit, ...(since !== undefined ? { since } : {}) }))
+        // Claude Code's transcripts, and what the project's other hosts recorded in its shared record.
+        const ledger = readLedger();
+        const window = { limit, ...(since !== undefined ? { since } : {}) };
+        const all = [...unlabelledPrompts(ledger, transcripts, window), ...recordedUnlabelled(ledger, readSessions(process.cwd()), window)].sort((a, b) => (a.at < b.at ? -1 : 1)).slice(0, limit);
+        for (const p of all)
             console.log(JSON.stringify(p));
         return 0;
     }

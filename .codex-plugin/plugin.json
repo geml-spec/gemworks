@@ -1,7 +1,7 @@
 {
   "name": "gemworks",
-  "version": "0.2.124",
-  "description": "Workflow stages for Codex: a GEML statechart says what each stage uses, a tool dictionary binds those uses to the project's tools, evidence is written from test, PR, CI and deploy results, the stage's text reaches the model as it changes, and a tool is refused only where the workflow does not declare its use. Three tools over MCP: status, move, set.",
+  "version": "0.3.0",
+  "description": "A workbench right beside your agent chat: it keeps your artifacts in order, sums up what you've learned, remembers what you've decided, and lets your workflow grow on its own. In Codex, the work items, artifacts and flows are on a GEML board page.",
   "author": {
     "name": "geml-spec",
     "url": "https://github.com/geml-spec"
@@ -21,8 +21,8 @@
   "hooks": "./codex/hooks.json",
   "interface": {
     "displayName": "Gemworks",
-    "shortDescription": "Run a coding agent through the stages of a GEML workflow.",
-    "longDescription": "A project's workflow is one GEML statechart: each stage says which uses it declares, a tool dictionary binds those uses to the project's own tools, and evidence from test, PR, CI and deploy results moves the workflow along its transitions. With this plugin's hooks trusted (/hooks), Codex's tool calls are judged by the dictionary and the stage's fences, a command's exit status is recorded as evidence, and the stage's text reaches the model whenever it changes. The model moves the workflow with three MCP tools: status, move, set. A transition that needs a person's approval waits for `gemworks advance` in a terminal.",
+    "shortDescription": "A workbench right beside your agent chat.",
+    "longDescription": "Gemworks keeps a project's progress, artifacts and lessons beside the chat. The model reports work items, practices and artifacts through its MCP tools; with this plugin's hooks trusted (/hooks), each turn brings back the work items on the way, the current step's practices and what other sessions decided. Everything is written to a GEML board page, .geml/board.geml, which the GEML extension for VS Code-style editors previews beside your code. A strict flow can also limit which tools each stage may use; a transition that needs your approval waits for `gemworks advance` in a terminal.",
     "developerName": "geml-spec",
     "category": "Productivity",
     "capabilities": [

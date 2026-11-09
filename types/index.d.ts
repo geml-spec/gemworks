@@ -134,6 +134,8 @@ declare module 'claude-code' {
       reloadUnavailable: boolean
       /** The machine and checkout the session runs on ({ name, platform, user, branch }), as the bridge read them. */
       host: GemworksJson
+      /** The default browser's program on Windows, once asked of the registry: '' when there is none to name. */
+      browser: string | null
       /** The clients attached to the session (session.attach): [{ clientId, surface }]. */
       clients: GemworksJson
       /** Where the last prompt came from: composer (the session's own prompt box), bridge (Remote Control), sdk. */

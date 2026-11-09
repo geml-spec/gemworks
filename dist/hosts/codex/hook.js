@@ -33,6 +33,8 @@ export function readEvent(text) {
         ...("tool_response" in v ? { tool_response: v["tool_response"] } : {}),
         ...(str("prompt") !== undefined ? { prompt: str("prompt") } : {}),
         ...(str("last_assistant_message") !== undefined ? { last_assistant_message: str("last_assistant_message") } : {}),
+        ...(str("source") !== undefined ? { source: str("source") } : {}),
+        ...(typeof v["stop_hook_active"] === "boolean" ? { stop_hook_active: v["stop_hook_active"] } : {}),
     };
 }
 /** The shell variable the wrapper keeps the status in. */

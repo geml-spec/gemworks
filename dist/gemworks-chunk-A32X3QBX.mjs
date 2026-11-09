@@ -467,8 +467,8 @@ function bindInDocument(source, id, target) {
   lines[at] = withCell(old.slice(0, old.length - eol.length), col, esc(target)) + eol;
   const text = lines.join("");
   const after = load(text);
-  const same = after !== void 0 && after.key === key && after.items.length === before.items.length && after.diagnostics.join("\n") === before.diagnostics.join("\n") && after.items.every((item, i) => i === row ? item.id === id && item.title === before.items[i].title && item.target === target : JSON.stringify(item) === JSON.stringify(before.items[i]));
-  return same ? { ok: true, text } : unwritable(`row ${row + 1}: ${JSON.stringify(target)} cannot be written into its cell and read back as itself`);
+  const same2 = after !== void 0 && after.key === key && after.items.length === before.items.length && after.diagnostics.join("\n") === before.diagnostics.join("\n") && after.items.every((item, i) => i === row ? item.id === id && item.title === before.items[i].title && item.target === target : JSON.stringify(item) === JSON.stringify(before.items[i]));
+  return same2 ? { ok: true, text } : unwritable(`row ${row + 1}: ${JSON.stringify(target)} cannot be written into its cell and read back as itself`);
 }
 
 // src/core/host-tools.ts
@@ -644,6 +644,21 @@ function publishedLink(result) {
   if (m === null) return void 0;
   return { url: m[1], ...m[2] !== void 0 ? { version: m[2] } : {} };
 }
+var ARTIFACT_TOOL = {
+  name: "artifact",
+  description: "Record something this work item made that gemworks cannot see by itself, so the board lists it under the work item's artifacts: a link (an online document, a published page, a design) or a generated picture or file. Files written with the write tools, commits, and pages published with the Artifact tool are recorded already; do not record those.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      kind: { type: "string", enum: ["link", "image", "file"], description: "link: an address; image or file: a file on this machine." },
+      name: { type: "string", description: "What it is, in a few words (a link's title)." },
+      where: { type: "string", description: "The link's address, or the file's path." },
+      version: { type: "string", description: "The version its publisher gave it, when it gave one." }
+    },
+    required: ["kind", "where"],
+    additionalProperties: false
+  }
+};
 
 // src/core/artifacts.ts
 var ARTIFACTS_TABLE = "artifacts";
@@ -796,9 +811,9 @@ function syncWritten(root, home, item, everything) {
 }
 function syncDocs(home, item, docs) {
   const wanted = docs.map((d) => ({ item, kind: "doc", name: d.path, where: "git", version: d.sha.slice(0, 8), size: null, at: d.at, sha256: "" }));
-  const same = (a, b) => a.length === b.length && a.every((r, i) => JSON.stringify(r) === JSON.stringify(b[i]));
+  const same2 = (a, b) => a.length === b.length && a.every((r, i) => JSON.stringify(r) === JSON.stringify(b[i]));
   const now = readArtifactRows(home);
-  if (same(now.filter((r) => r.item === item && r.kind === "doc"), wanted)) return now;
+  if (same2(now.filter((r) => r.item === item && r.kind === "doc"), wanted)) return now;
   return changeRows(home, (rows) => [...rows.filter((r) => !(r.item === item && r.kind === "doc")), ...wanted]);
 }
 function recordLink(home, item, link) {
@@ -998,6 +1013,51 @@ ${file.memoryMoved ? 'memory = "moved"\n' : ""}===
   return `${meta}${OPEN}
 ${lines}===
 `;
+}
+function practicesAt(list, flow, step, limit = 3) {
+  const rank = (p) => p.flow === flow && p.step === step ? 0 : p.flow === flow ? 1 : 2;
+  return list.filter((p) => p.deleted !== true && (p.flow === flow || p.flow === "*") && (p.step === step || p.step === "*")).sort((a, b) => rank(a) - rank(b) || (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, limit);
+}
+var same = (a, b) => a.replace(/\s+/g, "") === b.replace(/\s+/g, "");
+function newPractices(given, kept, at, by, newId, flows, where) {
+  const added = [];
+  const errors = [];
+  given.forEach((v, n) => {
+    if (typeof v !== "object" || v === null || Array.isArray(v)) {
+      errors.push(`practice ${n + 1} is not an object`);
+      return;
+    }
+    const x = v;
+    const s = (k) => typeof x[k] === "string" ? x[k].trim() : "";
+    const flow = s("flow") || "*";
+    const step = s("step") || "*";
+    const text = s("text");
+    if (text === "") {
+      errors.push(`practice ${n + 1} has no text`);
+      return;
+    }
+    const f = flows.find((g) => g.name === flow);
+    if (flow !== "*" && f === void 0) {
+      errors.push(`practice ${n + 1}: flow must be * or one of ${flows.map((g) => g.name).join(", ")}`);
+      return;
+    }
+    if (step !== "*" && f !== void 0 && !f.steps.includes(step)) {
+      errors.push(`practice ${n + 1}: ${flow} has no step "${step}" (${f.steps.join(", ")})`);
+      return;
+    }
+    if (step !== "*" && flow === "*") {
+      errors.push(`practice ${n + 1}: a step needs its flow`);
+      return;
+    }
+    const layer = x["layer"] === "personal" ? "personal" : "project";
+    const was = [...kept, ...added].find((p) => p.flow === flow && p.step === step && same(p.text, text));
+    if (was !== void 0) {
+      errors.push(was.deleted === true ? `practice ${n + 1}: the person took it out; not again` : `practice ${n + 1}: already kept`);
+      return;
+    }
+    added.push({ id: newId(n), flow, step, text, why: s("why"), at, by, layer, ...s("ref") !== "" ? { ref: s("ref") } : {}, ...s("from") !== "" ? { from: s("from") } : {}, ...where !== void 0 ? { session: where.session, turn: where.turn } : {} });
+  });
+  return { added, errors };
 }
 
 // src/practice-store.ts
@@ -1540,6 +1600,24 @@ function unlabelledPrompts(ledger, transcripts, o = {}) {
   }
   return out.sort((a, b) => a.at < b.at ? -1 : 1).slice(0, o.limit ?? Infinity);
 }
+function recordedUnlabelled(ledger, sessions, o = {}) {
+  const now = o.now ?? (/* @__PURE__ */ new Date()).toISOString();
+  const since = o.since ?? ledger.prompts[ledger.prompts.length - 1]?.at ?? new Date(Date.parse(now) - 30 * 864e5).toISOString();
+  const taken = new Set(ledger.prompts.map((p) => p.id));
+  const out = [];
+  for (const s of sessions) {
+    if (s.host === "claude-code" || s.backfilled === true) continue;
+    s.turns.forEach((t, i) => {
+      const text = typedWords(t.prompt);
+      if (text === void 0 || t.backfilled === true || t.kind !== void 0 || t.at <= since) return;
+      const row = { id: promptId(s.id, t.at, taken), at: t.at, session: s.id, text };
+      if (hasPrompt(ledger, row) || hasPrompt({ prompts: out }, row)) return;
+      taken.add(row.id);
+      out.push({ ...row, project: s.checkout ?? "", before: (s.turns[i - 1]?.answer ?? "").slice(-600) });
+    });
+  }
+  return out.sort((a, b) => a.at < b.at ? -1 : 1).slice(0, o.limit ?? Infinity);
+}
 
 // src/bridge.ts
 import { historyPathFor as historyPathFor2 } from "./vendor/geml/geml.js";
@@ -1586,6 +1664,8 @@ function isEvent(v) {
       return typeof e["turn"] === "number" && typeof e["path"] === "string";
     case "commit":
       return typeof e["turn"] === "number" && typeof e["sha"] === "string" && typeof e["subject"] === "string";
+    case "ask":
+      return typeof e["turn"] === "number" && typeof e["question"] === "string" && Array.isArray(e["options"]) && e["options"].every((o) => typeof o === "string") && (e["recommended"] === void 0 || typeof e["recommended"] === "string") && (e["item"] === void 0 || typeof e["item"] === "string");
     case "item":
       return typeof e["turn"] === "number" && ["id", "flow", "title", "state", "needs", "goal"].every((k) => typeof e[k] === "string") && (e["status"] === "open" || e["status"] === "held" || e["status"] === "done" || e["status"] === "dropped") && (e["met"] === void 0 || Array.isArray(e["met"]) && e["met"].every(isMetStep)) && (e["next"] === void 0 || typeof e["next"] === "string");
     default:
@@ -1660,6 +1740,7 @@ function summarize(events) {
       case "session":
         break;
       case "prompt": {
+        delete s.asks;
         const tn = turn(e.turn, e.at);
         tn.prompt = e.text;
         if (e.uuid !== void 0) tn.uuid = e.uuid;
@@ -1679,6 +1760,9 @@ function summarize(events) {
         break;
       case "commit":
         if (!s.commits.some((c) => c.sha === e.sha)) s.commits.push({ sha: e.sha, subject: e.subject, at: e.at, ...e.branch !== void 0 ? { branch: e.branch } : {} });
+        break;
+      case "ask":
+        s.asks = [...(s.asks ?? []).filter((q) => q.question !== e.question), e];
         break;
       case "item": {
         s.items = [...(s.items ?? []).filter((x) => x.id !== e.id), e];
@@ -2505,7 +2589,7 @@ function listItems(ws, root, workflowFile, prs) {
   const home = ws.journalBase;
   const defaultFile = "error" in wf ? void 0 : recordedPath(root, home, wf.path);
   const fileOf = (recorded) => recorded === "" ? void 0 : workflowAt(root, home, recorded);
-  const same = (recorded, file) => {
+  const same2 = (recorded, file) => {
     const at = fileOf(recorded);
     return file !== void 0 && at !== void 0 && resolve4(at) === resolve4(file);
   };
@@ -2519,10 +2603,10 @@ function listItems(ws, root, workflowFile, prs) {
     const last = journal.snapshots.at(-1);
     if (!last) continue;
     const under = journal.meta.workflow;
-    const workflow = under !== "" && under !== defaultFile && !same(under, "error" in wf ? void 0 : wf.path) ? workflowNameOf(root, fileOf(under) ?? under) : void 0;
+    const workflow = under !== "" && under !== defaultFile && !same2(under, "error" in wf ? void 0 : wf.path) ? workflowNameOf(root, fileOf(under) ?? under) : void 0;
     const id = relative4(dir, full).split("\\").join("/").replace(/\.geml$/, "");
     const recorded = (under === "" ? defaultFile : under) ?? "";
-    const own = same(recorded, ws.workflowPath) ? workflowFile : recorded;
+    const own = same2(recorded, ws.workflowPath) ? workflowFile : recorded;
     const ownFile = own === workflowFile ? void 0 : fileOf(own);
     const glob = own === workflowFile ? ws.sc.unit.kind === "file" ? ws.sc.unit.glob : "" : ownFile !== void 0 ? fileUnitOf(ownFile) ?? "" : "";
     const file = ws.fileOfItem(id, glob);
@@ -3229,6 +3313,13 @@ export {
   useWorkflow,
   normalised,
   contextOf,
+  ARTIFACT_TOOL,
+  artifactsOfItem,
+  readArtifactRows,
+  practicesAt,
+  newPractices,
+  readPractices,
+  writePractices,
   LABEL_GUIDE,
   localDay,
   parsePeriod,
@@ -3239,10 +3330,13 @@ export {
   labelledRows,
   addLabelled,
   unlabelledPrompts,
+  recordedUnlabelled,
+  currentTurn,
   NOTE_TOOL,
   SESSIONS_PROMPT,
   decisionsContext,
   appendSession,
+  readSessions,
   latestSessionOf,
   recordPrompt,
   recordDecisions,

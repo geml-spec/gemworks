@@ -12,7 +12,10 @@ import { writtenProjectPath } from "../../core/written.js";
 import { decisionsContext, NOTE_TOOL, SESSIONS_PROMPT } from "../../core/session-log.js";
 import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordDecisions, recordFile, recordPrompt } from "../../session-store.js";
 import { readJournal } from "../../core/journal.js";
-import { actOnSession, boardReply, readQuery } from "./board.js";
+import { actOnSession, boardReply, coachBoardReply, readQuery } from "./board.js";
+import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, workItemsAt } from "../../loop.js";
+import { readPractices } from "../../practice-store.js";
+import { readSessions } from "../../session-store.js";
 import { hasErrors, loadStatechart } from "../../core/statechart.js";
 import { metaFor, openRun, Supervisor } from "../../core/supervisor.js";
 import { docReader, resolveWorkflow, workflowNameOf } from "../../workspace.js";
@@ -37,6 +40,8 @@ function exitCodeOf(result) {
 export function apply(ctx, config) {
     /** Every session under supervision, by its id: what the board's routes read. */
     const sessions = new Map();
+    /** Every session in the project's record, supervised or not, by its id: its directory. */
+    const recorded = new Map();
     ctx.on("agent/created", ({ agent, source }) => {
         // Synchronously, on purpose. `agent/created` is serial: the loop awaits
         // its listeners and holds the first turn's input until they settle, so an
@@ -47,7 +52,7 @@ export function apply(ctx, config) {
         // this listened to before; `agent/created` carries the same payload.
         // The project's shared session record, workflow or none.
         try {
-            recordSession(agent);
+            recordSession(agent, recorded);
         }
         catch (error) {
             ctx.logger(name).warn(error);
@@ -71,7 +76,7 @@ export function apply(ctx, config) {
     // simply never runs; reading `ctx.webServer` at apply time would answer
     // nothing even in the web composition, where plugins load before it is up.
     ctx.inject(["webServer"], (scoped) => {
-        scoped.effect(() => scoped.webServer.register({ kind: "prefix", path: "/api/gemworks", handler: boardApi(sessions) }));
+        scoped.effect(() => scoped.webServer.register({ kind: "prefix", path: "/api/gemworks", handler: boardApi(sessions, recorded) }));
     });
 }
 /**
@@ -82,10 +87,16 @@ export function apply(ctx, config) {
  * other sessions' decisions of the last three days in its context. What fails
  * to be written is missed, never the agent's.
  */
-export function recordSession(agent) {
+export function recordSession(agent, recorded) {
     const cwd = resolve(agent.session.header.cwd ?? process.cwd());
     const id = String(agent.id);
     const host = "dsh";
+    // The board draws a session with no workflow from the record: it needs the session's directory.
+    if (recorded !== undefined) {
+        recorded.set(id, cwd);
+        agent.ctx.effect(() => () => { if (recorded.get(id) === cwd)
+            recorded.delete(id); });
+    }
     const safe = (f) => { try {
         f();
     }
@@ -154,6 +165,72 @@ export function recordSession(agent) {
             }
         },
     });
+    // The work loop (loop.ts): its tools as this host names them, what the model is told once, and beside each step the
+    // work items on the way and the practices of the step this session's item stands at.
+    for (const tool of LOOP_TOOLS) {
+        agent.ctx.tools.register(defineTool({
+            name: `gemworks_${tool.name}`,
+            description: dshWords(tool.description),
+            parameters: dshParameters(tool.inputSchema),
+            output: { schema: { type: "object", additionalProperties: false, properties: { text: { type: "string" } } }, render: (_args, value) => [{ type: "text", text: JSON.stringify(value) }] },
+            execute: (async (args) => {
+                const r = await callLoopTool(cwd, host, id, tool.name, isRecord(args) ? args : {});
+                if (r === undefined || !r.ok)
+                    throw new Error(r?.text ?? "gemworks: no such tool");
+                return { text: r.text };
+            }),
+        }));
+    }
+    agent.ctx.systemPrompt.section({
+        name: "gemworks:loop", order: 402,
+        text: () => { try {
+            return dshWords(loopPrompt(coachFlowsAt(cwd)).join("\n\n"));
+        }
+        catch {
+            return "";
+        } },
+    });
+    agent.ctx.systemPrompt.context({
+        name: "gemworks:work-items", order: 132,
+        text: () => { try {
+            return loopContext(cwd, id).join("\n");
+        }
+        catch {
+            return "";
+        } },
+    });
+}
+/** The words the loop speaks in, as this host names its tools: the gemworks `work` tool is `gemworks_work` here. */
+export const dshWords = (text) => text.replace(/the gemworks `(\w+)` tool/g, "the `gemworks_$1` tool").replace(/gemworks `(\w+)` tool/g, "`gemworks_$1` tool");
+/**
+ * A tool's JSON Schema as this host declares parameters (dsh-tools' schema DSL): each property says itself whether it
+ * is required, every object whether it is open; a bound on an array's length is left to the tool, which checks it.
+ */
+export function dshParameters(schema) {
+    const node = (s) => {
+        const note = typeof s["description"] === "string" ? { description: s["description"] } : {};
+        if (s["type"] === "object") {
+            const required = new Set(Array.isArray(s["required"]) ? s["required"] : []);
+            const props = isRecord(s["properties"]) ? s["properties"] : {};
+            return { type: "object", properties: Object.fromEntries(Object.entries(props).map(([k, v]) => [k, { ...node(v), ...(required.has(k) ? { required: true } : {}) }])), additionalProperties: s["additionalProperties"] === true, ...note };
+        }
+        if (s["type"] === "array")
+            return { type: "array", ...(isRecord(s["items"]) ? { items: node(s["items"]) } : {}), ...note };
+        return { type: s["type"], ...(Array.isArray(s["enum"]) ? { enum: s["enum"] } : {}), ...note };
+    };
+    return (node(schema)["properties"] ?? {});
+}
+/** What the light flows put on a session's board, read from the project's record now. */
+export function coachDataOf(cwd, id) {
+    const flows = coachFlowsAt(cwd);
+    let practices = [];
+    try {
+        practices = readPractices(cwd).practices;
+    }
+    catch { /* drawn without them */ }
+    const own = readSessions(cwd).find((s) => s.id === id);
+    const asks = (own?.asks ?? []).map((q) => ({ question: q.question, options: q.options, ...(q.recommended !== undefined ? { recommended: q.recommended } : {}), ...(q.item !== undefined ? { item: q.item } : {}) }));
+    return { items: workItemsAt(cwd, flows), flows, practices, proposals: proposalsAt(cwd).filter((p) => p.status === "open"), asks, own: id };
 }
 /** The package's version, for the board's header; unknown when the manifest is not beside the built module. */
 function gemworksVersion() {
@@ -201,10 +278,12 @@ function supervisionOf(id, a) {
  * The board's routes (spec §8.10). `GET /api/gemworks/board?session=<id>&tab=…&filter=…&expanded=…&lang=…`
  * answers one tab's rows with the tabs and the header; `POST /api/gemworks/act`
  * with `{ session, action }` runs a press (a board action, or a field's typed
- * value as `{ op: "input", field, value }`). A session nobody supervises is 404;
- * a press the host cannot run is 400 with the reason. Exported for the tests.
+ * value as `{ op: "input", field, value }`). A session no workflow supervises
+ * is drawn from the project's record (its work items and flows) when it is one
+ * the plugin records, else 404; a press the host cannot run is 400 with the
+ * reason. Exported for the tests.
  */
-export function boardApi(sessions) {
+export function boardApi(sessions, recorded = new Map()) {
     const version = gemworksVersion();
     const versions = version !== undefined ? { gemworks: version, parser: PARSER_VERSION } : undefined;
     return async (req, res) => {
@@ -217,9 +296,20 @@ export function boardApi(sessions) {
             if (req.method === "GET" && url.pathname === "/api/gemworks/board") {
                 const q = readQuery(url.searchParams);
                 const a = sessions.get(q.session);
-                if (a === undefined)
-                    return json(404, { ok: false, error: `no supervision for session ${q.session}` });
-                return json(200, { ok: true, ...boardReply(supervisionOf(q.session, a), q, nowIso(), localeOf(), versions) });
+                const cwd = a?.cwd ?? recorded.get(q.session);
+                let coach;
+                try {
+                    coach = cwd !== undefined ? coachDataOf(cwd, q.session) : undefined;
+                }
+                catch {
+                    coach = undefined;
+                }
+                if (a === undefined) {
+                    if (coach === undefined)
+                        return json(404, { ok: false, error: `no supervision for session ${q.session}` });
+                    return json(200, { ok: true, ...coachBoardReply(coach, q, nowIso(), localeOf(), versions) });
+                }
+                return json(200, { ok: true, ...boardReply(supervisionOf(q.session, a), q, nowIso(), localeOf(), versions, coach) });
             }
             if (req.method === "POST" && url.pathname === "/api/gemworks/act") {
                 let body;

@@ -1,7 +1,7 @@
 {
   "name": "gemworks",
-  "version": "0.2.124",
-  "description": "Workflow stages for Claude Code: a GEML statechart says what each stage uses, a tool dictionary binds those uses to the project's tools, evidence records test, PR, CI and deploy results, a line above the prompt shows where the work stands and a board moves it. A tool is refused only where the workflow does not declare its use.",
+  "version": "0.3.0",
+  "description": "A workbench right beside your agent chat: it keeps your artifacts in order, sums up what you've learned, remembers what you've decided, and lets your workflow grow on its own. A line above the prompt shows where the work stands; a board holds the work items, artifacts and flows.",
   "author": {
     "name": "geml-spec",
     "url": "https://github.com/geml-spec"
