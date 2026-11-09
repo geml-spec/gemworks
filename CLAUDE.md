@@ -17,14 +17,20 @@ the published `@geml/geml` parser and nothing else at runtime.
 
 ## Build and check
 
-Run each gate as its own command and report it; together they take about 6 minutes on Windows, the suite about 4.
+Before a sync, run each gate as its own command and report it; together they take two to three minutes on Windows.
 
 ```sh
 npm run build                                     # tsc + bundle
 claude plugin validate .
 claude plugin test .
-node test/all.mjs                                 # six lanes at low priority; includes the hooks type check
+node test/all.mjs test/hooks-types.test.mjs test/<module>.test.mjs …   # the files the change touches
 ```
+
+The last gate runs the test file of each module the change touched (`src/hosts/claude-code/board.ts` →
+`test/board.test.mjs`), and `hooks-split` and `hooks-purity` as well when `hooks/` changed. The whole suite
+(`node test/all.mjs`) runs on CI, on all three platforms, on every push to main; a red CI run is fixed before anything
+else goes to main. On this machine the whole suite takes four to seven minutes and, when the machine is busy, a git call
+can pass its ten-second limit and fail a test that passes run alone.
 
 A gate that finds nothing to check (no type declarations, no prerequisite) has failed, not passed.
 
