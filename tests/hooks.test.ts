@@ -2740,6 +2740,13 @@ test('the band\'s screenshot button, on the desktop app only: its hover says whi
   const inside = (el: Drawn | string, key: string): Drawn | undefined => typeof el === 'string' ? undefined : keyOf(el) === key ? el : (el.children ?? []).map((c) => inside(c, key)).find((x) => x !== undefined)
   const icon = inside((await desktop.drawn()) as unknown as Drawn, 'capture-icon')
   expect(icon, 'the icon\'s keyed box').toBeDefined()
+  // Beside the board's icon, a cell between them: each keeps its padding on the outside only.
+  const group = inside((await desktop.drawn()) as unknown as Drawn, 'band-icons')
+  expect((group?.children ?? []).map((c) => typeof c === 'string' ? c : keyOf(c))).toEqual(['capture-icon', 'board-icon'])
+  expect(icon?.props).toMatchObject({ paddingLeft: 1, paddingRight: 0 })
+  const boardIcon = inside(group as Drawn, 'board-icon')
+  expect(boardIcon?.props).toMatchObject({ paddingLeft: 0, paddingRight: 1 })
+  expect(JSON.stringify(boardIcon), 'the board as bars lying down, longest on top').toContain('<rect x=\\"4\\" y=\\"3\\" width=\\"16\\" height=\\"5\\" rx=\\"1\\"/>')
   // A drawn element carries its hover beside its props.
   const card = (el: Drawn | string): Drawn | undefined => typeof el === 'string' ? undefined : el.props?.display === 'none' && (el as { hover?: { display?: string } }).hover?.display === 'flex' ? el : (el.children ?? []).map(card).find((x) => x !== undefined)
   const hidden = card(icon as Drawn)
@@ -2761,6 +2768,27 @@ test('the band\'s screenshot button, on the desktop app only: its hover says whi
     expect(await band.find({ type: 'Button', key: 'capture' }), surface).toBeUndefined()
     await band.unmount()
   }
+})
+
+test('n 条提议 on the band is a press: the flow tab opens, the proposal on top with 加上 and 不用', async ($, on) => {
+  const w = world(on)
+  w.workflow = false
+  w.sessionsDir = LOGS
+  w.files.set(`${ROOT}/.geml/coach/bugfix.geml`, BUGFIX_JUDGED)
+  w.files.set(`${ROOT}/.geml/proposals.geml`, '=== meta\ntitle = "提议"\n===\n\n=== data {#proposals format=jsonl}\n{"id":"p1","kind":"new-flow","flow":"spec","title":"写规范","steps":[{"id":"s1","title":"定位项目","need":"说明改哪个项目","judge":"you","prevents":"改错地方"}],"why":"近 7 天纠正 10 次","at":"2026-11-06T07:55:13.130Z","by":"gemworks","status":"open"}\n===\n')
+  const clock = await start($, on)
+  await clock.settle()
+  const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  expect((await band.find({ type: 'Button', key: 'band-proposals' }))?.props?.label).toBe('1 条提议')
+  const opened = w.opened
+  await band.press({ key: 'band-proposals' })
+  expect(w.opened, 'the press opens the board').toBe(opened + 1)
+  await band.unmount()
+  const pane = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+  const words = shown((await pane.drawn()) as unknown as Drawn).join(' ')
+  expect(words, 'on the flow tab, the proposal on top').toContain('新的一类活「写规范」')
+  expect(await pane.find({ type: 'Button', key: 'proposal-yes-p1' })).toBeDefined()
+  await pane.unmount()
 })
 
 test('a project on the light flows, with no workflow of its own: the band still has the screenshot button, and the sessions tab says where the session runs', async ($, on) => {

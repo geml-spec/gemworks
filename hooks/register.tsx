@@ -2108,14 +2108,14 @@ function drawGlyph(els: Els, g: Glyph, tone: Tone | 'active' = 'dim', size = 15)
  * An icon that is a press by itself (the dialogs): a Button holds only words, so a blank one is laid over the icon,
  * named by the label; the label shows under the pointer. Where the surface draws no pictures, the label as a button.
  */
-function iconButton($: EngineInterface, els: Els, b: Pressable, g: Glyph, o: { tone?: Tone | 'active'; from?: 'left' | 'right'; size?: number; lines?: number; tip?: false; card?: unknown } = {}): unknown {
+function iconButton($: EngineInterface, els: Els, b: Pressable, g: Glyph, o: { tone?: Tone | 'active'; from?: 'left' | 'right'; size?: number; lines?: number; tip?: false; card?: unknown; pad?: { left?: number; right?: number } } = {}): unknown {
   const { Box, Button, Text, Svg } = els
   if (Svg === undefined) return <Button key={b.key} plain dimColor label={b.label} onPress={press($, b.action)} />
   const edge = o.from === 'left' ? { left: 0 } : { right: 0 }
   // The rows the icon stands in (a row of two lines stretches it): each takes the press.
   const lines = Math.max(1, o.lines ?? 1)
   return (
-    <Box key={`${b.key}-icon`} flexShrink={0} alignItems="center" paddingX={1}>
+    <Box key={`${b.key}-icon`} flexShrink={0} alignItems="center" paddingLeft={o.pad?.left ?? 1} paddingRight={o.pad?.right ?? 1}>
       {drawGlyph(els, g, o.tone ?? 'dim', o.size ?? 18)}
       {/* Its name under the pointer, below the box, so it never lies over the press; `tip: false` shows none (the 整理 box). */}
       {o.tip !== false && (
@@ -3328,14 +3328,16 @@ export const register: Register = (on) => {
     if (notice !== null && attentionPresses !== null && view.note === '') view = { ...view, note: notice.text }
     // What grew, in a few words at the right: the practices learned today, a press that lists them on the flow tab
     // (their flows unfolded), and the proposals waiting.
-    let aside = ''
+    let proposed: Pressable | undefined
     let learned: Pressable | undefined
     try {
       const nowAt = await nowIso($)
-      const waitingProposals = (await proposalsKept($)).filter((p) => p.status === 'open').length + skippedSteps(await workItems($), await coachFlowsKept($), await proposalsKept($)).length
+      const openProposals = (await proposalsKept($)).filter((p) => p.status === 'open')
+      const skipped = skippedSteps(await workItems($), await coachFlowsKept($), await proposalsKept($))
       const fresh = ((await practicesKept($))?.list ?? []).filter((p) => p.deleted !== true && isNew(p, nowAt, 1))
       if (fresh.length > 0) learned = { key: 'band-learned', label: t('新学到 {0} 条', fresh.length), action: { op: 'open-board', tab: 'flow', expand: [...new Set(fresh.map((p) => p.flow))] } }
-      aside = waitingProposals > 0 ? t('{0} 条提议', waitingProposals) : ''
+      // A press opens the flow tab: a new kind of work is the card on top; a step to add, remove or skip is under its flow, unfolded.
+      if (openProposals.length + skipped.length > 0) proposed = { key: 'band-proposals', label: t('{0} 条提议', openProposals.length + skipped.length), action: { op: 'open-board', tab: 'flow', expand: [...new Set([...openProposals.filter((p) => p.kind !== 'new-flow').map((p) => p.flow), ...skipped.map((x) => x.flow)])] } }
     } catch { /* nothing said of it */ }
     const options: Pressable[] = attentionPresses ?? view.actions
     const tail: Pressable[] = [
@@ -3358,7 +3360,7 @@ export const register: Register = (on) => {
     const reserve = [...options, ...tail].reduce((w, b) => w + (b.key === 'board' && Svg !== undefined ? 4 : cellWidth(b.label) + 5), 0) + (at !== '' ? cellWidth(at) + 1 : 0) + (capture !== undefined ? 4 : 0)
     const lead = 2 + (view.verb !== '' ? cellWidth(view.verb) + 1 : 0)
     // What grew (新学到, 提议) counts in the line's width too.
-    const sides = (learned !== undefined ? cellWidth(learned.label) + 1 : 0) + (aside !== '' ? cellWidth(aside) + 1 : 0)
+    const sides = (learned !== undefined ? cellWidth(learned.label) + 1 : 0) + (proposed !== undefined ? cellWidth(proposed.label) + 1 : 0)
     const roomAll = columns - reserve - lead - sides
     // Words that do not fit beside their options go on rows of their own, the options on a row under them: a question
     // always did, and so does a line with options (等你 and its 好了 / 没好), never squeezed to a character a row.
@@ -3366,8 +3368,8 @@ export const register: Register = (on) => {
     const rows = question !== undefined ? cellWidth(question) > roomAll : options.length > 0 && cellWidth(lineWords) > roomAll
     // What grew goes where it does not fit (the flow tab lists both): on the options' row, or beside the one thing
     // where that would leave it fewer than ROOM_MIN cells.
-    if (rows ? reserve + sides > columns - 2 : roomAll < ROOM_MIN) { learned = undefined; aside = '' }
-    const room = Math.max(8, columns - reserve - lead - (learned !== undefined || aside !== '' ? sides : 0))
+    if (rows ? reserve + sides > columns - 2 : roomAll < ROOM_MIN) { learned = undefined; proposed = undefined }
+    const room = Math.max(8, columns - reserve - lead - (learned !== undefined || proposed !== undefined ? sides : 0))
     // Whole where the room holds it; otherwise the note gets at most a third of it.
     const whole = view.note !== '' ? `${SEP}${view.note}` : ''
     const fits = cellWidth(view.title) + cellWidth(whole) <= room
@@ -3390,11 +3392,18 @@ export const register: Register = (on) => {
       : <Button key={b.key} plain hotkey={String(i + 1)} label={b.label} {...(b.primary ? { variant: 'primary' } : {})} onPress={press($, b.action)} />
     const board = tail.find((b) => b.key === 'board')
     // Under the pointer the line says how it goes, the paste key for this system with it; the icon's own tip is off.
-    const shot = capture !== undefined && iconButton($, els, capture, 'capture', { from: 'right', size: 15, tip: false, card: card(captureHint(platform, t), { right: 0 }, columns - 4, true) })
-    const grew = (learned !== undefined || aside !== '') && (
+    const shot = capture !== undefined && iconButton($, els, capture, 'capture', { from: 'right', size: 15, tip: false, card: card(captureHint(platform, t), { right: 0 }, columns - 4, true), pad: { right: 0 } })
+    // The screenshot and the board side by side, a cell between them (each icon's own padding kept only on the outside).
+    const boardPress = board === undefined ? null
+      : Svg !== undefined ? iconButton($, els, board, 'board', { from: 'right', size: 15, ...(shot !== false ? { pad: { left: 0 } } : {}) })
+      : pressable(board, options.length + tail.indexOf(board))
+    const icons = shot !== false && Svg !== undefined
+      ? <Box key="band-icons" flexShrink={0} gap={1} alignItems="center">{shot}{boardPress}</Box>
+      : boardPress
+    const grew = (learned !== undefined || proposed !== undefined) && (
       <Box key="band-grew" flexShrink={0} gap={1} alignItems="center">
         {learned !== undefined && <Button key={learned.key} plain label={learned.label} onPress={press($, learned.action)}><Text {...toneProps('warning')}>{learned.label}</Text></Button>}
-        {aside !== '' && <Text key="band-aside" {...toneProps('warning')}>{aside}</Text>}
+        {proposed !== undefined && <Button key={proposed.key} plain label={proposed.label} onPress={press($, proposed.action)}><Text {...toneProps('warning')}>{proposed.label}</Text></Button>}
       </Box>
     )
     if (rows) {
@@ -3423,8 +3432,7 @@ export const register: Register = (on) => {
             {options.map(pressable)}
             {at !== '' && <Text dimColor>{at}</Text>}
             {grew}
-            {shot}
-            {board !== undefined && pressable(board, options.length + tail.indexOf(board))}
+            {icons}
           </Box>
         </Box>
       )
@@ -3478,8 +3486,7 @@ export const register: Register = (on) => {
           : null)}
         {board !== undefined && <Box key="band-push" flexGrow={1} />}
         {grew}
-        {shot}
-        {board !== undefined && pressable(board, options.length + tail.indexOf(board))}
+        {icons}
       </Box>
     )
   })
