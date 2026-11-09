@@ -17,8 +17,8 @@ test("Windows opens through cmd's start, then Start-Process, in a normal window,
 });
 
 test("what a browser shows as it is opens in the default browser on Windows, as a file: URL; the rest, and a reveal, in the file's own app", () => {
-  for (const f of ["a.png", "b.JPG", "c.svg", "d.html", "e.pdf", "f.txt", "g.json", "h.webp"]) assert.equal(opensInBrowser(f), true, f);
-  for (const f of ["a.md", "b.geml", "c.ts", "d.docx", "noext", "dir/"]) assert.equal(opensInBrowser(f), false, f);
+  for (const f of ["a.png", "b.JPG", "c.svg", "d.html", "e.pdf", "f.txt", "g.json", "h.webp", "i.geml"]) assert.equal(opensInBrowser(f), true, f);
+  for (const f of ["a.md", "b.gemlhistory", "c.ts", "d.docx", "noext", "dir/"]) assert.equal(opensInBrowser(f), false, f);
   assert.equal(fileUrl("C:\\a b\\x#1.png"), "file:///C:/a%20b/x%231.png");
   assert.equal(fileUrl("/home/me/x y.png"), "file:///home/me/x%20y.png");
   const chrome = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
@@ -26,6 +26,7 @@ test("what a browser shows as it is opens in the default browser on Windows, as 
   assert.deepEqual(inBrowser.env, { [START_VAR]: `"" "${chrome}" "file:///C:/r/.geml/artifacts/aa%20bb.png"` });
   assert.deepEqual(own.env, { [START_VAR]: '"" "C:\\r\\.geml\\artifacts\\aa bb.png"' }, "the file's own app when the browser does not start");
   assert.equal(openersFor("win32", "C:/r/x.md", false, chrome)[0].env?.[START_VAR], '"" "C:\\r\\x.md"', "Markdown keeps its own app");
+  assert.equal(openersFor("win32", "C:/r/x.geml", false, chrome)[0].env?.[START_VAR], `"" "${chrome}" "file:///C:/r/x.geml"`, "GEML in the browser");
   assert.equal(openersFor("win32", "C:/r/x.png", true, chrome)[0].argv[0], "powershell.exe", "a reveal shows the folder");
   assert.deepEqual(openersFor("darwin", "/Users/me/x.png", false, chrome), [{ argv: ["open", "/Users/me/x.png"] }], "elsewhere the system's own opener");
 });

@@ -37,9 +37,9 @@ function winStart(...args: string[]): Opener {
   return { argv: CMD_START, env: { [START_VAR]: ['""', ...args.map((a) => `"${a}"`)].join(" ") } };
 }
 
-/** What a browser shows as it is: pictures, pages, PDFs, plain text and JSON. Markdown and GEML show as raw text
- * there, so they keep their own app. */
-const IN_BROWSER = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif", "html", "htm", "pdf", "txt", "json"]);
+/** What opens in the browser: pictures, pages, PDFs, plain text, JSON, and GEML (as text, or through a GEML viewer
+ * the browser has). Markdown keeps its own app, an editor as a rule. */
+const IN_BROWSER = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif", "html", "htm", "pdf", "txt", "json", "geml"]);
 export function opensInBrowser(path: string): boolean {
   const ext = /\.([A-Za-z0-9]+)$/.exec(baseName(path))?.[1];
   return ext !== undefined && IN_BROWSER.has(ext.toLowerCase());
