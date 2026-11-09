@@ -48,7 +48,7 @@ test("gemworks mcp: the handshake, the three tools, verbs over the project's wor
   assert.equal(out.size, 7, "a notification gets no answer");
   assert.equal(out.get(1).result.serverInfo.name, "gemworks");
   assert.equal(out.get(1).result.protocolVersion, "2025-06-18");
-  assert.deepEqual(out.get(2).result.tools.map((t) => t.name), ["status", "move", "set", "note"]);
+  assert.deepEqual(out.get(2).result.tools.map((t) => t.name), ["status", "move", "set", "note", "work", "practice", "propose", "answer", "ask", "artifact"]);
   const status = out.get(3).result.content[0].text;
   assert.match(status, /work item feat\/x · state build/);
   assert.match(status, /\n\n\[gemworks\] stage build/, "the stage text follows the status");
@@ -286,4 +286,37 @@ test("note: the decisions go into the log of this host's session that asked last
   assert.equal(out.get(3).result.isError, true);
   const e = parseLog(readFileSync(join(sessionsDirOf(root), logName("codex", "cx1")), "utf8"));
   assert.deepEqual(e.filter((x) => x.t === "decision").map((x) => [x.turn, x.text]), [[1, "每会话一个文件"]]);
+});
+
+test("the work loop over MCP: what the model is told once, a work item recorded and read back by status with no workflow, a question registered, and the other sessions' decisions on a host with no hooks", async () => {
+  const { recordDecisions, recordPrompt } = await import("../dist/session-store.js");
+  const root = gitRepo();
+  const now = new Date().toISOString();
+  recordPrompt(root, "grok", "g1", "做个看板", now);
+  recordDecisions(root, "claude-code", "other", ["看板用 GEML 页面"], now);
+  const msgs = [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "0" } } },
+    call(2, "work", { items: [{ title: "看板", flow: "feature", needs: "你看样稿" }] }),
+    call(3, "status"),
+    call(4, "ask", { question: "用哪个？", options: ["网页", "GEML 页面"], recommended: "GEML 页面" }),
+    call(5, "work", { items: [{ title: "x", flow: "nope" }] }),
+  ];
+  const out = mcp(root, msgs, ["--host", "grok"]);
+  assert.match(out.get(1).result.instructions, /gemworks `work` tool/);
+  assert.match(out.get(1).result.instructions, /feature 新功能: mockup 样稿 \(you\)/);
+  const work = out.get(2).result;
+  assert.equal(work.isError, undefined, work.content[0].text);
+  assert.match(work.content[0].text, /^Recorded #\S+ «看板» \(feature: mockup\)/);
+  assert.match(work.content[0].text, /看板用 GEML 页面/, "the first result carries the decision not read yet");
+  const status = out.get(3).result;
+  assert.equal(status.isError, undefined, "no workflow, but the loop has something to say");
+  assert.match(status.content[0].text, /no workflow here/);
+  assert.match(status.content[0].text, /\[gemworks\] work items on the way: #\S+ «看板» \(feature: at mockup 样稿, needs 你看样稿\)/);
+  assert.doesNotMatch(status.content[0].text, /看板用 GEML 页面/, "a decision is said once");
+  assert.equal(out.get(4).result.isError, undefined);
+  assert.equal(out.get(5).result.isError, true);
+  // Codex's hooks say the decisions beside each prompt: its results leave them out.
+  const codex = mcp(root, [call(1, "status")], ["--host", "codex"]);
+  assert.doesNotMatch(codex.get(1).result.content[0].text, /看板用 GEML 页面/);
+  assert.match(codex.get(1).result.content[0].text, /«看板»/);
 });

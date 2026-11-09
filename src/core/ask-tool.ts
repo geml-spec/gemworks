@@ -42,3 +42,15 @@ export function askedOf(input: Readonly<Record<string, unknown>>): Asked | { err
   const item = typeof input["item"] === "string" ? input["item"].trim().replace(/^#/, "") : "";
   return { question, options: ordered, ...(recommended !== "" ? { recommended } : {}), ...(item !== "" ? { item } : {}) };
 }
+
+/**
+ * The ask tool on a host with no status band (Codex, Antigravity, an MCP-only host): the same question, which the GEML
+ * board lists under 等你 until the person's next prompt; the person answers in the conversation.
+ */
+export const ASK_TOOL_ON_BOARD = {
+  ...ASK_TOOL,
+  description: "Register a question this turn ends with, so the Gemworks board lists it with its answers until the person's next prompt: the question in full, its real answers (two to four, short, in the reply's language), and the one you recommend. Ask it in your reply as well: the person answers in the conversation. Call it once per question, before the turn ends; do not register a question you answered yourself or one that needs no answer.",
+} as const;
+
+/** What the model is told once about registering its questions, on a host with no status band. */
+export const ASK_PROMPT_ON_BOARD = "Gemworks: when a turn ends asking the person to decide something, ask it in your reply and register each question with the gemworks `ask` tool before the turn ends: the question in full, its real answers (two to four, short, in the reply's language) and the one you recommend. The Gemworks board lists a registered question with its answers until the person's next prompt; they answer in the conversation.";
