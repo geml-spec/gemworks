@@ -130,6 +130,8 @@ function world(on: On) {
     artifacts: null as unknown,
     /** The opener commands run, by argument vector. */
     launched: [] as string[][],
+    /** How many times the registry was asked (the default browser, on Windows). */
+    regAsked: 0,
     /** The machine the bridge reports (process.platform). */
     platform: 'linux',
     /** The messages typed mid-turn the transcript holds, as turn-ids answers them. */
@@ -279,6 +281,12 @@ function world(on: On) {
       return { value: ran(`${JSON.stringify(answer(JSON.parse(e.init?.stdin ?? '{}') as Req))}\n`) }
     }
     if (['explorer.exe', 'open', 'xdg-open', 'screencapture'].includes(e.argv[0] ?? '')) { w.launched.push([...e.argv]); return { value: ran('') } }
+    // Windows: cmd's start and Start-Process, by what their variable names; the registry's default browser, asked once.
+    if ((e.argv[0] === 'cmd.exe' && e.argv[3] === 'start') || (e.argv[0] === 'powershell.exe' && (e.argv.at(-1) ?? '').startsWith('Start-Process'))) { w.launched.push([e.argv[0], ...Object.values((e.init as { env?: Record<string, string> } | undefined)?.env ?? {})]); return { value: ran('') } }
+    if (e.argv[0] === 'reg') {
+      w.regAsked += 1
+      return { value: (e.argv[2] ?? '').endsWith('UserChoice') ? ran('\r\n    ProgId    REG_SZ    ChromeHTML\r\n') : ran('\r\n    (Default)    REG_SZ    "C:\\Chrome\\chrome.exe" --single-argument %1\r\n') }
+    }
     return { deny: `unexpected ${e.argv.join(' ')}` }
   })
   // .geml/context.geml as the CLI writes it: the stage's text in `text {#current}`, the item, state and rev in `data {#stage}`.
@@ -2347,7 +2355,8 @@ test('an artifact\'s menu opens the file on the machine: a press runs its opener
   await pane.press({ key: 'open-file:.geml/exports/s.geml' })
   await clock.settle()
   expect(w.launched, 'the machine opens it (the bridge reported linux)').toEqual([['xdg-open', '/r/.geml/exports/s.geml']])
-  expect(w.toasts.at(-1)).toBe('已打开：s.geml')
+  const quiet = w.toasts.length
+  expect(w.toasts.filter((x) => x.includes('s.geml')), 'at the machine nothing is said: the window that opens says it').toEqual([])
   await pane.press({ key: 'copy-file:.geml/exports/s.geml-2' })
   await clock.settle()
   expect(w.launched, 'nothing run for a copy that is gone').toHaveLength(1)
@@ -2355,13 +2364,40 @@ test('an artifact\'s menu opens the file on the machine: a press runs its opener
   await pane.press({ key: 'folder-file:.geml/exports/s.geml' })
   await clock.settle()
   expect(w.launched.at(-1), 'its own folder, not the copies').toEqual(['xdg-open', '/r/.geml/exports'])
-  expect(w.toasts.at(-1)).toBe('已在文件夹里显示：s.geml')
+  expect(w.toasts.length, 'nor for the folder: only 找不到 was said since').toBe(quiet + 1)
   await pane.unmount()
   const phone = await $.ui.mount({ plugin: 'gemworks', surface: 'mobile', component: 'Pane', requestId: 'gemworks-board', props: { ...PANE, bodyColumns: 60 } })
   await phone.press({ key: 'open-file:.geml/exports/s.geml' })
   await clock.settle()
   expect(w.toasts.at(-1), 'pressed on the phone: it opened on the machine').toBe('已在本机打开：s.geml')
   await phone.unmount()
+})
+
+test('on Windows a picture among the artifacts opens in the default browser, asked of the registry once; Markdown in its own app; both through cmd\'s start, nothing said', async ($, on) => {
+  const w = world(on)
+  w.platform = 'win32'
+  const at = '2026-10-12T09:00:00Z'
+  const file = (name: string) => ({ kind: 'file', name, open: `/r/${name}`, versions: [{ version: '1', at, size: 2048 }] })
+  w.artifacts = { item: 'feat/x', written: [], commits: [], made: { links: [], files: [file('shot one.png'), file('notes.md')], images: [], docs: [], code: { commits: 0, files: 0 }, folder: '/h/.geml/artifacts' } }
+  w.files.set('/r/shot one.png', 'png')
+  w.files.set('/r/notes.md', 'md')
+  const clock = await start($, on)
+  await $.command.run({ command: 'gemworks', args: 'board items', origin: COMPOSER, presentation: PRESENTATION })
+  const pane = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: { ...PANE, bodyColumns: 120 } })
+  const toasts = w.toasts.length
+  for (const name of ['shot one.png', 'notes.md', 'shot one.png']) {
+    await pane.press({ key: `go-artifact-file:${name}` })
+    await pane.press({ key: `open-file:${name}` })
+    await clock.settle()
+  }
+  expect(w.launched).toEqual([
+    ['cmd.exe', '"" "C:\\Chrome\\chrome.exe" "file:///r/shot%20one.png"'],
+    ['cmd.exe', '"" "\\r\\notes.md"'],
+    ['cmd.exe', '"" "C:\\Chrome\\chrome.exe" "file:///r/shot%20one.png"'],
+  ])
+  expect(w.regAsked, 'the ProgId and its command, once').toBe(2)
+  expect(w.toasts.length, 'nothing said at the machine').toBe(toasts)
+  await pane.unmount()
 })
 
 test('整理 on the sessions tab: a press on a row picks it, 连同之后的 picks the later ones, the picked turns split into one new session by their record ids after a yes; 完成 leaves and unpicks', async ($, on) => {

@@ -54,7 +54,7 @@ import { isVisualTool, visualFileName, visualPage } from '../dist/hosts/claude-c
 import { transcriptEvents, type Transcript } from '../dist/core/transcript.js'
 import type { Asked } from '../dist/core/ask-tool.js'
 import type { AttachedClient, HostInfo } from '../dist/hosts/claude-code/env.js'
-import { baseName, openersFor } from '../dist/hosts/claude-code/open-file.js'
+import { BROWSER_PROGID_ARGV, baseName, browserCommandArgv, browserExeOf, openersFor, opensInBrowser, progIdOf } from '../dist/hosts/claude-code/open-file.js'
 import { bandView, BRAND_RED, cellWidth, MARK, MARK_SVG, SEP, toneProps, truncate, wrapCells } from '../dist/hosts/claude-code/band.js'
 import type { BandView, Tone } from '../dist/hosts/claude-code/band.js'
 import { BOARD_ID, ciSuggestions, DIALOG_ID, glyphSvg, heldRows, HOME_TAB, hostName, ICON_CHAR, ICON_SVG, ICON_TONE, inputAction, paneRows, projectPath, sessionLabel, TAB_IDS, tabs, toolSuggestions } from '../dist/hosts/claude-code/board.js'
@@ -177,6 +177,8 @@ const reloadAtom = atom({ plugin: 'gemworks', key: 'reload' } as const, false)
 const reloadUnavailableAtom = atom({ plugin: 'gemworks', key: 'reloadUnavailable' } as const, false)
 /** The machine and checkout the session runs on, as the bridge read them ({ name, platform, user, branch }). */
 const hostAtom = atom({ plugin: 'gemworks', key: 'host' } as const, null as GemworksJson)
+/** The default browser's program on Windows, once asked: '' when there is none to name. */
+const browserAtom = atom({ plugin: 'gemworks', key: 'browser' } as const, null as string | null)
 /** The clients attached to the session (session.attach): [{ clientId, surface }]. */
 const clientsAtom = atom({ plugin: 'gemworks', key: 'clients' } as const, [] as GemworksJson)
 /** Where the last prompt came from: composer (this machine), bridge (Remote Control), sdk. */
@@ -2025,9 +2027,10 @@ const OPEN_MS = 10_000
  * artifacts' menu or the export (a `file:` link opens nothing on a remote
  * surface); with `reveal`, shows it selected in its folder. A missing path
  * says so and runs nothing; an opener that is not on the machine gives way to
- * the next; one still running at the timeout started. Pressed from the phone,
- * or with the last prompt over Remote Control, the toast says it opened on the
- * machine, where the person may not be.
+ * the next, and so does one that fails; one still running at the timeout
+ * started. At the machine nothing is said (the window that opens says it);
+ * pressed from the phone, or with the last prompt over Remote Control, the
+ * toast says it opened on the machine, where the person may not be.
  */
 async function openFile($: EngineInterface, path: string, reveal: boolean, surface?: string): Promise<void> {
   const t = await words($)
@@ -2036,17 +2039,33 @@ async function openFile($: EngineInterface, path: string, reveal: boolean, surfa
   const [h, o] = await Promise.all([read($, hostAtom), read($, originAtom)])
   const platform = (h as unknown as HostInfo | null)?.platform
   const away = remoteInPlay({ ...(surface !== undefined ? { surface } : {}), clients: [], ...(o !== null ? { origin: o } : {}) })
-  const done = reveal ? (away ? '已在本机的文件夹里显示：{0}' : '已在文件夹里显示：{0}') : (away ? '已在本机打开：{0}' : '已打开：{0}')
-  for (const opener of openersFor(platform, path, reveal)) {
+  const done = away ? (reveal ? '已在本机的文件夹里显示：{0}' : '已在本机打开：{0}') : undefined
+  const browser = platform === 'win32' && !reveal && opensInBrowser(path) ? await browserOf($) : undefined
+  for (const opener of openersFor(platform, path, reveal, browser)) {
     try {
       const r = await $.process.run(opener.argv, { timeoutMs: OPEN_MS, ...(opener.env !== undefined ? { env: opener.env } : {}) })
-      $.ui.toast(r.exitCode === 0 ? t(done, name) : t('打不开：{0}', name))
+      if (r.exitCode !== 0) continue
+      if (done !== undefined) $.ui.toast(t(done, name))
       return
     } catch (err) {
-      if (/timed out|still running/i.test(reasonOf(err))) { $.ui.toast(t(done, name)); return }
+      if (/timed out|still running/i.test(reasonOf(err))) { if (done !== undefined) $.ui.toast(t(done, name)); return }
     }
   }
   $.ui.toast(t('打不开：{0}', name))
+}
+
+/** The default browser's program on Windows, asked of the registry once (two quick `reg query`s) and kept; none when
+ * it cannot be told, and the file's own app opens it. */
+async function browserOf($: EngineInterface): Promise<string | undefined> {
+  const kept = await read($, browserAtom)
+  if (kept !== null) return kept === '' ? undefined : kept
+  let exe = ''
+  try {
+    const id = progIdOf(String((await $.process.run(BROWSER_PROGID_ARGV, { timeoutMs: 3000 })).stdout))
+    if (id !== undefined) exe = browserExeOf(String((await $.process.run(browserCommandArgv(id), { timeoutMs: 3000 })).stdout)) ?? ''
+  } catch { /* none to name */ }
+  await update($, browserAtom, () => exe)
+  return exe === '' ? undefined : exe
 }
 
 function press($: EngineInterface, action: BoardAction): (e: { surface: string }) => void {
