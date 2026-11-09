@@ -87,10 +87,12 @@ You don't need Claude Code to use it. What each host gets differs:
 |---|---|---|---|---|
 | Claude Code | One line above the prompt + the board | Yes | Yes | Yes |
 | Pi | One line above the editor; `/gemworks` opens the board | Yes | Yes | Yes (your current model) |
-| DeepSeek Harness | The web side panel | Yes | Yes | Yes (the host's model) |
+| DeepSeek Harness | The web side panel | Yes | Yes | Not yet; the model records practices itself |
 | Codex | A GEML board page | Yes | Yes | No; the model records practices itself |
 | Antigravity | A GEML board page | Yes | Yes | No; the model records practices itself |
 | Other MCP hosts | A GEML board page | Yes | Only when the model calls its tools | No; the model records practices itself |
+
+"Make it a rule" is only on Claude Code for now.
 
 **A GEML board page**: every turn rewrites `.geml/board.geml` in your project, with what waits for you,
 the work items, the artifacts, the flows, and what other sessions decided. Open it in a VS Code–style editor
