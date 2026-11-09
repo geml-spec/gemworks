@@ -41,11 +41,6 @@ export function captureHint(platform: string | undefined, t: T = ZH): string {
   return platform === "darwin" ? `${hint}${t("（第一次会问屏幕录制权限）")}` : hint;
 }
 
-/** The toast once the capture is started. */
-export function captureStarted(platform: string | undefined, t: T = ZH): string {
-  return t("截好后在输入框按 {0}", pasteKey(platform));
-}
-
 /** The toast when no capture started: on Linux, which tools to install; elsewhere, why. */
 export function captureFailed(platform: string | undefined, reason: string, t: T = ZH): string {
   return platform === "linux" ? t("没找到截图工具：装 flameshot 或 gnome-screenshot 后再点") : t("截图没有启动：{0}", reason);

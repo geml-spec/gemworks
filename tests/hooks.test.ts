@@ -2711,17 +2711,25 @@ test('the band keeps the line a plugin below it drew (gemsbang\'s) under its own
   }
 })
 
-test('the band\'s screenshot button, on the desktop app only: it says which key pastes, and a press starts the system\'s region capture', async ($, on) => {
+test('the band\'s screenshot button, on the desktop app only: its hover says which key pastes, and a press starts the system\'s region capture with no word of its own', async ($, on) => {
   const w = world(on)
   w.platform = 'win32'
   on('session.attach', ($, e) => ({ clientId: e.clientId }))
   const clock = await start($, on)
   const desktop = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
   expect(await desktop.find({ type: 'Button', key: 'capture' }), 'left of the board\'s icon').toBeDefined()
-  expect(await desktop.find({ type: 'Text', text: /^截一块给 Claude 看：框选要截的地方，截好后在输入框按 Ctrl\+V$/ }), 'under the pointer, in the line\'s place').toBeDefined()
+  // The hover scope is the nearest keyed Box: the card must sit inside the icon's own, or the pointer on it lights nothing.
+  const inside = (el: Drawn | string, key: string): Drawn | undefined => typeof el === 'string' ? undefined : keyOf(el) === key ? el : (el.children ?? []).map((c) => inside(c, key)).find((x) => x !== undefined)
+  const icon = inside((await desktop.drawn()) as unknown as Drawn, 'capture-icon')
+  expect(icon, 'the icon\'s keyed box').toBeDefined()
+  // A drawn element carries its hover beside its props.
+  const card = (el: Drawn | string): Drawn | undefined => typeof el === 'string' ? undefined : el.props?.display === 'none' && (el as { hover?: { display?: string } }).hover?.display === 'flex' ? el : (el.children ?? []).map(card).find((x) => x !== undefined)
+  const hidden = card(icon as Drawn)
+  expect(hidden && JSON.stringify(hidden), 'a card inside it, shown under the pointer').toContain('截一块给 Claude 看：框选要截的地方，截好后在输入框按 Ctrl+V')
+  const toasts = w.toasts.length
   await desktop.press({ key: 'capture' })
   await clock.settle()
-  expect(w.toasts.at(-1)).toBe('截好后在输入框按 Ctrl+V')
+  expect(w.toasts.length, 'the press says nothing: the hover already did').toBe(toasts)
   expect(w.launched, 'Snipping Tool\'s region capture, as Win+Shift+S starts it').toEqual([['explorer.exe', 'ms-screenclip:']])
   await desktop.unmount()
   // Remote Control on, a phone attached: the desktop's band keeps the button, the phone's has none.
@@ -2763,7 +2771,6 @@ test('the screenshot button on macOS says ⌘V and asks for the permission once'
   await mac.press({ key: 'capture' })
   await clock.settle()
   expect(w.launched).toEqual([['screencapture', '-i', '-c']])
-  expect(w.toasts.at(-1)).toBe('截好后在输入框按 ⌘V')
   await mac.unmount()
 })
 

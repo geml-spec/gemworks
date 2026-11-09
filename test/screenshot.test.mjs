@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { captureFailed, captureHint, capturesFor, captureStarted, offersCapture, pasteKey } from "../dist/hosts/claude-code/screenshot.js";
+import { captureFailed, captureHint, capturesFor, offersCapture, pasteKey } from "../dist/hosts/claude-code/screenshot.js";
 import { wordsFor } from "../dist/hosts/claude-code/text.js";
 
 test("each system's own region capture, to the clipboard: Windows and macOS built in, Linux whichever tool is installed", () => {
@@ -25,8 +25,7 @@ test("the words name this system's paste key; macOS mentions the permission it a
   assert.equal(pasteKey("darwin"), "⌘V");
   assert.equal(captureHint("win32"), "截一块给 Claude 看：框选要截的地方，截好后在输入框按 Ctrl+V");
   assert.equal(captureHint("darwin"), "截一块给 Claude 看：框选要截的地方，截好后在输入框按 ⌘V（第一次会问屏幕录制权限）");
-  assert.equal(captureStarted("darwin"), "截好后在输入框按 ⌘V");
   assert.equal(captureFailed("linux", "spawn spectacle ENOENT"), "没找到截图工具：装 flameshot 或 gnome-screenshot 后再点");
   assert.equal(captureFailed("win32", "spawn explorer.exe EACCES"), "截图没有启动：spawn explorer.exe EACCES");
-  assert.equal(captureStarted("win32", wordsFor("en")), "Once captured, press Ctrl+V in the prompt");
+  assert.equal(captureHint("win32", wordsFor("en")), "Show Claude part of the screen: select it, then press Ctrl+V in the prompt");
 });

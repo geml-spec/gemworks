@@ -2108,7 +2108,7 @@ function drawGlyph(els: Els, g: Glyph, tone: Tone | 'active' = 'dim', size = 15)
  * An icon that is a press by itself (the dialogs): a Button holds only words, so a blank one is laid over the icon,
  * named by the label; the label shows under the pointer. Where the surface draws no pictures, the label as a button.
  */
-function iconButton($: EngineInterface, els: Els, b: Pressable, g: Glyph, o: { tone?: Tone | 'active'; from?: 'left' | 'right'; size?: number; lines?: number; tip?: false } = {}): unknown {
+function iconButton($: EngineInterface, els: Els, b: Pressable, g: Glyph, o: { tone?: Tone | 'active'; from?: 'left' | 'right'; size?: number; lines?: number; tip?: false; card?: unknown } = {}): unknown {
   const { Box, Button, Text, Svg } = els
   if (Svg === undefined) return <Button key={b.key} plain dimColor label={b.label} onPress={press($, b.action)} />
   const edge = o.from === 'left' ? { left: 0 } : { right: 0 }
@@ -2123,6 +2123,9 @@ function iconButton($: EngineInterface, els: Els, b: Pressable, g: Glyph, o: { t
           <Text wrap="truncate-end">{b.label}</Text>
         </Box>
       )}
+      {/* A card of its own in place of the tip: inside this keyed box, the scope the pointer on the icon lights (a card
+          beside it, under an outer keyed box, never showed: the inner key scopes the hover). */}
+      {o.card ?? null}
       {/* The press over the box: one blank button centred in it, painted last — the one layout the desktop takes a press
           through (a column of buttons under overflow hidden took none: every icon of the board went dead, 0.2.43–0.2.47). */}
       <Box position="absolute" top={0} left={0} right={0} bottom={0} justifyContent="center" alignItems="center">
@@ -3371,9 +3374,7 @@ export const register: Register = (on) => {
       : <Button key={b.key} plain hotkey={String(i + 1)} label={b.label} {...(b.primary ? { variant: 'primary' } : {})} onPress={press($, b.action)} />
     const board = tail.find((b) => b.key === 'board')
     // Under the pointer the line says how it goes, the paste key for this system with it; the icon's own tip is off.
-    const shot = capture !== undefined && (
-      <Box key="band-capture">{iconButton($, els, capture, 'capture', { from: 'right', size: 15, tip: false })}{card(captureHint(platform, t), { right: 0 }, columns - 4)}</Box>
-    )
+    const shot = capture !== undefined && iconButton($, els, capture, 'capture', { from: 'right', size: 15, tip: false, card: card(captureHint(platform, t), { right: 0 }, columns - 4) })
     if (question !== undefined && cellWidth(question) > room) {
       const lines = wrapCells(question, Math.max(20, columns - lead - 1), QUESTION_ROWS)
       return stack(

@@ -21,7 +21,7 @@ import type { PromptRecord } from '../dist/hosts/claude-code/sessions.js'
 import { MADE_PAGE, MADE_VIEW } from '../dist/hosts/claude-code/made.js'
 import type { MemoryList } from '../dist/memory-store.js'
 import { hhmm } from '../dist/hosts/claude-code/time.js'
-import { captureFailed, capturesFor, captureStarted } from '../dist/hosts/claude-code/screenshot.js'
+import { captureFailed, capturesFor } from '../dist/hosts/claude-code/screenshot.js'
 import { withSetting } from '../dist/hosts/claude-code/settings.js'
 import type { Judgement } from '../dist/hosts/claude-code/judge.js'
 import { HOME_TAB } from '../dist/hosts/claude-code/board.js'
@@ -93,13 +93,11 @@ const workflowsAtom = atom({ plugin: 'gemworks', key: 'workflows' } as const, nu
 const CAPTURE_MS = 10 * 60 * 1000
 
 /**
- * The band's screenshot button: the toast saying which key pastes goes first, then the system's region capture. Each
- * way is tried until one starts; one that starts is the person's (how it ends, a cancel included, says nothing); when
- * none starts, the toast says why.
+ * The band's screenshot button: the system's region capture, with no word of its own (the button's hover says how it
+ * goes). Each way is tried until one starts; one that starts is the person's (how it ends, a cancel included, says
+ * nothing); when none starts, the toast says why.
  */
 async function capture($: EngineInterface, platform: string): Promise<void> {
-  const t = await words($)
-  $.ui.toast(captureStarted(platform, t))
   let why = ''
   for (const c of capturesFor(platform)) {
     try {
@@ -110,7 +108,7 @@ async function capture($: EngineInterface, platform: string): Promise<void> {
       if (/still running|timed out/i.test(why)) return
     }
   }
-  $.ui.toast(captureFailed(platform, why, t))
+  $.ui.toast(captureFailed(platform, why, await words($)))
 }
 
 /** A press on the band or the board: what it does. */
