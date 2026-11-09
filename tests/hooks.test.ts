@@ -892,14 +892,17 @@ test('a line with options whose words do not fit beside them: the words on a row
   const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 26 } })
   const drawn = (await band.drawn()) as unknown as Drawn
   const find = (el: Drawn | string, key: string): Drawn | undefined => typeof el === 'string' ? undefined : keyOf(el) === key ? el : (el.children ?? []).map((c) => find(c, key)).find((x) => x !== undefined)
-  expect(shown(find(drawn, 'band-q-0') as Drawn), 'the words, whole, on their row').toEqual(['[　　]', '验收 feat/x'])
+  expect(shown(find(drawn, 'band-q-words') as Drawn), 'the words, whole, on their row').toEqual(['验收 feat/x'])
   const below = find(drawn, 'band-q-actions') as Drawn
   for (const key of ['approve-done', 'capture', 'board']) expect(holds(below, key), key).toBe(true)
-  const both = (el: Drawn | string): Drawn | undefined => typeof el === 'string' ? undefined : (el.children ?? []).some((c) => typeof c !== 'string' && keyOf(c) === 'band-q-actions') ? el : (el.children ?? []).map(both).find((x) => x !== undefined)
-  expect(both(drawn)?.props, 'a step of space between the words and the taller buttons').toMatchObject({ rowGap: 'sm' })
-  // The options start under the words: after a blank as wide as the mark, before the push to the right.
+  // The mark a column of its own; the words' lines and the options one column beside it, so they share one left edge
+  // on every surface, whatever width the mark takes.
+  const body = find(drawn, 'band-q-body') as Drawn
+  expect((body.children ?? []).map((c) => typeof c === 'string' ? c : keyOf(c)), 'the words, then the options, in one column').toEqual(['band-q-words', 'band-q-actions'])
+  expect(body.props, 'a step of space between the words and the taller buttons').toMatchObject({ flexDirection: 'column', rowGap: 'sm' })
+  expect(holds(body, 'band-mark-open'), 'the mark beside that column, not in it').toBe(false)
   const order = (below.children ?? []).map((c) => typeof c === 'string' ? c : String(keyOf(c) ?? c.type))
-  expect(order.slice(0, 2)).toEqual(['band-q-indent', 'approve-done'])
+  expect(order[0], 'the options start the row, under the words').toBe('approve-done')
   expect(order.indexOf('approve-done')).toBeLessThan(order.indexOf('band-icons'))
   expect(await band.find({ type: 'Button', key: 'title' }), 'no title squeezed beside the options').toBeUndefined()
   await band.unmount()

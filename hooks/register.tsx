@@ -2726,8 +2726,6 @@ async function shareStatus($: EngineInterface, t: T): Promise<string> {
 
 /** A question takes the rows it needs on the band: shown whole (past the engine's rows, the band scrolls). */
 const QUESTION_ROWS = Number.POSITIVE_INFINITY
-/** Nothing, as wide as the band's mark: the row of options under a question starts where its words do. */
-const BLANK_MARK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 13"></svg>'
 /** The fewest cells the band's one thing keeps on its row before what grew (新学到, 提议) gives way. */
 const ROOM_MIN = 16
 
@@ -3409,40 +3407,34 @@ export const register: Register = (on) => {
       </Box>
     )
     if (rows) {
-      const lines = wrapCells(question ?? `${view.verb !== '' ? `${view.verb} ` : ''}${lineWords}`, Math.max(20, columns - 3), QUESTION_ROWS)
-      // A step of space between the words and the row of options, whose buttons stand taller than a line of words on
-      // the desktop (the terminal draws `sm` down as none); none between the words' own lines.
+      const lines = wrapCells(question ?? `${view.verb !== '' ? `${view.verb} ` : ''}${lineWords}`, Math.max(20, columns - 4), QUESTION_ROWS)
+      // The mark a column of its own; beside it, one column for the words' lines and the row of options, so every line
+      // and the options start at one edge, whatever width each surface gives the mark. A step of space between the words
+      // and the options, whose buttons stand taller than a line on the desktop (the terminal draws `sm` down as none).
       return stack(
-        <Box flexDirection="column" flexGrow={1} rowGap="sm">
-          <Box key="band-q-words" flexDirection="column">
-          {lines.map((l, n) => (
-            <Box key={`band-q-${n}`} gap={1}>
-              {n === 0
-                ? (Svg !== undefined
-                  ? (
-                    <Box key="band-mark" flexShrink={0} alignItems="center" paddingX={1}>
-                      <Svg source={MARK_SVG} alt="Gemworks" width={13} height={13} />
-                      <Box position="absolute" top={0} left={0} right={0} bottom={0} justifyContent="center" alignItems="center">
-                        <Button key="band-mark-open" plain label={HIT} onPress={press($, { op: 'open-board', tab: 'items' })} />
-                      </Box>
-                    </Box>
-                  )
-                  : <Button key="band-mark-open" plain label={t('看板')} onPress={press($, { op: 'open-board', tab: 'items' })}><Text {...toneProps(MARK.tone)}>{MARK.text}</Text></Button>)
-                : <Text>{' '}</Text>}
-              <Text {...(Svg !== undefined ? { color: 'suggestion' } : {})} wrap="truncate-end">{l}</Text>
+        <Box gap={1} alignItems="flex-start" flexGrow={1}>
+          {Svg !== undefined
+            ? (
+              <Box key="band-mark" flexShrink={0} alignItems="center" paddingX={1}>
+                <Svg source={MARK_SVG} alt="Gemworks" width={13} height={13} />
+                <Box position="absolute" top={0} left={0} right={0} bottom={0} justifyContent="center" alignItems="center">
+                  <Button key="band-mark-open" plain label={HIT} onPress={press($, { op: 'open-board', tab: 'items' })} />
+                </Box>
+              </Box>
+            )
+            : <Button key="band-mark-open" plain label={t('看板')} onPress={press($, { op: 'open-board', tab: 'items' })}><Text {...toneProps(MARK.tone)}>{MARK.text}</Text></Button>}
+          <Box key="band-q-body" flexDirection="column" flexGrow={1} minWidth={0} rowGap="sm">
+            <Box key="band-q-words" flexDirection="column">
+              {lines.map((l, n) => <Text key={`band-q-${n}`} {...(Svg !== undefined ? { color: 'suggestion' } : {})} wrap="truncate-end">{l}</Text>)}
             </Box>
-          ))}
-          </Box>
-          {/* The options start where the words do, under them: a blank as wide as the mark first; what grew and the icons at the right. */}
-          <Box key="band-q-actions" gap={1} alignItems="center">
-            {Svg !== undefined
-              ? <Box key="band-q-indent" flexShrink={0} paddingX={1}><Svg source={BLANK_MARK_SVG} alt="" width={13} height={13} /></Box>
-              : <Text key="band-q-indent">{' '.repeat(cellWidth(MARK.text))}</Text>}
-            {options.map(pressable)}
-            {at !== '' && <Text dimColor>{at}</Text>}
-            <Box flexGrow={1} />
-            {grew}
-            {icons}
+            {/* What grew and the icons at the right. */}
+            <Box key="band-q-actions" gap={1} alignItems="center">
+              {options.map(pressable)}
+              {at !== '' && <Text dimColor>{at}</Text>}
+              <Box flexGrow={1} />
+              {grew}
+              {icons}
+            </Box>
           </Box>
         </Box>
       )
