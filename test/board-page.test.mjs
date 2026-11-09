@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse } from "@geml/geml";
@@ -73,7 +73,9 @@ test("written into the main working tree's .geml, from a worktree too, and not a
   assert.equal(spawnSync("git", ["-C", main, "worktree", "add", "-q", "-b", "feat/b", wt]).status, 0);
   recordWork(wt, "codex", "cx1", { items: [{ title: "看板", flow: "feature" }] }, AT);
   const path = writeBoard(wt, new Date("2026-11-09T08:00:00Z"));
-  assert.equal(path, boardPath(main));
+  // The same file, however the temp directory is spelled: git names the main tree by its real path (macOS's /var is
+  // /private/var, a Windows runner's home a short name).
+  assert.equal(realpathSync.native(path), realpathSync.native(boardPath(main)));
   assert.ok(readFileSync(path, "utf8").includes("看板"));
   writeFileSync(path, readFileSync(path, "utf8").replace(/^updated = .*$/m, 'updated = "kept"'));
   const before = statSync(path).mtimeMs;
