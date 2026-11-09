@@ -199,6 +199,8 @@ function world(on: On) {
       if (req.op === 'made') return { v: 1, ok: true, shell: none, made: w.made }
       // The project's record and its practices come with the status answer whatever the workflow, as the CLI's do.
       if (req.op === 'status' && (w.practices !== null || w.sessionsDir !== null)) return { v: 1, ok: true, shell: none, ...(w.practices !== null ? { practices: w.practices } : {}), ...(w.sessionsDir !== null ? { sessions: w.sessionsDir } : {}) }
+      // And the machine with the attention answer, without the repository's facts.
+      if (req.op === 'attention') return { v: 1, ok: true, shell: none, host: { name: 'build-box', platform: w.platform, user: 'dev', branch: 'feat/x' } }
       return ['verb', 'mark', 'advance', 'bind'].includes(req.op) ? { v: 1, ok: false, error: 'no workflow here', shell: none } : { v: 1, ok: true, shell: none }
     }
     if (req.op === 'after' && w.routed !== null) return { v: 1, ok: true, shell: shell(), entered: [], routed: w.routed }
@@ -2732,6 +2734,24 @@ test('the band\'s screenshot button, on the desktop app only: it says which key 
     expect(await band.find({ type: 'Button', key: 'capture' }), surface).toBeUndefined()
     await band.unmount()
   }
+})
+
+test('a project on the light flows, with no workflow of its own: the band still has the screenshot button, and the sessions tab says where the session runs', async ($, on) => {
+  const w = world(on)
+  w.workflow = false
+  w.platform = 'win32'
+  w.sessionsDir = LOGS
+  w.files.set(`${ROOT}/.geml/coach/bugfix.geml`, BUGFIX_JUDGED)
+  const clock = await start($, on)
+  await clock.settle()
+  const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  expect(await band.find({ type: 'Button', key: 'board' }), 'the light flows have a board').toBeDefined()
+  expect(await band.find({ type: 'Button', key: 'capture' }), 'the bridge said which system, workflow or none').toBeDefined()
+  await band.unmount()
+  const pane = await $.ui.mount({ plugin: 'gemworks', surface: 'terminal', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+  await pane.press({ key: 'tab-sessions' })
+  expect(shown((await pane.drawn()) as unknown as Drawn)).toContain('运行于 build-box · app · feat/x')
+  await pane.unmount()
 })
 
 test('the screenshot button on macOS says ⌘V and asks for the permission once', async ($, on) => {

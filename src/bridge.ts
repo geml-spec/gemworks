@@ -874,7 +874,9 @@ function answer(req: BridgeRequest): BridgeResponse {
     const shell = notOpened(opened, req.root);
     const asks = req.op === "verb" || req.op === "mark" || req.op === "advance" || req.op === "bind" || req.op === "learn" || req.op === "pause" || req.op === "resume" || req.op === "rollback" || req.op === "export";
     // No workflow keeps no session out of the project's shared record: its work items, decisions and visuals still have a home.
-    const record = req.op === "status" ? { sessions: join(journalBaseOf(root), GEML_DIR, SESSIONS_DIR), practices: practicesOf(root) } : {};
+    // Nor the machine it runs on: the band's screenshot button and the line of where it runs need it, workflow or none.
+    const record = req.op === "status" ? { sessions: join(journalBaseOf(root), GEML_DIR, SESSIONS_DIR), practices: practicesOf(root) }
+      : req.op === "attention" ? { host: hostOf(root) } : {};
     // Nor what its work made: under the work item the turn is on.
     if (req.op === "artifacts") syncArtifacts(undefined, root, req);
     if (req.op === "artifact") {

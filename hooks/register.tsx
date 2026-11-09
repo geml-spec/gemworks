@@ -1329,16 +1329,18 @@ async function loadFacts($: EngineInterface): Promise<void> {
   let session: string | undefined
   try { session = await $.session.id() } catch { /* headless */ }
   const res = await bridge($, { op: 'attention', ...(session !== undefined && session !== '' ? { session } : {}) }, SLOW_TIMEOUT_MS)
-  if (res === undefined || !res.ok || res.attention === undefined) return
-  const dir = res.sessions
-  if (dir !== undefined && dir !== (await read($, sessionsDirAtom))) {
-    await update($, sessionsDirAtom, () => dir)
-    await loadProjectSessions($)
-  }
+  if (res === undefined || !res.ok) return
+  // The machine comes back with no workflow too, where the repository's facts do not.
   const host = res.host
   if (host !== undefined && JSON.stringify(host) !== JSON.stringify(await read($, hostAtom))) {
     await update($, hostAtom, () => host as unknown as GemworksJson)
     $.ui.invalidate('ui.render')
+  }
+  if (res.attention === undefined) return
+  const dir = res.sessions
+  if (dir !== undefined && dir !== (await read($, sessionsDirAtom))) {
+    await update($, sessionsDirAtom, () => dir)
+    await loadProjectSessions($)
   }
   const facts = res.attention
   // A branch no longer ahead (pushed, or gone), or a pull request no longer open, lets its hold go: the next time it comes up, it is asked about again.

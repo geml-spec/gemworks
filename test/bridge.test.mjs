@@ -208,6 +208,9 @@ test("no workflow is a quiet problem; a journal that will not resume, a throw an
   assert.deepEqual(r.shell.suggest, { workflow: "dev", by: "default" }, "no workflow: the shell names the bundled one that fits the project");
   assert.equal(r.sessions, join(empty, ".geml", "sessions"), "no workflow: the session still records into the project's shared logs");
   assert.match(r.shell.versions?.parser ?? "", /^\d+\.\d+\.\d+/, "no workflow: the about dialog still has the parser's version, not ?");
+  const here = hook(empty, { op: "attention" }, NO_GH);
+  assert.deepEqual([here.ok, here.host?.name, here.host?.platform, typeof here.host?.branch], [true, hostname(), process.platform, "string"], "no workflow: the machine still comes back, for the band's screenshot button and the line of where it runs");
+  assert.equal(here.attention, undefined, "no workflow: no repository facts");
   assert.equal(hook(empty, { op: "verb", name: "status", args: {} }).ok, false);
   const root = project();
   hook(root, { op: "status" });
