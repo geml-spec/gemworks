@@ -115,7 +115,8 @@ export function proposalsAt(root: string): Proposal[] {
   return text !== undefined ? parseProposals(text) : [];
 }
 
-function saveProposals(root: string, list: readonly Proposal[]): void {
+/** The proposals written back into the project's `.geml/proposals.geml`. */
+export function saveProposals(root: string, list: readonly Proposal[]): void {
   const path = join(gemlHome(root), "proposals.geml");
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, proposalsText(list), "utf8");

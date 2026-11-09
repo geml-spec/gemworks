@@ -24,7 +24,8 @@ import { serveMcp } from "./mcp.js";
 import { decodeRequest, type BridgeResponse } from "./hosts/claude-code/protocol.js";
 import { docReader, openWorkspace, resolvePromptRef, resolveWorkflow, type Workspace } from "./workspace.js";
 import { defaultPeriods, LABEL_GUIDE, localDay, parsePeriod, report, reportText, type Period } from "./core/corrections.js";
-import { addLabelled, labelledRows, readLedger, unlabelledPrompts } from "./corrections-store.js";
+import { addLabelled, labelledRows, readLedger, recordedUnlabelled, unlabelledPrompts } from "./corrections-store.js";
+import { readSessions } from "./session-store.js";
 import { cellWidth } from "./hosts/claude-code/band.js";
 
 const USAGE = [
@@ -218,7 +219,11 @@ function corrections(args: string[]): number {
     const limit = Number(flag(rest, "--limit") ?? "200");
     if (!Number.isInteger(limit) || limit <= 0) fail("--limit needs a whole number", 2);
     const since = flag(rest, "--since");
-    for (const p of unlabelledPrompts(readLedger(), transcripts, { limit, ...(since !== undefined ? { since } : {}) })) console.log(JSON.stringify(p));
+    // Claude Code's transcripts, and what the project's other hosts recorded in its shared record.
+    const ledger = readLedger();
+    const window = { limit, ...(since !== undefined ? { since } : {}) };
+    const all = [...unlabelledPrompts(ledger, transcripts, window), ...recordedUnlabelled(ledger, readSessions(process.cwd()), window)].sort((a, b) => (a.at < b.at ? -1 : 1)).slice(0, limit);
+    for (const p of all) console.log(JSON.stringify(p));
     return 0;
   }
   if (sub === "label") {

@@ -5,7 +5,8 @@
 // prompt of each run; a band of a few lines above the editor (a widget); the
 // board as an overlay `/gemworks` opens; a registered question asked at the
 // run's end with its answers to pick; and a run that changed things and
-// reported no work item sent back once. The text of the band and the board is
+// reported no work item sent back once; each typed prompt labelled into the
+// person's ledger by the session's own model (ledger-run.ts). The text of the band and the board is
 // pure (bandLines, boardLines); the rest only wires it to Pi's events. Nothing
 // here stops a run: whatever fails is missed this time.
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -17,6 +18,8 @@ import { currentTurn, decisionsContext, NOTE_TOOL, SESSIONS_PROMPT, type SharedD
 import { itemProgress, turnItem, WORK_REMINDER, type CoachFlow, type WorkItem } from "../../core/work.js";
 import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, workItemsAt } from "../../loop.js";
 import { readPractices } from "../../practice-store.js";
+import { labelPrompt, type Complete } from "../../ledger-run.js";
+import { typedWords } from "../../core/corrections.js";
 import { appendSession, decisionsFor, hostLabel, readSessions, recordAnswer, recordDecisions, recordPrompt } from "../../session-store.js";
 
 export const PI_HOST = "pi";
@@ -135,6 +138,36 @@ function lastWords(messages: readonly unknown[]): string {
   return "";
 }
 
+/**
+ * The session's own model, borrowed: Pi's registry completes with the model the person chose and its own credentials.
+ * Undefined when the session has none.
+ */
+export function piComplete(ctx: Pick<ExtensionContext, "model" | "modelRegistry">): Complete | undefined {
+  const model = ctx.model;
+  const registry = ctx.modelRegistry;
+  if (model === undefined || registry === undefined) return undefined;
+  return async (system, prompt, maxTokens) => {
+    const reply = await registry.complete(model, { systemPrompt: system, messages: [{ role: "user", content: prompt, timestamp: Date.now() }] }, { maxTokens } as never);
+    const text = reply.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+    return text === "" ? undefined : text;
+  };
+}
+
+/** A typed prompt into the person's ledger, labelled behind the run with the step this session's work item stands at. */
+function learnFrom(cwd: string, session: string, prompt: string, before: string, ctx: ExtensionContext): void {
+  if (process.env["GEMWORKS_LEARN"] === "0") return;
+  const words = typedWords(prompt);
+  const complete = piComplete(ctx);
+  if (words === undefined || complete === undefined) return;
+  const flows = coachFlowsAt(cwd);
+  const item = turnItem(workItemsAt(cwd, flows), session);
+  const flow = item !== undefined ? flows.find((f) => f.name === item.flow) : undefined;
+  const step = item !== undefined && flow !== undefined ? itemProgress(item, flow).here ?? undefined : undefined;
+  let locale: string | undefined;
+  try { locale = Intl.DateTimeFormat().resolvedOptions().locale; } catch { /* the default words */ }
+  void labelPrompt(cwd, { text: words, before, at: new Date().toISOString(), session, ...(flow !== undefined && step !== undefined ? { flow: flow.name, step } : {}) }, complete, locale).catch(() => false);
+}
+
 /** The overlay `/gemworks` opens: the board's lines, Esc or q closes it. */
 function boardOverlay(lines: () => string[], done: (v: undefined) => void): { render(width: number): string[]; handleInput(data: string): void; invalidate(): void } {
   return {
@@ -149,6 +182,8 @@ export function attachLoop(pi: ExtensionAPI, cwd: string): void {
   let session: string | undefined;
   let acted = false;
   let reminded = false;
+  /** The last run's answer: the reply the person's next prompt answers, for its label. */
+  let lastAnswer = "";
   const safe = (f: () => void): void => { try { f(); } catch { /* missed this time */ } };
   const band = (ctx: ExtensionContext): void => {
     if (!ctx.hasUI || session === undefined) return;
@@ -171,6 +206,8 @@ export function attachLoop(pi: ExtensionAPI, cwd: string): void {
       acted = false;
       reminded = false;
       safe(() => recordPrompt(cwd, PI_HOST, id, event.prompt));
+      // The person's ledger: the prompt labelled by the session's own model, behind the run (GEMWORKS_LEARN=0 turns it off).
+      safe(() => learnFrom(cwd, id, event.prompt, lastAnswer, ctx));
     }
     const said: string[] = [];
     safe(() => said.push(piWords([SESSIONS_PROMPT, ...loopPrompt(coachFlowsAt(cwd))].join("\n\n"))));
@@ -193,7 +230,9 @@ export function attachLoop(pi: ExtensionAPI, cwd: string): void {
   pi.on("agent_end", (event, ctx) => {
     if (session === undefined) return;
     const id = session;
-    safe(() => recordAnswer(cwd, PI_HOST, id, lastWords(event.messages), false));
+    const answer = lastWords(event.messages);
+    if (answer !== "") lastAnswer = answer;
+    safe(() => recordAnswer(cwd, PI_HOST, id, answer, false));
     band(ctx);
     if (acted && !reminded) {
       reminded = true;
