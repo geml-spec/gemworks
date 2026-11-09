@@ -50,7 +50,7 @@
     }
   },
   "dependencies": {
-    "@geml/geml": "^1.12.6"
+    "@geml/geml": "^1.13.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
