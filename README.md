@@ -7,7 +7,7 @@ remembers what you've decided, and lets your workflow grow on its own. Right ins
 
 English | [中文](README.zh.md)
 
-![The band and the board](docs/images/band-and-board.png)
+<!-- Screenshot to come: the band and the board, at docs/images/band-and-board.png, then ![The band and the board](docs/images/band-and-board.png) -->
 
 ## What you see once it's installed
 
@@ -41,15 +41,19 @@ so the latest is easy to find.
 
 You need Node 22 or later (check with `node --version`).
 
-In Claude Code's prompt, enter these one line at a time:
+In Claude Code's prompt (Claude Code 2.1.275 or later), enter these one line at a time:
 
 ```text
 /plugin marketplace add geml-spec/geml
-/plugin marketplace add geml-spec/gemworks
-/plugin install gemworks@gemworks
+/plugin install gemworks --marketplace geml-spec/gemworks
 ```
 
-After installing, [to be tested: run `/reload-plugins`, or open a new session].
+The first line adds GEML's plugin marketplace: gemworks uses the geml plugin from it, which comes along
+when you install. The second adds gemworks' marketplace and installs it; choose a scope when asked.
+
+After installing, read the last line of the install summary: `Plugin is now active.` means you can use it
+right away. If a reload is needed, Claude Code runs `/reload-plugins` for you; if it warns that the reload
+would invalidate the prompt cache, type `/reload-plugins --force` yourself.
 
 On its first start it reads this project's earlier sessions in the background, and the band shows
 "Getting to know this project's earlier sessions (3/120) — kept only on this machine, in .geml/".

@@ -6,7 +6,7 @@
 
 [English](README.md) | 中文
 
-![状态带和看板](docs/images/band-and-board.png)
+<!-- 截图待补：状态带和看板，放到 docs/images/band-and-board.png 后改成 ![状态带和看板](docs/images/band-and-board.png) -->
 
 ## 装上后你会看到
 
@@ -36,15 +36,19 @@
 
 需要 Node 22 以上（用 `node --version` 看一下）。
 
-在 Claude Code 的输入框里逐行输入：
+在 Claude Code 的输入框里逐行输入（Claude Code 2.1.275 以上）：
 
 ```text
 /plugin marketplace add geml-spec/geml
-/plugin marketplace add geml-spec/gemworks
-/plugin install gemworks@gemworks
+/plugin install gemworks --marketplace geml-spec/gemworks
 ```
 
-装完以后【待实测：输入 `/reload-plugins`，还是开一个新会话】。
+第一行加上 GEML 的插件市场，gemworks 要用到其中的 geml 插件，装的时候会一并装上；
+第二行加上 gemworks 的市场并安装，装的时候选范围。
+
+装完看安装提示的最后一句：写着 `Plugin is now active.` 就能直接用；
+要重载的话，Claude Code 会替你运行 `/reload-plugins`，它若提示重载会让提示缓存失效，
+就自己输入 `/reload-plugins --force`。
 
 第一次启动时，它会在后台读一遍这个项目以前的会话，状态带上显示
 「正在了解这个项目以前的会话（3/120），只存在本机 .geml/ 目录」。
