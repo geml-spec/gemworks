@@ -2776,6 +2776,8 @@ async function tabRows($: EngineInterface, e: { surface: string; props: { bodyCo
     shows(tab === 'items')(() => read($, artifactMenuAtom), null),
     shows(tab === 'items')(() => read($, docsOpenAtom), false),
   ])
+  // Where this session runs, after 本会话 on the sessions tab.
+  const env = tab === 'sessions' ? await envNow($, t, e.surface).then((x) => x.parts, () => [] as string[]) : []
   const memory = tab === 'sessions'
     ? { list: (await read($, memoryAtom)) as MemoryList | null, group: await read($, memoryGroupAtom), menu: await read($, memoryMenuAtom), edit: await read($, memoryEditAtom), shown: ((await read($, memoryShownAtom)) as number | null) ?? 10 }
     : undefined
@@ -2784,7 +2786,7 @@ async function tabRows($: EngineInterface, e: { surface: string; props: { bodyCo
     ? { madeAll: (await read($, madeAllAtom)) as unknown as MadeAll | null, madeView: (await read($, madeViewAtom)) as unknown as MadeView }
     : {}
   const rows = paneRows({
-    board, problem, shell, tab, columns, maxRows: Math.max(4, e.props.scroll.bodyRows - 4), t, now, root: root ?? '', inbox, ...made,
+    board, problem, shell, tab, columns, maxRows: Math.max(4, e.props.scroll.bodyRows - 4), t, now, root: root ?? '', env, inbox, ...made,
     filter: filter as JournalFilter, expanded, evidence, prompts,
     ...(project !== null ? { project, scrolls: e.surface === 'terminal', unfolded: unfolded as unknown as { id: string; answer: string | null } | null } : {}),
     ...(tab === 'items' || tab === 'flow' || tab === 'made' ? { coach: {
@@ -2807,7 +2809,7 @@ async function tabRows($: EngineInterface, e: { surface: string; props: { bodyCo
 }
 
 /** The board's header: the mark, the version, the dialogs; the work item, its stage and flow; where the session runs. */
-function drawHeader($: EngineInterface, els: Els, head: Header | undefined, envLine: readonly string[], t: T, columns: number): unknown {
+function drawHeader($: EngineInterface, els: Els, head: Header | undefined, t: T, columns: number): unknown {
   const { Box, Text, Button } = els
   return (
     <Box key="header" flexDirection="column">
@@ -2845,7 +2847,6 @@ function drawHeader($: EngineInterface, els: Els, head: Header | undefined, envL
           </Box>
         ))}
       {head?.reason !== undefined && <Text dimColor>{head.reason}</Text>}
-      {envLine.length > 0 && <Text key="env" dimColor wrap="truncate-end">{envLine.join(SEP)}</Text>}
     </Box>
   )
 }
@@ -3342,9 +3343,9 @@ export const register: Register = (on) => {
     const columns: number = e.props.bodyColumns
     const env = await envNow($, t, e.surface).catch(() => ({ parts: [] as string[], host: null as HostInfo | null, remote: false }))
     const at = env.remote && env.host !== null ? `@${env.host.name}` : ''
-    // The screenshot button, left of the board's icon: on the desktop app, at the machine the session runs on.
+    // The screenshot button, left of the board's icon: on the desktop app, Remote Control on or not.
     const platform = env.host?.platform
-    const capture: Pressable | undefined = Svg !== undefined && tail.some((b) => b.key === 'board') && offersCapture({ surface: e.surface, remote: env.remote, platform })
+    const capture: Pressable | undefined = Svg !== undefined && tail.some((b) => b.key === 'board') && offersCapture({ surface: e.surface, platform })
       ? { key: 'capture', label: t('截图'), action: { op: 'capture', platform: platform ?? '' } }
       : undefined
     const reserve = [...options, ...tail].reduce((w, b) => w + (b.key === 'board' && Svg !== undefined ? 4 : cellWidth(b.label) + 5), 0) + (at !== '' ? cellWidth(at) + 1 : 0) + (capture !== undefined ? 4 : 0)
@@ -3470,10 +3471,9 @@ export const register: Register = (on) => {
     const tab: BoardTab = (TAB_IDS as readonly string[]).includes(kept as string) ? kept as BoardTab : HOME_TAB
     const label = tabs(t).find((x) => x.id === tab)?.label ?? tab
     const failed = (part: string, why: string): BoardRow => ({ kind: 'text', text: truncate(t('gemworks：{0}画不出来（{1}）', part, why), columns), tone: 'error' })
-    // The header, where the session runs, and the tab's rows: each on its own, read at once, each within BOARD_READ_MS.
-    const [head, envLine, rows] = await Promise.all([
+    // The header and the tab's rows: each on its own, read at once, each within BOARD_READ_MS.
+    const [head, rows] = await Promise.all([
       within($, BOARD_READ_MS, headerRows($, t)).catch(() => undefined),
-      within($, BOARD_READ_MS, envNow($, t, e.surface)).then((x) => x?.parts ?? [], () => [] as string[]),
       within($, BOARD_READ_MS, tabRows($, e, t, tab)).then(
         (r) => r ?? [failed(label, t('读取超时'))],
         (err: unknown) => [failed(label, reasonOf(err))],
@@ -3481,7 +3481,7 @@ export const register: Register = (on) => {
     ])
     let header: unknown
     try {
-      header = drawHeader($, els, head, envLine, t, columns)
+      header = drawHeader($, els, head, t, columns)
     } catch (err) {
       header = <Text key="header-failed" color="error">{t('gemworks：{0}画不出来（{1}）', t('页头'), reasonOf(err))}</Text>
     }

@@ -24,10 +24,10 @@ export function capturesFor(platform: string | undefined): Capture[] {
   return [];
 }
 
-/** Whether the band offers the button: drawn on the desktop app, at the machine the session runs on (under Remote
- * Control a capture would be of the other machine's screen), whose system has a capture. */
-export function offersCapture(o: { surface: string; remote: boolean; platform: string | undefined }): boolean {
-  return o.surface === "desktop" && !o.remote && capturesFor(o.platform).length > 0;
+/** Whether the band offers the button: drawn on the desktop app, whose system has a capture. Remote Control does not
+ * hide it: a phone attached draws its own band, and the press on this one comes from the person at the desktop. */
+export function offersCapture(o: { surface: string; platform: string | undefined }): boolean {
+  return o.surface === "desktop" && capturesFor(o.platform).length > 0;
 }
 
 /** The key that pastes into the prompt. */

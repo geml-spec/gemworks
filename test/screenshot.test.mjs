@@ -11,13 +11,12 @@ test("each system's own region capture, to the clipboard: Windows and macOS buil
   assert.deepEqual(capturesFor(undefined), []);
 });
 
-test("the button is offered on the desktop app, at the machine the session runs on, whose system has a capture", () => {
-  assert.equal(offersCapture({ surface: "desktop", remote: false, platform: "win32" }), true);
-  assert.equal(offersCapture({ surface: "terminal", remote: false, platform: "win32" }), false);
-  assert.equal(offersCapture({ surface: "mobile", remote: false, platform: "darwin" }), false);
-  assert.equal(offersCapture({ surface: "vscode", remote: false, platform: "darwin" }), false);
-  assert.equal(offersCapture({ surface: "desktop", remote: true, platform: "darwin" }), false, "under Remote Control it would capture the other machine's screen");
-  assert.equal(offersCapture({ surface: "desktop", remote: false, platform: undefined }), false, "before the bridge has said which system");
+test("the button is offered on the desktop app, whose system has a capture", () => {
+  assert.equal(offersCapture({ surface: "desktop", platform: "win32" }), true);
+  assert.equal(offersCapture({ surface: "terminal", platform: "win32" }), false);
+  assert.equal(offersCapture({ surface: "mobile", platform: "darwin" }), false);
+  assert.equal(offersCapture({ surface: "vscode", platform: "darwin" }), false);
+  assert.equal(offersCapture({ surface: "desktop", platform: undefined }), false, "before the bridge has said which system");
 });
 
 test("the words name this system's paste key; macOS mentions the permission it asks for once", () => {

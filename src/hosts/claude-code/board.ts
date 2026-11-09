@@ -5,7 +5,7 @@ import { bindingOf, type DictRow } from "../../core/dictionary.js";
 import type { Status } from "../../workspace.js";
 import type { BoardAction, BoardTab, JournalFilter, Pressable } from "./actions.js";
 import type { MemoryList } from "../../memory-store.js";
-import { howText, truncate, varSegment, wrapCells, type Tone } from "./band.js";
+import { cellWidth, howText, truncate, varSegment, wrapCells, type Tone } from "./band.js";
 import { othersWaiting, pendingList, shortReason, type InboxItem } from "./inbox.js";
 import type { BoardData, BoardItem, MadeAll, MadeEntry, Artifacts, ShellStatus, TimelineEntry } from "./protocol.js";
 import { MADE_VIEW, madeTabRows, type ItemWords, type MadeView } from "./made.js";
@@ -255,6 +255,8 @@ export interface PaneInput {
   now: string;
   /** The project root, for the links to the workflow's files. */
   root: string;
+  /** Where this session runs (env.ts): the machine, the checkout, the branch, Remote Control when in play; said after 本会话. */
+  env?: readonly string[];
   inbox: readonly InboxItem[];
   filter: JournalFilter;
   /** The journal entry whose menu is open (its row key), or null. */
@@ -309,6 +311,13 @@ export interface PaneInput {
   toolsOpen: readonly string[];
 }
 
+/** Where this session runs, after 本会话 on one line: cut to the room its 整理 and 导出 leave. */
+function whereOwn(env: readonly string[], tidy: boolean, t: T, columns: number): { note?: string } {
+  if (env.length === 0) return {};
+  const room = columns - cellWidth(t("本会话")) - (tidy ? cellWidth(t("整理")) + 1 : 0) - cellWidth(t("导出")) - 4;
+  return { note: truncate(env.join(" · "), Math.max(10, room)) };
+}
+
 /**
  * The pane's rows under its tabs: the tab's rows, under the reason the board
  * could not be read again when it could not (the last board stays); the
@@ -342,7 +351,7 @@ export function paneRows(o: PaneInput): BoardRow[] {
         ] as Pressable[] : []),
         { key: "tidy-off", label: t("完成").trim(), action: { op: "tidy", on: false } },
       ] }
-      : { kind: "section", key: "own", text: t("本会话"), ...(o.prompts.length > 0 ? { actions: [{ key: "tidy-on", label: t("整理"), action: { op: "tidy", on: true } }] } : {}), fold: exports.button("own") };
+      : { kind: "section", key: "own", text: t("本会话"), ...whereOwn(o.env ?? [], o.prompts.length > 0, t, columns), ...(o.prompts.length > 0 ? { actions: [{ key: "tidy-on", label: t("整理"), action: { op: "tidy", on: true } }] } : {}), fold: exports.button("own") };
     return [
       ...head,
       heading, ...exports.under("own"), ...own,

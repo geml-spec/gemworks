@@ -421,6 +421,10 @@ test("the pane: rows for the tab, a problem above them, and the reason when ther
   assert.deepEqual(pane({ board: null, tab: "items" }), [{ kind: "section", key: "waiting", text: "待处理" }, { kind: "text", text: "暂无", tone: "dim" }, wait]);
   assert.deepEqual(pane({ board: null, tab: "items", problem: "x" }).at(-1), { kind: "text", text: "暂无", tone: "dim" }, "under a problem, no wait line");
   assert.deepEqual(pane({ board: null, tab: "sessions" }), [{ kind: "section", key: "own", text: "本会话", fold: { key: "export-own", label: "导出", action: { op: "export", session: "own" } } }, { kind: "text", text: "还没有 prompt", tone: "dim" }], "this session's heading carries its export even with nothing under it");
+  const env = ["运行于 GEORGE-PC", "user-story-review-split-440292", "claude/user-story-review-split-440292", "远程控制"];
+  assert.equal(pane({ board: null, tab: "sessions", env, columns: 140 }).at(0).note, "运行于 GEORGE-PC · user-story-review-split-440292 · claude/user-story-review-split-440292 · 远程控制", "where it runs, after the heading");
+  const narrow = pane({ board: null, tab: "sessions", env, columns: 40 }).at(0).note;
+  assert.ok(narrow.startsWith("运行于 GEORGE-PC · ") && narrow.endsWith("…") && cellWidth(narrow) <= 40 - cellWidth("本会话") - cellWidth("导出") - 4, `one line beside 导出: ${narrow}`);
   const at = "2026-10-20T08:00:00Z";
   const one = (id, over = {}) => ({ id, host: "claude-code", started: at, last: at, turns: [], decisions: [], files: [], commits: [], ...over });
   const project = { sessions: [one("me"), one("other", { branch: "feat/y", decisions: [{ turn: 1, at, text: "先跑 CI" }] })], own: "me", open: null };

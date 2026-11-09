@@ -1450,7 +1450,7 @@ test('a question too long for one row is drawn whole, however many rows it takes
   }
 })
 
-test('where the session runs: the board says the machine, the checkout and the branch; with Remote Control in play it says so, and the band names the machine', async ($, on) => {
+test('where the session runs: the sessions tab says, after 本会话, the machine, the checkout and the branch; with Remote Control in play it says so, and the band names the machine', async ($, on) => {
   world(on)
   on('prompt.submit', ($, e) => ({ text: e.text }))
   on('session.attach', ($, e) => ({ clientId: e.clientId }))
@@ -1460,11 +1460,20 @@ test('where the session runs: the board says the machine, the checkout and the b
   await $.command.run({ command: 'gemworks', args: 'board', origin: COMPOSER, presentation: PRESENTATION })
   const head = async (): Promise<string> => {
     const pane = await $.ui.mount({ plugin: 'gemworks', surface: 'terminal', component: 'Pane', requestId: 'gemworks-board', props: PANE })
-    const line = shown((await pane.drawn()) as unknown as Drawn).find((x) => x.startsWith('运行于')) ?? ''
+    await pane.press({ key: 'tab-sessions' })
+    const texts = shown((await pane.drawn()) as unknown as Drawn)
+    const line = texts.find((x) => x.startsWith('运行于')) ?? ''
+    expect(texts[texts.indexOf(line) - 1], 'right after the heading').toBe('本会话')
     await pane.unmount()
     return line
   }
   expect(await head()).toBe('运行于 build-box · app · feat/x')
+  {
+    const pane = await $.ui.mount({ plugin: 'gemworks', surface: 'terminal', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+    await pane.press({ key: 'tab-items' })
+    expect(shown((await pane.drawn()) as unknown as Drawn).some((x) => x.startsWith('运行于')), 'no longer above the tabs').toBe(false)
+    await pane.unmount()
+  }
   expect(await bandText($), 'at the machine: the band does not name it').not.toMatch(/@build-box/)
   await $.session.attach({ surface: 'mobile', clientId: 'phone-1' })
   expect(await head(), 'a phone attached').toBe('运行于 build-box · app · feat/x · 远程控制')
@@ -2703,6 +2712,7 @@ test('the band keeps the line a plugin below it drew (gemsbang\'s) under its own
 test('the band\'s screenshot button, on the desktop app only: it says which key pastes, and a press starts the system\'s region capture', async ($, on) => {
   const w = world(on)
   w.platform = 'win32'
+  on('session.attach', ($, e) => ({ clientId: e.clientId }))
   const clock = await start($, on)
   const desktop = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
   expect(await desktop.find({ type: 'Button', key: 'capture' }), 'left of the board\'s icon').toBeDefined()
@@ -2712,6 +2722,11 @@ test('the band\'s screenshot button, on the desktop app only: it says which key 
   expect(w.toasts.at(-1)).toBe('截好后在输入框按 Ctrl+V')
   expect(w.launched, 'Snipping Tool\'s region capture, as Win+Shift+S starts it').toEqual([['explorer.exe', 'ms-screenclip:']])
   await desktop.unmount()
+  // Remote Control on, a phone attached: the desktop's band keeps the button, the phone's has none.
+  await $.session.attach({ surface: 'mobile', clientId: 'phone-1' })
+  const both = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  expect(await both.find({ type: 'Button', key: 'capture' }), 'with Remote Control on').toBeDefined()
+  await both.unmount()
   for (const surface of ['terminal', 'mobile'] as const) {
     const band = await $.ui.mount({ plugin: 'gemworks', surface, component: 'AbovePrompt', props: BAND })
     expect(await band.find({ type: 'Button', key: 'capture' }), surface).toBeUndefined()
