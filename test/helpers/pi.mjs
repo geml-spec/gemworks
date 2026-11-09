@@ -28,6 +28,9 @@ export function fakePi({
   const entries = [...branch];
   const messages = [];
   const notices = [];
+  const commands = new Map();
+  const widgets = new Map();
+  const userMessages = [];
   const globals = tools.map((name) => ({ name, description: `The ${name} tool.`, parameters: { type: "object" } }));
   let active = globals.map((t) => t.name);
   let calls = 0;
@@ -55,8 +58,14 @@ export function fakePi({
     appendEntry(customType, data) {
       entries.push({ type: "custom", customType, data });
     },
-    sendMessage(message) {
-      messages.push(message);
+    sendMessage(message, options) {
+      messages.push(options === undefined ? message : { ...message, options });
+    },
+    sendUserMessage(content) {
+      userMessages.push(content);
+    },
+    registerCommand(name, options) {
+      commands.set(name, options);
     },
     registerFlag() {},
     getFlag() {
@@ -74,6 +83,8 @@ export function fakePi({
       notify: (message, type) => notices.push({ message, type }),
       select: (title, options) => select(title, options),
       input: async () => undefined,
+      setWidget: (key, lines) => { widgets.set(key, lines); },
+      custom: async () => undefined,
     },
     sessionManager: {
       getSessionId: () => sessionId,
@@ -173,5 +184,9 @@ export function fakePi({
     messages: () => [...messages],
     notices: () => [...notices],
     has: (event) => (handlers.get(event) ?? []).length > 0,
+    end: (messages = []) => emit("agent_end", { type: "agent_end", messages }),
+    commands,
+    widget: (key) => widgets.get(key),
+    userMessages: () => [...userMessages],
   };
 }

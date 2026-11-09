@@ -224,7 +224,7 @@ test("apply(): mounted as a Cordis plugin, an agent is supervised the moment it 
   const agent = await harness.create(SessionId("apply-1"), {}, { cwd: dir });
   assert.deepEqual(
     ctx.tools.schemas(agent).map((s) => s.name).sort(),
-    [...VERBS, "gemworks_note", "grep", "pay_refund", "read"].sort(),
+    [...VERBS, "gemworks_answer", "gemworks_artifact", "gemworks_ask", "gemworks_note", "gemworks_practice", "gemworks_propose", "gemworks_work", "grep", "pay_refund", "read"].sort(),
     "supervised with no await in between",
   );
 
@@ -431,5 +431,22 @@ test("the project's session record on DeepSeek Harness: the agent opens a log, g
   assert.match(assembly.contexts.find((c) => c.name === "gemworks:shared-decisions").text, /- 合并前先跑三平台 CI（Codex，\d\d:\d\d）/);
   assert.doesNotMatch(assembly.contexts.find((c) => c.name === "gemworks:shared-decisions").text, /每会话一个文件/, "never its own");
   assert.match(assembly.sections.find((s) => s.name === "gemworks:sessions").text, /`gemworks_note` tool/);
+  await w.dispose();
+});
+
+test("the work loop on DeepSeek Harness: its tools as gemworks_<name>, told once with the flows' steps, the work items on the way beside each step", async () => {
+  const { recordSession } = await import("../dist/hosts/dsh/plugin.js");
+  const w = await world();
+  const recorded = new Map();
+  recordSession(w.agent, recorded);
+  assert.equal(recorded.get(String(w.agent.id)), w.dir, "the board finds the session's directory");
+  for (const name of ["gemworks_work", "gemworks_practice", "gemworks_propose", "gemworks_answer", "gemworks_ask", "gemworks_artifact"]) assert.ok(w.visible().includes(name), name);
+  await w.call("gemworks_work", { items: [{ title: "看板", flow: "feature", needs: "你看样稿" }] });
+  const assembly = await w.ctx.systemPrompt.assemble({ scope: w.agent });
+  assert.match(assembly.contexts.find((c) => c.name === "gemworks:work-items").text, /^\[gemworks\] work items on the way: #\S+ «看板» \(feature: at mockup 样稿, needs 你看样稿\)/);
+  const told = assembly.sections.find((s) => s.name === "gemworks:loop").text;
+  assert.match(told, /`gemworks_work` tool/);
+  assert.match(told, /feature 新功能: mockup 样稿 \(you\)/);
+  assert.doesNotMatch(told, /gemworks `\w+` tool/, "every tool named as this host names it");
   await w.dispose();
 });

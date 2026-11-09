@@ -30,6 +30,7 @@ import { metaFor, openRun, Supervisor } from "../../core/supervisor.js";
 import { toParamEntry, type ParamEntry, type ParamSpec, type ToolSpec } from "../../core/tools.js";
 import { journalFromEntries, SNAPSHOT_ENTRY, type BranchEntry } from "./journal-entries.js";
 import { docReader, resolveWorkflow } from "../../workspace.js";
+import { attachLoop } from "./loop.js";
 
 /** Read from the environment at load time; see `readSettings`. */
 export interface PiSettings {
@@ -140,6 +141,8 @@ export function readSettings(env: Record<string, string | undefined>, cwd: strin
  */
 export default function gemworks(pi: ExtensionAPI): void {
   const cwd = process.cwd();
+  // The work loop needs no workflow: its tools, its band and board, in every project (loop.ts).
+  try { attachLoop(pi, cwd); } catch { /* the workflow's supervision still stands */ }
   const settings = readSettings(process.env, cwd);
   if ("error" in settings.workflow) {
     const { error, kind } = settings.workflow;

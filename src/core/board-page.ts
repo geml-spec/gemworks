@@ -72,29 +72,41 @@ function stepsLine(i: WorkItem, flow: CoachFlow): string {
 /** What to say for each answer: 「好了」或「没好」. */
 const sayOne = (answers: readonly string[]): string => answers.map((a) => `「${literal(a)}」`).join("或");
 
-/** The rows of 等你: the questions, the steps the person judges, the proposals. */
-function waitingRows(i: BoardPageInput, open: readonly WorkItem[]): string[] {
-  const rows: string[] = [];
-  for (const q of i.asks) {
-    const item = q.item !== undefined ? open.find((x) => x.id === q.item) : undefined;
-    rows.push(`| ${item !== undefined ? named(item) : "提问"} | ${literal(q.question)} | ${sayOne(q.options)} |`);
+/**
+ * One thing that waits on the person, in plain words: what it is about (a work item, or a label), what they decide,
+ * and the answers they can say. The GEML board and Pi's band and board draw the same list.
+ */
+export interface Waiting { item?: Pick<WorkItem, "id" | "title">; label?: string; ask: string; say: readonly string[] }
+
+/** What waits on the person: the questions the last turn ended with, the steps they judge, the open proposals. */
+export function waitingOf(flows: readonly CoachFlow[], items: readonly WorkItem[], asks: readonly BoardAsk[], proposals: readonly Proposal[]): Waiting[] {
+  const out: Waiting[] = [];
+  for (const q of asks) {
+    const item = q.item !== undefined ? items.find((x) => x.id === q.item) : undefined;
+    out.push({ ...(item !== undefined ? { item } : { label: "提问" }), ask: q.question, say: q.options });
   }
-  for (const item of open) {
-    const flow = i.flows.find((f) => f.name === item.flow);
+  for (const item of items) {
+    const flow = flows.find((f) => f.name === item.flow);
     if (flow === undefined || item.status !== "open") continue;
     const p = itemProgress(item, flow);
     const step = flow.states.find((s) => s.id === p.here);
     if (p.whose !== "you" || step === undefined) continue;
-    rows.push(`| ${named(item)} | ${literal(step.title)}：${literal(step.need)} | ${sayOne(step.answers ?? ["好了", "没好"])} |`);
+    out.push({ item, ask: `${step.title}：${step.need}`, say: step.answers ?? ["好了", "没好"] });
   }
-  for (const p of i.proposals.filter((x) => x.status === "open")) {
+  for (const p of proposals.filter((x) => x.status === "open")) {
     const what = p.kind === "new-flow"
-      ? `新的一类活「${literal(p.title ?? p.flow)}」：${(p.steps ?? []).map((s) => literal(s.title)).join(" → ")}`
-      : p.kind === "add-step" ? `${literal(p.flow)} 加一步「${literal(p.step?.title ?? "")}」` : `${literal(p.flow)} 去掉「${literal(p.remove ?? "")}」`;
-    const name = literal(p.title ?? p.step?.title ?? p.remove ?? p.flow);
-    rows.push(`| 提议 ${p.id} | ${what}${p.why !== "" ? `（${literal(p.why)}）` : ""} | 「加上${name}」或「不用${name}」 |`);
+      ? `新的一类活「${p.title ?? p.flow}」：${(p.steps ?? []).map((s) => s.title).join(" → ")}`
+      : p.kind === "add-step" ? `${p.flow} 加一步「${p.step?.title ?? ""}」` : `${p.flow} 去掉「${p.remove ?? ""}」`;
+    const name = p.title ?? p.step?.title ?? p.remove ?? p.flow;
+    out.push({ label: `提议 ${p.id}`, ask: `${what}${p.why !== "" ? `（${p.why}）` : ""}`, say: [`加上${name}`, `不用${name}`] });
   }
-  return rows;
+  return out;
+}
+
+/** The rows of 等你. */
+function waitingRows(i: BoardPageInput, open: readonly WorkItem[]): string[] {
+  return waitingOf(i.flows, open, i.asks, i.proposals).map((w) =>
+    `| ${w.item !== undefined ? `\\#${w.item.id} ${literal(w.item.title)}` : literal(w.label ?? "")} | ${literal(w.ask)} | ${sayOne(w.say)} |`);
 }
 
 /** The part a table heads, or a line saying there is nothing. */

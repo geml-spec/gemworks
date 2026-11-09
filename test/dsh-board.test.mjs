@@ -176,3 +176,31 @@ test("on a real agent: the routes answer the session's board, run a press, and r
     w.dispose();
   }
 });
+
+test("a session no workflow supervises: its board is the work items and the flows, read from the project's record; one the plugin never recorded is 404", async () => {
+  const { dshParameters } = await import("../dist/hosts/dsh/plugin.js");
+  const { recordWork } = await import("../dist/loop.js");
+  const { WORK_TOOL } = await import("../dist/core/work.js");
+  const w = await world();
+  try {
+    const id = String(w.agent.id);
+    recordWork(w.dir, "dsh", id, { items: [{ title: "看板", flow: "feature", needs: "你看样稿" }] });
+    const api = boardApi(new Map(), new Map([[id, w.dir]]));
+    const items = await request(api, "GET", `/api/gemworks/board?session=${encodeURIComponent(id)}&tab=items&lang=zh`);
+    assert.equal(items.code, 200);
+    assert.deepEqual(items.body.tabs.map((x) => x.id), ["items", "flow"]);
+    assert.match(items.body.header.item, /^#\S+ 看板$/);
+    assert.ok(JSON.stringify(items.body.rows).includes("看板"), "the work item on the items tab");
+    const flow = await request(api, "GET", `/api/gemworks/board?session=${encodeURIComponent(id)}&tab=flow&lang=zh`);
+    assert.ok(JSON.stringify(flow.body.rows).includes("样稿"), "its flow's steps on the flow tab");
+    assert.equal((await request(api, "GET", "/api/gemworks/board?session=nobody")).code, 404);
+    // The tool's parameters in the host's own schema DSL: required on each property, every object's openness said.
+    const p = dshParameters(WORK_TOOL.inputSchema);
+    assert.equal(p.items.required, true);
+    assert.equal(p.items.items.additionalProperties, false);
+    assert.equal(p.items.items.properties.flow.required, true);
+    assert.equal(p.items.items.properties.id.required, undefined);
+  } finally {
+    await w.dispose();
+  }
+});

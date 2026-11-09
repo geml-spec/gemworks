@@ -56,13 +56,13 @@ test("the host is the version this adapter was written against", () => {
 });
 
 test("every event the adapter listens for exists on ExtensionAPI", () => {
-  for (const event of ["session_start", "tool_call", "tool_result", "before_agent_start"]) {
+  for (const event of ["session_start", "tool_call", "tool_result", "before_agent_start", "agent_end"]) {
     assert.match(types, new RegExp(`on\\(event: "${event}"`), `Pi no longer has ${event}`);
   }
 });
 
 test("every ExtensionAPI method the adapter calls is still declared", () => {
-  for (const method of ["appendEntry", "registerTool"]) {
+  for (const method of ["appendEntry", "registerTool", "registerCommand", "sendMessage", "sendUserMessage", "setWidget", "custom", "select"]) {
     assert.match(types, new RegExp(`${method}[<(]`), `Pi no longer has ${method}`);
   }
 });

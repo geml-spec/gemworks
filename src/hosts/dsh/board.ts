@@ -23,6 +23,10 @@ import { HOME_TAB, ICON_CHAR, inputAction, paneRows, tabs, TAB_IDS, type BoardRo
 import { inboxItems } from "../claude-code/inbox.js";
 import type { BoardData, ShellStatus } from "../claude-code/protocol.js";
 import { langOf, wordsFor } from "../claude-code/text.js";
+import type { Asked } from "../../core/ask-tool.js";
+import type { Proposal } from "../../core/growth.js";
+import type { Practice } from "../../core/practices.js";
+import type { CoachFlow, WorkItem } from "../../core/work.js";
 
 /** One session under supervision, as the plugin keeps it. */
 export interface Supervision {
@@ -162,7 +166,7 @@ export interface BoardReply {
 }
 
 /** One tab's rows, in the browser's language, with the tabs and the header around them. */
-export function boardReply(s: Supervision, q: BoardQuery, now: string, locale?: string, versions?: ShellStatus["versions"]): BoardReply {
+export function boardReply(s: Supervision, q: BoardQuery, now: string, locale?: string, versions?: ShellStatus["versions"], coach?: CoachData): BoardReply {
   const shell = sessionShell(s, locale, versions);
   const status = shell.status as Status;
   const policy = shell.policy as FlowPolicy;
@@ -173,6 +177,7 @@ export function boardReply(s: Supervision, q: BoardQuery, now: string, locale?: 
     board, problem: null, shell, tab: q.tab, columns: 160, maxRows: 400, t, now, root: s.root, inbox,
     filter: q.filter, expanded: q.expanded, prompts: [], sessionItem: null, sessionRuns: [], evidence: q.expanded, doneOpen: true, flowState: null, switching: false, workflows: null,
     usage: {}, dismissed: [], toolQuery: "", toolMenu: null, toolNaming: null, toolsOpen: ["cli", "file", "mcp", "skill", "web", "model", "other"],
+    ...(coach !== undefined ? { coach: coachInput(coach) } : {}),
   });
   return {
     tabs: tabs(t, DSH_TABS),
@@ -215,4 +220,45 @@ export function actOnSession(s: Acting, action: DshAction, now: string): { ok: t
     }
     default: return { ok: false, error: `${action.op} is not on this host` };
   }
+}
+
+/** What the light flows put on a session's board: the work items, their flows, the practices, the proposals, its questions. */
+export interface CoachData {
+  items: readonly WorkItem[];
+  flows: readonly CoachFlow[];
+  practices: readonly Practice[];
+  proposals: readonly Proposal[];
+  asks: readonly Asked[];
+  /** The session's own id: its work items lead. */
+  own: string;
+}
+
+/** The tabs on this host for a session that runs no workflow of its own: the work items and the flows. */
+export const DSH_COACH_TABS: readonly BoardTab[] = ["items", "flow"];
+
+/** The light flows' part of a pane's input: what the work items and flow tabs draw first. */
+export const coachInput = (c: CoachData): NonNullable<Parameters<typeof paneRows>[0]["coach"]> =>
+  ({ items: c.items, flows: c.flows, focus: null, asks: c.asks, own: c.own, practices: c.practices, proposals: c.proposals });
+
+/**
+ * The board of a session with no workflow of its own: the work items it and the project's other sessions reported,
+ * the flows with their practices and the proposals. A press this host cannot run is not drawn: the person answers a
+ * question, a step or a proposal in the conversation.
+ */
+export function coachBoardReply(c: CoachData, q: BoardQuery, now: string, locale?: string, versions?: ShellStatus["versions"]): BoardReply {
+  const t = wordsFor(langOf(q.lang, locale));
+  const shell: ShellStatus = { status: null, policy: null, contextKey: null, problem: { text: "", quiet: true }, ...(locale !== undefined ? { locale } : {}), ...(versions !== undefined ? { versions } : {}) };
+  const tab = (DSH_COACH_TABS as readonly string[]).includes(q.tab) ? q.tab : HOME_TAB;
+  const rows = paneRows({
+    board: null, problem: null, shell, tab, columns: 160, maxRows: 400, t, now, root: "", inbox: [],
+    filter: q.filter, expanded: q.expanded, prompts: [], sessionItem: null, sessionRuns: [], evidence: null, doneOpen: true, flowState: null, switching: false, workflows: null,
+    usage: {}, dismissed: [], toolQuery: "", toolMenu: null, toolNaming: null, toolsOpen: [], coach: coachInput(c),
+  });
+  const own = c.items.find((i) => i.status === "open" && i.session === c.own);
+  return {
+    tabs: tabs(t, DSH_COACH_TABS),
+    header: { item: own !== undefined ? `#${own.id} ${own.title}` : "", workflow: "", refusals: 0, paused: false, ...(versions !== undefined ? { version: versions.gemworks } : {}) },
+    rows: rows.flatMap(inRowsOfThisHost).map(onThisHost).filter((r): r is BoardRow => r !== null),
+    pending: c.asks.length,
+  };
 }

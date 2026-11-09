@@ -72,14 +72,18 @@ async function toReview(w) {
   await w.callTool("gemworks_set", { approved: true });
 }
 const VERBS = ["gemworks_status", "gemworks_move", "gemworks_set"];
+/** The work loop's tools, which every session has, workflow or none (src/hosts/pi/loop.ts). */
+const LOOP = ["gemworks_work", "gemworks_practice", "gemworks_propose", "gemworks_answer", "gemworks_ask", "gemworks_artifact", "gemworks_note"];
+/** What a workflow registers: the tools beyond the loop's. */
+const verbs = (w) => w.registered().filter((n) => !LOOP.includes(n));
 
-test("no workflow: nothing is registered and nothing is listened for", async () => {
+test("no workflow: the work loop only — none of a workflow's verbs, and no gate", async () => {
   const dir = mkdtempSync(join(tmpdir(), "gemworks-pi-bare-"));
   dirs.push(dir);
   const w = await loaded({ dir, start: false });
-  assert.deepEqual(w.registered(), [], "the Pi equivalent of onMissing: skip");
-  assert.equal(w.has("tool_call"), false);
-  assert.equal(w.has("session_start"), false);
+  assert.deepEqual(w.registered(), LOOP, "the loop's tools; the verbs are the Pi equivalent of onMissing: skip");
+  assert.equal(w.has("tool_call"), false, "nothing is refused");
+  assert.ok(w.commands.has("gemworks"), "the board's command");
 });
 
 test("a workflow that does not check out reports through Pi's notifier, not the console", async () => {
@@ -89,7 +93,7 @@ test("a workflow that does not check out reports through Pi's notifier, not the 
   const broken = readFileSync(FIX, "utf8").replace('"to": "review", "guard"', '"to": "nowhere", "guard"');
   putWorkflow(dir, "refund", broken);
   const w = await loaded({ dir });
-  assert.deepEqual(w.registered(), []);
+  assert.deepEqual(verbs(w), []);
   assert.equal(w.notices().length, 1);
   assert.equal(w.notices()[0].type, "error");
   assert.match(w.notices()[0].message, /does not check out/);
@@ -97,7 +101,7 @@ test("a workflow that does not check out reports through Pi's notifier, not the 
 
 test("the three verbs are registered once, for the whole session", async () => {
   const w = await loaded();
-  assert.deepEqual(w.registered(), VERBS);
+  assert.deepEqual(verbs(w), VERBS);
   assert.deepEqual(w.activeTools(), ["grep", "pay_refund", "read"], "the agent's own tools are left as they are: the dictionary decides");
 });
 
@@ -269,7 +273,7 @@ test("several workflows: .geml/gemflow.geml names the one in force", async () =>
   const dir = workdir();
   putWorkflow(dir, "other");
   const unchosen = await loaded({ dir });
-  assert.deepEqual(unchosen.registered(), [], "two workflows and no choice: unsupervised, as the CLI would ask for `gemworks use`");
+  assert.deepEqual(verbs(unchosen), [], "two workflows and no choice: unsupervised, as the CLI would ask for `gemworks use`");
   assert.equal(unchosen.has("tool_call"), false);
   assert.deepEqual(unchosen.notices(), [{ message: "gemworks: several workflows (other, refund): choose one with `gemworks use <name>`; this session is not supervised", type: "warning" }], "a choice left unmade is said, once per session");
 
@@ -288,7 +292,7 @@ test("GEMWORKS_STATECHART beats the project layout, and a missing file supervise
   assert.equal(readJournal(readFileSync(w.journalPath, "utf8")).meta.workflow, elsewhere);
 
   const missing = await loaded({ dir, env: { GEMWORKS_STATECHART: join(dir, "nope.geml") } });
-  assert.deepEqual(missing.registered(), []);
+  assert.deepEqual(verbs(missing), []);
   assert.equal(missing.has("tool_call"), false);
   assert.deepEqual(missing.notices().map((n) => [n.type, n.message.replace(/names .*nope\.geml/, "names nope.geml")]),
     [["warning", "gemworks: GEMWORKS_STATECHART names nope.geml, which does not exist; this session is not supervised"]], "a workflow named wrongly is not silent");
