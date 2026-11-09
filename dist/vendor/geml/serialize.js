@@ -1,0 +1,258 @@
+// GEML serializer (§ round-trip): document model -> GEML source.
+//
+// This is the inverse of `parse`: given a Document (or its Block[]), emit GEML
+// text that parses back to the *same model*. It does not try to reproduce the
+// original bytes — whitespace, attribute quoting, fence length, and footnote
+// shorthand are normalized — so `serialize(parse(src))` is also a canonical
+// formatter (`--to geml`). The guarantee it is built to keep is model stability:
+//
+//     parse(serialize(parse(src)))  ≅  parse(src)
+//
+// verified over the conformance corpus by test/roundtrip.test.mjs.
+import { META_REF_SRC, parseInline } from "./inline.js";
+// ---------------------------------------------------------------------------
+// Values & attributes (§4)
+// ---------------------------------------------------------------------------
+// True when a bare string would be re-read by `coerce` as a non-string (a
+// boolean or a number) — in which case it must be quoted to stay a string.
+function looksTyped(s) {
+    return (s === "true" ||
+        s === "false" ||
+        /^[+-]?\d+$/.test(s) ||
+        (/^[+-]?(\d+\.\d*|\.\d+|\d+)([eE][+-]?\d+)?$/.test(s) && /[.eE]/.test(s)));
+}
+// One `key=value` / `key` / `.class` / `#id` token of an attribute object.
+function serAttrValue(v) {
+    if (v === true)
+        return ""; // caller emits the bare key (a flag)
+    if (v === false)
+        return "false";
+    if (typeof v === "number")
+        return String(v);
+    // Always quoted, and escaped per §4 — `"` and `\` are the two characters a
+    // quoted value cannot hold bare. Unescaped, a value with a quote in it wrote a
+    // token that read back as several: 532 of 3000 random values did not survive
+    // one `--to geml`.
+    return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+// `{#id .class key="val" flag}` — or "" when there is nothing to emit.
+function serAttrs(a) {
+    const parts = [];
+    if (a.id !== undefined)
+        parts.push(`#${a.id}`);
+    for (const c of a.classes ?? [])
+        parts.push(`.${c}`);
+    for (const [k, v] of Object.entries(a.attrs ?? {})) {
+        parts.push(v === true ? k : `${k}=${serAttrValue(v)}`);
+    }
+    return parts.length ? `{${parts.join(" ")}}` : "";
+}
+// A `data`-mode (meta) value: a bare word unless quoting is needed to keep it a
+// string. `coerce` takes the whole rest-of-line, so spaces need no quoting.
+function serDataValue(v) {
+    if (typeof v === "boolean")
+        return String(v);
+    if (typeof v === "number")
+        return String(v);
+    return looksTyped(v) || v.trim() !== v ? `"${v}"` : v;
+}
+// ---------------------------------------------------------------------------
+// Inline (§5)
+// ---------------------------------------------------------------------------
+// Escape every character that could open an inline construct, so a literal text
+// run re-parses verbatim. An escaped punctuation byte parses back to that same
+// literal byte (§5.3(1)). Used only on escalation (see serInlines).
+function escText(s) {
+    return s.replace(/[\\`*~$\[\]]/g, (c) => "\\" + c);
+}
+// A literal `{{name}}` in a text run would be re-read as a §4 metadata
+// reference by the next document-level parse — a layer serInlines's
+// parseInline check cannot see — so it is escaped unconditionally, in both the
+// lazy and the escalated pass. Applied after escText, which would otherwise
+// escape the inserted backslash itself.
+//
+// The inserted escape must survive interpolate()'s left-to-right `\x`
+// pairing: when the emitted text directly before the reference ends in an ODD
+// run of backslashes, a single inserted `\` would itself be consumed as that
+// run's escapee, re-exposing `{{` — so double it (`\\{`), which pairs as
+// escaped-backslash + escaped-brace and parses back to the same model text.
+const META_REF_G = new RegExp(META_REF_SRC, "g");
+function escMetaRef(s) {
+    return s.replace(META_REF_G, (m, _key, offset) => {
+        let bs = 0;
+        for (let k = offset - 1; k >= 0 && s[k] === "\\"; k--)
+            bs++;
+        return (bs % 2 === 1 ? "\\\\{" : "\\{") + m.slice(1);
+    });
+}
+function longestRun(s, ch) {
+    let max = 0;
+    let run = 0;
+    for (const c of s) {
+        if (c === ch) {
+            run++;
+            if (run > max)
+                max = run;
+        }
+        else
+            run = 0;
+    }
+    return max;
+}
+function linkDest(n) {
+    if (n.href !== undefined)
+        return n.href;
+    if (n.doc !== undefined)
+        return n.anchor !== undefined ? `${n.doc}#${n.anchor}` : n.doc;
+    if (n.anchor !== undefined)
+        return `#${n.anchor}`;
+    return "";
+}
+// `esc` controls whether literal text runs are backslash-escaped. The default
+// pass emits them verbatim — the parser re-literalizes most stray delimiters on
+// its own (an unpaired `*`, a lone `~`), and escaping them would split the run
+// and break a surrounding emphasis span. serInlines escalates to esc=true only
+// when the verbatim form does not round-trip.
+function serInline(n, esc) {
+    switch (n.type) {
+        case "text": return escMetaRef(esc ? escText(n.value) : n.value);
+        case "emph": return `*${serSeq(n.children, esc)}*`;
+        case "strong": return `**${serSeq(n.children, esc)}**`;
+        case "strike": return `~~${serSeq(n.children, esc)}~~`;
+        case "code": {
+            const f = "`".repeat(longestRun(n.value, "`") + 1);
+            return f + n.value + f;
+        }
+        case "math": return `$${n.value}$`;
+        case "break": return "\\\n";
+        case "image": return `![${n.alt}](${n.src})${serAttrs({ attrs: n.attrs })}`;
+        case "link": return `[${serSeq(n.children, esc)}](${linkDest(n)})${serAttrs({ attrs: n.attrs })}`;
+        case "autoref": return `[[${n.doc !== undefined ? `${n.doc}#${n.anchor}` : `#${n.anchor}`}]]`;
+        case "project": return `![[${n.doc !== undefined ? `${n.doc}#${n.anchor}` : `#${n.anchor}`}]]`;
+        case "footnote": return `[^${n.ref}]`;
+    }
+}
+function serSeq(ns, esc) {
+    return ns.map((n) => serInline(n, esc)).join("");
+}
+// Serialize an inline sequence so it re-parses to the same tree. Emit verbatim
+// first; if re-parsing that disagrees with the model (a stray delimiter that
+// would spuriously pair, e.g. text `*lit*`), fall back to escaping. The check is
+// what makes this exact rather than heuristic.
+function serInlines(ns) {
+    const lazy = serSeq(ns, false);
+    if (JSON.stringify(parseInline(lazy, 0, { refs: [] })) === JSON.stringify(ns))
+        return lazy;
+    const escaped = serSeq(ns, true);
+    if (JSON.stringify(parseInline(escaped, 0, { refs: [] })) === JSON.stringify(ns))
+        return escaped;
+    // Neither form round-trips on its own. The case this exists for: a text run
+    // ending in `!` immediately before an auto-reference re-reads as an inline
+    // projection (`!` + `[[` is one atom since §5.3), so the bang has to be escaped
+    // even though nothing about the text itself is a metacharacter.
+    return serSeq(ns, true).replace(/!(?=\[\[)/g, "\\!");
+}
+// ---------------------------------------------------------------------------
+// Blocks
+// ---------------------------------------------------------------------------
+function serList(list, indent) {
+    const out = [];
+    const start = list.start ?? 1;
+    list.items.forEach((item, k) => {
+        const marker = list.ordered ? `${start + k}. ` : "- ";
+        const task = item.checked === undefined ? "" : item.checked ? "[x] " : "[ ] ";
+        // A soft-wrapped item (§2.2) serializes as continuation lines aligned under
+        // its content, so the emission re-parses to the same item.
+        const [head, ...cont] = serInlines(item.inlines).split("\n");
+        out.push(indent + marker + task + head);
+        const contIndent = indent + " ".repeat(marker.length + task.length);
+        for (const l of cont)
+            out.push(contIndent + l);
+        for (const child of item.children ?? []) {
+            out.push(child.kind === "list" ? serList(child, indent + "  ") : serBlock(child));
+        }
+        if (list.loose && k < list.items.length - 1)
+            out.push(""); // blank => loose
+    });
+    return out.join("\n");
+}
+function serTypedBlock(b) {
+    let body;
+    // A prose body (GEP-0013) is parsed into paragraphs as a flow body is, and
+    // keeps no raw lines: written from its children, or it would come out empty.
+    if (b.mode === "flow" || b.mode === "prose") {
+        body = (b.children ?? []).map(serBlock).join("\n\n").split("\n");
+    }
+    else if (b.mode === "data") {
+        body = Object.entries(b.data ?? {}).map(([k, v]) => `${k} = ${serDataValue(v)}`);
+    }
+    else if (b.type === "data" && b.value !== undefined && b.attrs["src"] === undefined &&
+        // Canonical form is defined for the two JSON forms and ONLY them. Any other
+        // format the processor has an engine for — `yaml` here — has a value too,
+        // and re-emitting THAT as pretty JSON would rewrite a yaml body into JSON
+        // on a reformat. Its authored bytes are its canonical form.
+        ["json", "jsonl"].includes(String(b.attrs["format"] ?? "json"))) {
+        // src= content lives in the FILE: a value loaded from it must never be
+        // inlined into the document by a re-format — the body stays as authored
+        // (normally empty), or the source of truth would silently fork.
+        // GEP-0005 canonical form — legal because this is DATA, not verbatim text
+        // (code stays byte-preserved): json pretty-prints at two spaces, jsonl is
+        // one compact value per line. Bodies in any other format fall through
+        // byte-preserved — engine-less ones (toml, unknown) because they carry no
+        // value at all, `yaml` because the gate above sends it there.
+        body = String(b.attrs["format"] ?? "json") === "jsonl" && Array.isArray(b.value)
+            ? b.value.map((v) => JSON.stringify(v))
+            : JSON.stringify(b.value, null, 2).split("\n");
+    }
+    else {
+        body = b.raw ?? [];
+    }
+    // Pick a fence longer than any bare `=` run in the body, so a body line (or a
+    // nested block's close) can never close this block early (§3 longer-fence
+    // nesting). The close is the same length, the convention the parser expects.
+    let maxEq = 2;
+    for (const ln of body) {
+        const m = /^(=+)[ \t]*$/.exec(ln);
+        if (m)
+            maxEq = Math.max(maxEq, m[1].length);
+    }
+    const fence = "=".repeat(Math.max(3, maxEq + 1));
+    const attrs = serAttrs({ id: b.id, classes: b.classes, attrs: b.attrs });
+    const open = fence + " " + b.type + (attrs ? " " + attrs : "");
+    return [open, ...body, fence].join("\n");
+}
+// A paragraph line that the scanner would read as STRUCTURE — a fence, a
+// heading, a list item, a `%%` line — is prose only because its author escaped
+// it: `\=== meta {…}` parses to a paragraph whose text is `=== meta {…}`, the
+// backslash consumed (§5.3). Emitted verbatim, that text was a live block on the
+// next parse: one `--to geml` promoted an escaped `=== meta {profile=…}` to a real
+// meta block, `\# H {#pwn}` to an addressable heading, `\%% x` to a hidden line.
+// The escape goes back on any emitted line that would start a block. Only the
+// FIRST character of a line can start one, and §5.3 makes `\` before any ASCII
+// punctuation a literal, so this never changes a line that did not need it.
+const STARTS_BLOCK = /^(?:={3,}(?:[ \t]|$)|#{1,6}[ \t]|%%|[ \t]*(?:[-*]|\d+\.)[ \t]+)/;
+function escBlockStarts(text) {
+    return text.split("\n").map((l) => (STARTS_BLOCK.test(l) ? "\\" + l : l)).join("\n");
+}
+function serBlock(b) {
+    switch (b.kind) {
+        case "heading": {
+            // The id is always emitted explicitly: it pins the heading's anchor
+            // regardless of how the rendered text slugs, and it shields any `{...}`
+            // inside the heading text from being read as a trailing attribute object.
+            const attrs = serAttrs({ id: b.id, classes: b.classes, attrs: b.attrs });
+            return "#".repeat(b.level) + " " + serInlines(b.inlines) + (attrs ? " " + attrs : "");
+        }
+        case "paragraph": return escBlockStarts(serInlines(b.inlines));
+        case "hidden": return "%%" + (b.text ? " " + b.text : "");
+        case "list": return serList(b, "");
+        case "block": return serTypedBlock(b);
+    }
+}
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+export function serialize(doc) {
+    const blocks = Array.isArray(doc) ? doc : doc.children;
+    return blocks.map(serBlock).join("\n\n") + "\n";
+}

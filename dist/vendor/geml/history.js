@@ -1,0 +1,823 @@
+// GEML History extension — save / restore / verify.
+//
+// Implements the `.gemlhistory` companion spec: a self-contained, reverse-delta
+// version history beside the live `.geml` file. The history file is itself a
+// GEML document (meta + keyframe + revision + blob blocks). Reverse patches and
+// hashes are tool-generated here; every save re-applies its reverse patch and
+// asserts a byte-exact round-trip before writing (the spec's verify gate).
+//
+// Revision id = `<YYYYMMDDTHHMMSSZ>-<first 8 hex of the version content hash>`.
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { parseAttrs } from "./attrs.js";
+function loadBytes(path) {
+    const raw = readFileSync(path);
+    const nl = raw.includes(13) /* \r */ && raw.includes(10) ? "\r\n" : "\n";
+    return { lf: raw.toString("utf8").replace(/\r\n/g, "\n"), nl };
+}
+function bytesOf(lf, nl) {
+    return Buffer.from(lf.replace(/\n/g, nl), "utf8");
+}
+function writeBytes(path, lf, nl) {
+    writeFileSync(path, bytesOf(lf, nl));
+}
+function fullHash(lf, nl) {
+    return "sha256:" + createHash("sha256").update(bytesOf(lf, nl)).digest("hex");
+}
+/**
+ * The key means "the GEML LANGUAGE version this history conforms to" — the
+ * profile spec's own words — and the language is at 1.0. It was written as
+ * "0.1" from the start, so every sidecar this project ever produced claimed
+ * conformance to a version that has never existed. Not the parser version:
+ * that one moves on its own schedule and is read at runtime.
+ */
+const GEML_LANGUAGE_VERSION = "1.0";
+function shortOf(hash) {
+    return hash.replace(/^sha256:/, "").slice(0, 8);
+}
+function makeId(stamp, hash) {
+    return `${stamp}-${shortOf(hash)}`;
+}
+/** UTC basic ISO-8601, e.g. 20260617T103012Z. */
+export function stampUTC(d) {
+    const p = (n, w = 2) => String(n).padStart(w, "0");
+    return (`${p(d.getUTCFullYear(), 4)}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}` +
+        `T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`);
+}
+// ---------------------------------------------------------------------------
+// Top-level fenced-block locator (for the history file's own structure)
+// ---------------------------------------------------------------------------
+// Trailing whitespace nested inside the optional attrs group — the flat form
+// let two runs split the same tabs every possible way (quadratic; see the note
+// on geml.ts's FENCE_OPEN, which this mirrors). Same language, verified over
+// 150k random strings.
+const FENCE_OPEN = /^(={3,})[ \t]*([A-Za-z][A-Za-z0-9_-]*)[ \t]*(?:(\{.*\})[ \t]*)?$/;
+function locate(lines) {
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+        const m = FENCE_OPEN.exec(lines[i]);
+        if (m) {
+            const fenceLen = m[1].length;
+            const attrLine = m[3] ?? "";
+            const idm = /#([A-Za-z][A-Za-z0-9_-]*)/.exec(attrLine);
+            let j = i + 1;
+            while (j < lines.length) {
+                const t = lines[j].trimEnd();
+                if (/^=+$/.test(t) && t.length === fenceLen)
+                    break;
+                j++;
+            }
+            out.push({ type: m[2], id: idm?.[1], attrLine, fenceLen, start: i, end: Math.min(j, lines.length - 1) });
+            i = j + 1;
+        }
+        else {
+            i++;
+        }
+    }
+    return out;
+}
+// The attribute object of a sidecar block, read as a SEQUENCE of `key=value`
+// pairs rather than searched by regex. Searched, `hash=(…)` matched wherever it
+// first appeared — so a summary of `x" hash="sha256:0…` planted a second `hash=`
+// the search found before the real one, and the sidecar's own `verify` failed on
+// a chain nobody had tampered with. Values follow §4: a quoted value escapes
+// only `"` and `\`, a bare value ends at whitespace or `}`. Read in order, a
+// `hash=` inside a summary's quotes is part of the summary and of nothing else.
+function attrs(attrLine) {
+    const out = new Map();
+    const s = attrLine;
+    const brace = s.indexOf("{");
+    let i = brace < 0 ? 0 : brace + 1;
+    while (i < s.length) {
+        while (i < s.length && /\s/.test(s[i]))
+            i++;
+        if (i >= s.length || s[i] === "}")
+            break;
+        let k = "";
+        while (i < s.length && /[^\s={}"]/.test(s[i]))
+            k += s[i++];
+        if (k === "") {
+            i++;
+            continue;
+        } // a stray character: step over it
+        if (s[i] !== "=")
+            continue; // a bare flag carries no value
+        i++;
+        if (s[i] === '"') {
+            i++;
+            let v = "";
+            while (i < s.length && s[i] !== '"') {
+                if (s[i] === "\\" && i + 1 < s.length && (s[i + 1] === '"' || s[i + 1] === "\\")) {
+                    v += s[i + 1];
+                    i += 2;
+                    continue;
+                }
+                v += s[i++];
+            }
+            i++; // the closing quote
+            out.set(k, v);
+        }
+        else {
+            let v = "";
+            while (i < s.length && !/[\s}]/.test(s[i]))
+                v += s[i++];
+            out.set(k, v);
+        }
+    }
+    return out;
+}
+function attr(attrLine, key) {
+    return attrs(attrLine).get(key);
+}
+// The inverse: a value written so that `attrs` reads it back whole. §4 escapes
+// exactly `"` and `\`; a newline has no escape and is refused upstream (save).
+const quoteAttr = (v) => `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+function fenceFor(contentLf) {
+    let longest = 0;
+    for (const line of contentLf.split("\n")) {
+        const m = /^=+/.exec(line);
+        if (m)
+            longest = Math.max(longest, m[0].length);
+    }
+    return "=".repeat(Math.max(longest + 1, 3));
+}
+// ---------------------------------------------------------------------------
+// Document units & reverse-patch engine (gap-aware)
+// ---------------------------------------------------------------------------
+// Unit-key = `#id` (explicit), or `@<8hex content hash>` (derived), with `~n`
+// disambiguating equal keys by document-order occurrence (§4). `~n` on an #id
+// key only arises for OUT-OF-SPEC documents that repeat an id — without it the
+// key is ambiguous, reverse-patch ops hit the wrong occurrence, and save()'s
+// round-trip gate (correctly) aborts. Well-formed documents never emit it.
+const KEY = String.raw `(#[\p{L}\p{N}_-]+(?:~\d+)?|@[0-9a-f]+(?:~\d+)?)`;
+// Profile §4: an id is a NAME (GEML §4) — any Unicode letter or number, `-`, `_`.
+// A unit's id is the one its attribute object declares, read as GEML §4 reads
+// it — not the first `#name` in the text, which in `{src=#foo}` is a reference.
+const LABELED_CLOSE = /^={3,}[ \t]*#(\S+)[ \t]*$/u;
+// A heading line with a trailing attribute object: `## Title {#id}`. Its explicit
+// id keys the flow segment it opens; its derived id does not (profile §4).
+const HEADING_ATTRS = /^#{1,6}[ \t]+\S.*\{([^{}]*)\}[ \t]*$/u;
+function sha8(s) {
+    return createHash("sha256").update(Buffer.from(s, "utf8")).digest("hex").slice(0, 8);
+}
+function tile(lines) {
+    const units = [];
+    const n = lines.length;
+    let i = 0;
+    while (i < n) {
+        const start = i;
+        if (lines[i].trim() === "") { // leading / standalone blank run
+            while (i < n && lines[i].trim() === "")
+                i++;
+            units.push({ start, bodyEnd: i, endExcl: i });
+            continue;
+        }
+        const fo = FENCE_OPEN.exec(lines[i]);
+        let id;
+        if (fo) {
+            const fenceLen = fo[1].length;
+            // `|| undefined`: the empty id is none (GEML §4).
+            id = (fo[3] === undefined ? undefined : parseAttrs(fo[3]).id) || undefined;
+            // Profile §4: a block runs to the line that closes it as GEML §3 says — an
+            // equal-length bare run, or, when it has an id, its labeled fence `=== #id`.
+            i++;
+            while (i < n) {
+                const t = lines[i].trimEnd();
+                const close = (/^=+$/.test(t) && t.length === fenceLen) || (id !== undefined && LABELED_CLOSE.exec(t)?.[1] === id);
+                i++;
+                if (close)
+                    break;
+            }
+        }
+        else { // flow segment: consecutive non-blank, non-fence lines
+            const h = HEADING_ATTRS.exec(lines[i]);
+            if (h)
+                id = parseAttrs(`{${h[1]}}`).id || undefined;
+            i++;
+            while (i < n && lines[i].trim() !== "" && !FENCE_OPEN.test(lines[i]))
+                i++;
+        }
+        const bodyEnd = i;
+        while (i < n && lines[i].trim() === "")
+            i++; // own trailing blanks
+        units.push({ start, bodyEnd, endExcl: i, id });
+    }
+    return units;
+}
+// A unit's content key is a hash of its text, so the same text keys the same
+// way wherever it stands: one reverse patch re-keys the live document after
+// every move and insert, and hashing every unit afresh each time made 4000 moves
+// over an 8000-line keyframe take eight seconds. `hashed` remembers the text.
+function keyedUnits(lines, hashed) {
+    const counts = new Map();
+    const keyOf = (text) => {
+        let h = hashed?.get(text);
+        if (h === undefined) {
+            h = sha8(text);
+            hashed?.set(text, h);
+        }
+        return h;
+    };
+    return tile(lines).map((u) => {
+        // Both key kinds get the ~n occurrence suffix: content keys collide by
+        // nature (equal blank runs, repeated paragraphs); #id keys only collide in
+        // out-of-spec documents that repeat an id — but those exist in the wild,
+        // and an ambiguous key sends reverse-patch ops to the wrong occurrence.
+        const base = u.id ? `#${u.id}` : `@${keyOf(lines.slice(u.start, u.bodyEnd).join("\n"))}`;
+        const n = counts.get(base) ?? 0;
+        counts.set(base, n + 1);
+        return { u, key: n === 0 ? base : `${base}~${n}` };
+    });
+}
+function locateUnit(lines, key, hashed) {
+    const ku = keyedUnits(lines, hashed).find((x) => x.key === key);
+    if (!ku)
+        throw new Error(`history: unit ${key} not found while applying reverse patch`);
+    return ku.u;
+}
+function parseAnchor(s) {
+    if (s === "at-start" || s === "at-end")
+        return s;
+    const m = new RegExp("^after\\s+" + KEY + "$", "u").exec(s);
+    if (!m)
+        throw new Error(`history: bad anchor: ${s}`);
+    return { after: m[1] };
+}
+function anchorStr(a) {
+    return a === "at-start" || a === "at-end" ? a : `after ${a.after}`;
+}
+function parseOps(body) {
+    const ops = [];
+    for (const raw of body.split("\n")) {
+        const line = raw.trim();
+        if (!line)
+            continue;
+        let m;
+        if ((m = new RegExp("^delete\\s+" + KEY + "$", "u").exec(line))) {
+            ops.push({ kind: "delete", key: m[1] });
+        }
+        else if ((m = new RegExp("^replace\\s+" + KEY + "\\s+<-\\s+blob:(\\S+)$", "u").exec(line))) {
+            ops.push({ kind: "replace", key: m[1], blob: m[2] });
+        }
+        else if ((m = /^insert\s+<-\s+blob:(\S+)\s+(.+)$/.exec(line))) {
+            ops.push({ kind: "insert", blob: m[1], anchor: parseAnchor(m[2]) });
+        }
+        else if ((m = new RegExp("^move\\s+" + KEY + "\\s+(.+)$", "u").exec(line))) {
+            ops.push({ kind: "move", key: m[1], anchor: parseAnchor(m[2]) });
+        }
+        else {
+            throw new Error(`history: unrecognized reverse-patch op: ${line}`);
+        }
+    }
+    return ops;
+}
+// Each blob carries a unit's full text (its lines plus the blank lines it owns),
+// so insert / replace are byte-exact without separate spacing bookkeeping.
+function insertAt(lines, anchor, payload, hashed) {
+    if (anchor === "at-start") {
+        lines.splice(0, 0, ...payload);
+        return;
+    }
+    if (anchor === "at-end") {
+        lines.push(...payload);
+        return;
+    }
+    const a = locateUnit(lines, anchor.after, hashed);
+    lines.splice(a.endExcl, 0, ...payload);
+}
+/** Apply a reverse patch to `textLf`, returning the parent-revision text. */
+function applyReverse(textLf, ops, blobs) {
+    const lines = textLf.split("\n");
+    const blob = (id) => {
+        const p = blobs.get(id);
+        if (p === undefined)
+            throw new Error(`history: unresolved blob:${id}`);
+        return p.split("\n");
+    };
+    // `delete`/`replace` name units in the INPUT document (v_new) — their `~n`
+    // occurrence suffixes are numbered over the whole of v_new. So resolve them
+    // against ONE snapshot of the unmutated input, not the live array: re-keying
+    // per op lets an earlier delete renumber a later op's occurrence (delete @h
+    // then delete @h~1 — after the first splice the survivor renumbers @h~1→@h
+    // and the second op can no longer find it). Keys are unique within a single
+    // keyedUnits() call, so the snapshot map is a bijection.
+    const hashed = new Map();
+    const snap = keyedUnits(lines, hashed);
+    const byKey = new Map(snap.map((k) => [k.key, k.u]));
+    const resolveSnap = (key) => {
+        const u = byKey.get(key);
+        if (!u)
+            throw new Error(`history: unit ${key} not found while applying reverse patch`);
+        return u;
+    };
+    const rangeEdits = [];
+    const anchored = []; // insert / move — resolved against the LIVE array below
+    for (const op of ops) {
+        if (op.kind === "delete") {
+            const u = resolveSnap(op.key);
+            rangeEdits.push({ start: u.start, endExcl: u.endExcl, repl: [] });
+        }
+        else if (op.kind === "replace") {
+            const u = resolveSnap(op.key);
+            rangeEdits.push({ start: u.start, endExcl: u.endExcl, repl: blob(op.blob) });
+        }
+        else {
+            anchored.push(op);
+        }
+    }
+    rangeEdits.sort((a, b) => b.start - a.start);
+    for (const e of rangeEdits)
+        lines.splice(e.start, e.endExcl - e.start, ...e.repl);
+    // Inserts (and moves) run only after every delete/replace, so the array is
+    // already in its reconstructed (v_parent) shape: an insert's anchor names a
+    // v_parent unit, and chained inserts build on units added just before them —
+    // both need LIVE re-keying, which is correct here precisely because the
+    // occurrence keying is now stable (no more same-keyspace ops pending).
+    for (const op of anchored) {
+        if (op.kind === "insert") {
+            insertAt(lines, op.anchor, blob(op.blob), hashed);
+        }
+        else { // move: cut the unit (with its owned blanks) and re-insert at anchor
+            const u = locateUnit(lines, op.key, hashed);
+            const cut = lines.slice(u.start, u.endExcl);
+            lines.splice(u.start, u.endExcl - u.start);
+            insertAt(lines, op.anchor, cut, hashed);
+        }
+    }
+    return lines.join("\n");
+}
+/** LCS alignment of unit-key sequences; aMatch[i] = matched index in b, or -1.
+ *
+ * keyedUnits() assigns keys that are unique WITHIN each sequence (the `~n`
+ * occurrence suffix disambiguates equal content / repeated ids), so both `a`
+ * and `b` are all-unique. The LCS of two all-unique sequences is exactly the
+ * longest increasing subsequence of a's keys mapped to b's positions:
+ * O(n log n) instead of an O(n·m) DP table — GEP-0002's measured bottleneck
+ * (seconds at 10⁴ units, minutes at 10⁵; code-graph documents live there).
+ *
+ * If keys were ever non-unique (no public entry point produces that — the only
+ * caller, diffReverse, feeds keyedUnits output), posInB keeps b's LAST index
+ * per key and the LIS still yields *a* valid monotonic matching; save()'s
+ * byte-exact round-trip gate rejects any diff that fails to reproduce the
+ * parent regardless. */
+function lcsMatch(a, b) {
+    const n = a.length, m = b.length;
+    const aMatch = new Array(n).fill(-1);
+    const posInB = new Map();
+    for (let j = 0; j < m; j++)
+        posInB.set(b[j], j);
+    const ai = [], bj = []; // a-index / b-position of common keys, in a-order
+    for (let i = 0; i < n; i++) {
+        const j = posInB.get(a[i]);
+        if (j !== undefined) {
+            ai.push(i);
+            bj.push(j);
+        }
+    }
+    // Patience LIS over bj (strictly increasing) with predecessor links.
+    const tails = []; // index into bj of the smallest tail per LIS length
+    const prev = new Array(bj.length).fill(-1);
+    for (let x = 0; x < bj.length; x++) {
+        let lo = 0, hi = tails.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (bj[tails[mid]] < bj[x])
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        prev[x] = lo > 0 ? tails[lo - 1] : -1;
+        tails[lo] = x;
+    }
+    for (let cur = tails.length ? tails[tails.length - 1] : -1; cur >= 0; cur = prev[cur]) {
+        aMatch[ai[cur]] = bj[cur];
+    }
+    return aMatch;
+}
+function diffReverse(oldLf, newLf) {
+    const oldLines = oldLf.split("\n");
+    const newLines = newLf.split("\n");
+    const oldU = keyedUnits(oldLines);
+    const newU = keyedUnits(newLines);
+    const oldKeys = oldU.map((x) => x.key);
+    const newKeys = newU.map((x) => x.key);
+    const aMatch = lcsMatch(newKeys, oldKeys);
+    const oldMatched = new Array(oldU.length).fill(false);
+    for (const j of aMatch)
+        if (j >= 0)
+            oldMatched[j] = true;
+    const ops = [];
+    const blobs = [];
+    let blobN = 0;
+    const addBlob = (payload) => { const id = `b${++blobN}`; blobs.push({ id, payload }); return id; };
+    const full = (lines, u) => lines.slice(u.start, u.endExcl).join("\n");
+    // 1. units in new but unmatched -> reverse delete
+    for (let i = 0; i < newU.length; i++)
+        if (aMatch[i] === -1)
+            ops.push({ kind: "delete", key: newKeys[i] });
+    // 2. matched units whose full text differs (id'd content change, or spacing) -> reverse replace
+    for (let i = 0; i < newU.length; i++) {
+        const j = aMatch[i];
+        if (j >= 0 && full(newLines, newU[i].u) !== full(oldLines, oldU[j].u)) {
+            ops.push({ kind: "replace", key: newKeys[i], blob: addBlob(full(oldLines, oldU[j].u)) });
+        }
+    }
+    // 3. units in old but unmatched -> reverse insert, in old order, anchored by predecessor
+    for (let j = 0; j < oldU.length; j++) {
+        if (!oldMatched[j]) {
+            const prev = j > 0 ? oldKeys[j - 1] : null;
+            ops.push({ kind: "insert", blob: addBlob(full(oldLines, oldU[j].u)), anchor: prev ? { after: prev } : "at-start" });
+        }
+    }
+    return { ops, blobs };
+}
+function opLine(op) {
+    if (op.kind === "delete")
+        return `delete ${op.key}`;
+    if (op.kind === "replace")
+        return `replace ${op.key} <- blob:${op.blob}`;
+    if (op.kind === "insert")
+        return `insert <- blob:${op.blob} ${anchorStr(op.anchor)}`;
+    return `move ${op.key} ${anchorStr(op.anchor)}`;
+}
+// §8 hashes are over "the exact UTF-8 bytes of that version" — which includes
+// its newline style. The sidecar's file-level nl is a SINGLE value that later
+// commits overwrite, so a document whose line endings flipped (LF↔CRLF is
+// routine on Windows) would leave older revisions' recorded hashes
+// unreproducible. Each revision therefore records its own `newline`; for
+// legacy revisions that never recorded one, accept either byte encoding of
+// the reconstructed text — both still pin the CONTENT exactly.
+const nlNamed = (nl) => (nl === "\r\n" ? "crlf" : "lf");
+const nlOf = (name) => name === "crlf" ? "\r\n" : name === "lf" ? "\n" : undefined;
+function hashMatchesRecorded(lf, r, fileNl) {
+    const own = nlOf(r.newline);
+    if (own)
+        return fullHash(lf, own) === r.hash;
+    return fullHash(lf, fileNl) === r.hash
+        || fullHash(lf, fileNl === "\r\n" ? "\n" : "\r\n") === r.hash;
+}
+function parseHistory(path) {
+    const { lf, nl } = loadBytes(path);
+    const lines = lf.split("\n");
+    const blocks = locate(lines);
+    const keyframes = new Map();
+    const revisions = new Map();
+    const blobs = new Map();
+    const shared = [];
+    let current = "";
+    let currents = 0;
+    const once = (m, what, id) => {
+        if (m.has(id))
+            shared.push(`two ${what}s share the id ${id}`);
+    };
+    for (const b of blocks) {
+        const body = lines.slice(b.start + 1, b.end).join("\n");
+        if (b.type === "meta") {
+            for (const m of body.matchAll(/^\s*current\s*=\s*"?([^"\n]+?)"?\s*$/gm)) {
+                if (currents++ === 0)
+                    current = m[1];
+            }
+        }
+        else if (b.type === "history-keyframe") {
+            const id = attr(b.attrLine, "id");
+            once(keyframes, "keyframe", id);
+            keyframes.set(id, body);
+        }
+        else if (b.type === "history-revision") {
+            const id = attr(b.attrLine, "id");
+            once(revisions, "revision", id);
+            revisions.set(id, {
+                id,
+                parent: attr(b.attrLine, "parent"),
+                author: attr(b.attrLine, "author"),
+                summary: attr(b.attrLine, "summary"),
+                hash: attr(b.attrLine, "hash") ?? "",
+                newline: attr(b.attrLine, "newline"),
+                ops: parseOps(body),
+            });
+        }
+        else if (b.type === "history-blob") {
+            once(blobs, "blob", b.id);
+            blobs.set(b.id, body);
+        }
+    }
+    if (currents > 1)
+        shared.push(`the meta names \`current\` ${currents} times`);
+    return { nl, current, keyframes, revisions, blobs, shared };
+}
+function chainFrom(h) {
+    const out = [];
+    let id = h.current;
+    const seen = new Set();
+    while (id) {
+        const r = h.revisions.get(id);
+        if (!r)
+            throw new Error(`history: revision ${id} missing (broken chain)`);
+        if (seen.has(id))
+            throw new Error(`history: cycle at ${id}`);
+        seen.add(id);
+        out.push(r);
+        id = r.parent;
+    }
+    return out; // newest -> oldest
+}
+/** Reconstruct the content of revision `targetId`. */
+export function reconstruct(h, targetId) {
+    const chain = chainFrom(h);
+    const t = chain.findIndex((r) => r.id === targetId);
+    if (t < 0)
+        throw new Error(`history: unknown revision ${targetId}`);
+    // nearest keyframe at-or-newer than target (chain[0] = newest)
+    let kf = -1;
+    for (let i = t; i >= 0; i--)
+        if (h.keyframes.has(chain[i].id)) {
+            kf = i;
+            break;
+        }
+    if (kf < 0)
+        throw new Error(`history: no keyframe to reconstruct ${targetId}`);
+    let text = h.keyframes.get(chain[kf].id);
+    for (let i = kf; i < t; i++)
+        text = applyReverse(text, chain[i].ops, h.blobs);
+    return text;
+}
+// ---------------------------------------------------------------------------
+// Render history (newest-first)
+// ---------------------------------------------------------------------------
+function renderHistory(h, baseName) {
+    const chain = chainFrom(h);
+    const parts = [];
+    parts.push(`# History of ${baseName}\n`);
+    parts.push("=== meta\n" +
+        // 声明本文件的词汇表，`geml check` 据此放行 revision/keyframe/blob
+        // （src/profiles.ts）。没有它，这个项目写出的每一份历史边车都报三条
+        // unknown-block-type —— 一份自己的工具生成、自己的规范定义的文件。
+        'profile           = "geml-history/v1"\n' +
+        `history-of        = "${baseName}"\n` +
+        `geml-version      = "${GEML_LANGUAGE_VERSION}"\n` +
+        `current           = "${h.current}"\n` +
+        "keyframe-interval = 10\n" +
+        "===\n");
+    // committed-current keyframe
+    const kfContent = h.keyframes.get(h.current);
+    const kf = fenceFor(kfContent);
+    parts.push("# Committed-current mirror (always present):\n" +
+        `${kf} history-keyframe {id="${h.current}" hash="${chain[0].hash}"}\n` +
+        `${kfContent}\n${kf}\n`);
+    for (const r of chain) {
+        const at = [
+            `id="${r.id}"`,
+            r.parent ? `parent="${r.parent}"` : "",
+            r.author ? `author=${quoteAttr(r.author)}` : "",
+            r.summary ? `summary=${quoteAttr(r.summary)}` : "",
+            `hash="${r.hash}"`,
+            r.newline ? `newline="${r.newline}"` : "",
+        ].filter(Boolean).join(" ");
+        parts.push(`=== history-revision {${at}}\n${r.ops.map(opLine).join("\n")}${r.ops.length ? "\n" : ""}===\n`);
+        // blobs referenced by this revision
+        for (const op of r.ops) {
+            if (op.blob && h.blobs.has(op.blob)) {
+                const payload = h.blobs.get(op.blob);
+                const bf = fenceFor(payload);
+                parts.push(`${bf} history-blob {#${op.blob} lang=geml}\n${payload}\n${bf}\n`);
+            }
+        }
+    }
+    return parts.join("\n");
+}
+export function save(o) {
+    // A summary is one attribute on one line. §4 has no escape for a newline, so a
+    // summary carrying one ended the revision's attribute line where it stood and
+    // the rest was read as new lines of the sidecar — a whole forged
+    // `=== history-revision {…}` block, if that is what followed. Refused by name.
+    for (const [k, v] of [["summary", o.summary], ["author", o.author]]) {
+        if (v !== undefined && /[\r\n]/.test(v))
+            throw new Error(`${k} must be a single line: a newline would end the revision's attribute line and start new lines of the sidecar`);
+    }
+    const { lf: working, nl } = loadBytes(o.gemlPath);
+    const hash = fullHash(working, nl);
+    const stamp = stampUTC(o.at ?? new Date());
+    const id = makeId(stamp, hash);
+    const baseName = o.gemlPath.replace(/^.*[\\/]/, "");
+    let h;
+    if (existsSync(o.historyPath)) {
+        h = parseHistory(o.historyPath);
+        const prevId = h.current;
+        const prevContent = reconstruct(h, prevId); // committed current
+        const patch = diffReverse(prevContent, working);
+        // verify gate: the reverse patch must reproduce the parent byte-for-byte
+        const blobMap = new Map(patch.blobs.map((b) => [b.id, b.payload]));
+        const back = applyReverse(working, patch.ops, blobMap);
+        if (bytesOf(back, nl).compare(bytesOf(prevContent, nl)) !== 0) {
+            throw new Error("history: reverse patch does NOT round-trip to the previous revision; aborting save");
+        }
+        // Blob ids are minted per-diff (b1, b2, …). Renumber this save's blobs to
+        // start past the highest id already stored, so a later save never reuses
+        // an earlier revision's blob id — an overwrite in the shared store silently
+        // corrupts reconstruction of older revisions, whose `replace … <- blob:bN`
+        // would then resolve to the wrong (newer) content.
+        let maxBlob = 0;
+        for (const k of h.blobs.keys()) {
+            const mm = /^b(\d+)$/.exec(k);
+            if (mm)
+                maxBlob = Math.max(maxBlob, Number(mm[1]));
+        }
+        const remap = new Map(patch.blobs.map((b, i) => [b.id, `b${maxBlob + i + 1}`]));
+        patch.ops = patch.ops.map((op) => (op.blob ? { ...op, blob: remap.get(op.blob) } : op));
+        patch.blobs = patch.blobs.map((b) => ({ id: remap.get(b.id), payload: b.payload }));
+        for (const b of patch.blobs)
+            h.blobs.set(b.id, b.payload);
+        h.revisions.set(id, { id, parent: prevId, author: o.author, summary: o.summary, hash, newline: nlNamed(nl), ops: patch.ops });
+        h.keyframes.delete(prevId); // demote previous tip mirror (keyframes at intervals only)
+        h.keyframes.set(id, working);
+        h.current = id;
+    }
+    else {
+        h = {
+            nl, current: id,
+            keyframes: new Map([[id, working]]),
+            revisions: new Map([[id, { id, author: o.author, summary: o.summary, hash, newline: nlNamed(nl), ops: [] }]]),
+            blobs: new Map(),
+            shared: [],
+        };
+    }
+    writeBytes(o.historyPath, renderHistory(h, baseName), nl);
+    return { id, hash };
+}
+export function verify(historyPath, gemlPath) {
+    const errors = [];
+    const warnings = [];
+    const h = parseHistory(historyPath);
+    errors.push(...h.shared);
+    let checked = 0;
+    let chain = [];
+    try {
+        chain = chainFrom(h);
+    }
+    catch (e) {
+        errors.push(String(e.message));
+    }
+    // Reconstruct every revision INCREMENTALLY. `reconstruct(h, id)` on its own
+    // rebuilds each revision from the nearest keyframe, replaying up to O(N) ops
+    // each time; calling it once per revision is therefore O(N²·K) and lets a
+    // ~91 KB sidecar take ~a minute. Because the chain runs newest->oldest and
+    // (for revisions without their own keyframe) nearest-keyframe(i) is always
+    // nearest-keyframe(i-1), reconstruct(chain[i]) == applyReverse(reconstruct(
+    // chain[i-1]), chain[i-1].ops). So we carry the previous revision's content
+    // forward and apply ONE reverse patch per step — O(N·K) overall — while
+    // validating the exact same reconstructed bytes for every revision. Whenever
+    // that carried base is not trustworthy (a keyframe-less head, or right after
+    // a step threw) we fall back to the full `reconstruct`, which reproduces the
+    // original's behaviour and error messages verbatim.
+    let prevContent = null;
+    let prevOps = null;
+    let baseValid = false;
+    for (const r of chain) {
+        try {
+            let content;
+            if (h.keyframes.has(r.id)) {
+                content = h.keyframes.get(r.id);
+            }
+            else if (baseValid && prevContent !== null && prevOps !== null) {
+                content = applyReverse(prevContent, prevOps, h.blobs);
+            }
+            else {
+                content = reconstruct(h, r.id);
+            }
+            if (!hashMatchesRecorded(content, r, h.nl)) {
+                errors.push(`revision ${r.id}: reconstructed hash ${fullHash(content, nlOf(r.newline) ?? h.nl)} != recorded ${r.hash}`);
+            }
+            prevContent = content;
+            baseValid = true;
+            checked++;
+        }
+        catch (e) {
+            errors.push(`revision ${r.id}: ${e.message}`);
+            prevContent = null;
+            baseValid = false; // a failed step is not a valid base for the next
+        }
+        prevOps = r.ops;
+    }
+    if (gemlPath && existsSync(gemlPath)) {
+        const { lf, nl } = loadBytes(gemlPath);
+        if (fullHash(lf, nl) !== (chain[0]?.hash ?? "")) {
+            warnings.push("uncommitted changes: hash(doc.geml) differs from current");
+        }
+    }
+    return { ok: errors.length === 0, errors, warnings, checked };
+}
+export function restore(o) {
+    const h = parseHistory(o.historyPath);
+    const target = resolveRevision(h, o.revision); // `0` | `-N` | id — see resolveRevision
+    const content = reconstruct(h, target);
+    if (o.write) {
+        if (existsSync(o.gemlPath)) {
+            const { lf, nl } = loadBytes(o.gemlPath);
+            if (fullHash(lf, nl) !== h.revisions.get(h.current).hash && !o.force) {
+                // "save first" names the live verb: this string used to say `commit`,
+                // which the four-verb collapse removed (design §2).
+                throw new Error("history: uncommitted changes in doc.geml; rerun with force to discard them, or save first");
+            }
+        }
+        // destructive linear truncation to `target`
+        const chain = chainFrom(h);
+        const keep = new Set();
+        let id = target;
+        while (id) {
+            keep.add(id);
+            id = h.revisions.get(id).parent;
+        }
+        for (const r of chain)
+            if (!keep.has(r.id)) {
+                h.revisions.delete(r.id);
+                h.keyframes.delete(r.id);
+            }
+        h.keyframes.clear();
+        h.keyframes.set(target, content);
+        h.current = target;
+        const { nl } = loadBytes(o.historyPath);
+        writeBytes(o.gemlPath, content, nl);
+        writeBytes(o.historyPath, renderHistory(h, o.gemlPath.replace(/^.*[\\/]/, "")), nl);
+    }
+    return content;
+}
+/** Is the working file byte-identical to the sidecar's tip revision? False
+ *  means unsaved drift (e.g. an earlier save was refused by the round-trip
+ *  gate). Both write paths gate on this so a no-change `save` appends nothing:
+ *  `geml mcp` before each write (mcp.ts) and `geml history save` (geml.ts). */
+export function isCurrent(historyPath, gemlPath) {
+    const h = parseHistory(historyPath);
+    const tip = h.revisions.get(h.current);
+    if (!tip)
+        return false;
+    const { lf, nl } = loadBytes(gemlPath);
+    return fullHash(lf, nl) === tip.hash;
+}
+/** Revisions newest-first, each tagged with the `-N` offset that selects it. */
+export function listRevisions(historyPath) {
+    const h = parseHistory(historyPath);
+    return chainFrom(h).map((r, i) => ({
+        id: r.id, parent: r.parent, author: r.author, summary: r.summary, hash: r.hash,
+        offset: i, current: i === 0,
+    }));
+}
+/** Resolve a revision selector to its id + reconstructed full text. Selectors:
+ *  `-N` (N revisions back from current; `-0` is the tip), `latest`/`current`, or
+ *  an unambiguous id prefix/suffix (the same forms `restore` accepts). */
+/** Resolve a revision selector to its id, for EVERY command that takes one.
+ *
+ *  There is exactly one selector grammar — `0` (the tip), `-N` (N revisions
+ *  back), or an unambiguous revision id (prefix, suffix, or exact) — and it is
+ *  the grammar `history get` prints in its first column, so its output is
+ *  copy-pasteable into `revert --rev`, `history get <rev>`, and
+ *  `history restore` alike. Keeping this in one function is what makes that
+ *  true: it used to be written twice, and the copy in `restore` never grew the
+ *  `0`/`-N` arm, so the selectors the revision list advertised were rejected by
+ *  the command that printed a revision. */
+export function resolveRevision(h, selector) {
+    const off = /^(0|-\d+)$/.exec(selector);
+    if (off) {
+        const chain = chainFrom(h); // chain[0] = current tip
+        const n = Math.abs(Number(selector)); // "0" -> 0 (tip), "-1" -> 1 back, …
+        if (n >= chain.length)
+            throw new Error(`history: offset ${selector} is out of range (only ${chain.length} revision(s))`);
+        return chain[n].id;
+    }
+    const ids = [...h.revisions.keys()];
+    const matches = ids.filter((x) => x === selector || x.startsWith(selector) || x.endsWith(selector));
+    if (matches.length !== 1)
+        throw new Error(`history: revision selector "${selector}" matched ${matches.length} revisions`);
+    return matches[0];
+}
+export function resolveContent(historyPath, selector) {
+    const h = parseHistory(historyPath);
+    const id = resolveRevision(h, selector);
+    return { id, text: checkedReconstruct(h, id) };
+}
+// A revision handed to a caller as CONTENT — what `revert` splices into the
+// document — must match the hash recorded for it. `verify` has always checked
+// this over the whole chain; a read that skips it would let a sidecar edited
+// by hand put altered text into the file under the name of a real revision.
+function checkedReconstruct(h, id) {
+    const text = reconstruct(h, id);
+    const r = h.revisions.get(id);
+    if (r && !hashMatchesRecorded(text, r, h.nl)) {
+        throw new Error(`history: revision ${id} does not match its recorded hash — the sidecar was changed by something other than \`geml history\`; run \`geml history verify\``);
+    }
+    return text;
+}
+/** Walk the chain newest→oldest; return the first revision whose block (as
+ *  extracted by `pick`) differs from `currentBlock` — i.e. the block's previous
+ *  *distinct* version, skipping revisions that never touched it. Used by
+ *  `revert --rev changed`. `undefined` if no earlier revision changed the block. */
+export function firstChangedContent(historyPath, currentBlock, pick) {
+    const h = parseHistory(historyPath);
+    for (const r of chainFrom(h)) {
+        const text = checkedReconstruct(h, r.id);
+        const b = pick(text);
+        if (b !== undefined && b !== currentBlock)
+            return { id: r.id, text };
+    }
+    return undefined;
+}

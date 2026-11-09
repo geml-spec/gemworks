@@ -1,0 +1,296 @@
+// Block selectors — the one syntax `get`, `set` and `history get` all address
+// blocks with (design: docs/design/specs/2026-08-04-geml-get-set-selector-design-change.md).
+//
+// §2's rule: a selector is a FILTER over blocks, `{…}` holds keys, and the same
+// abbreviation rule applies twice — `#id` is `{#id}` short, `@<hex>` is
+// `{@<hex>}` short. Both are keys; they differ only in selectivity.
+//
+// This module is PURE: it parses selector text and matches it against a unit
+// index the caller supplies. It deliberately imports nothing from geml.ts —
+// that module runs the CLI dispatch on import, so depending on it here would
+// turn `import { parseSelector }` into "run the CLI". The scan that produces
+// `Unit[]` therefore stays in geml.ts (one walk, several sinks) and the
+// selector logic stays here, where it can be unit-tested on plain data.
+import { createHash } from "node:crypto";
+import { parseAttrs, tokenize } from "./attrs.js";
+// The content address's hash. Same spelling as the `.gemlhistory` unit key
+// (history.ts:112) because both answer the same question — how to address a
+// unit that carries no id. The VALUES are deliberately not promised to match:
+// history hashes a tile (trailing blank lines included), this hashes a block's
+// span (§3.3). Do not port an address from one layer to the other.
+export function sha8(text) {
+    return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex").slice(0, 8);
+}
+// Each optional part carries its OWN trailing whitespace. Written flat —
+// `…[ \t]*(@…)?[ \t]*(\{.*\})?[ \t]*$` — three runs competed for the same tabs
+// and the engine tried every way to divide them: `=== note` plus 8k tabs and
+// one stray byte took 84 SECONDS. Nested, each absent part leaves exactly one
+// run and the match is immediate. Same language: 150k random strings, identical
+// groups. (Mirrors geml.ts's FENCE_OPEN, which had the same shape.)
+const FENCE_SEL = /^={3,}[ \t]*([A-Za-z][A-Za-z0-9_-]*)[ \t]*(?:(@[0-9a-fA-F]{1,}(?:~\d+)?)[ \t]*)?(?:(\{.*\})[ \t]*)?$/;
+const BARE_AT = /^@([0-9a-fA-F]+)(?:~(\d+))?$/;
+// Exported for the MCP surface, which prefixes a bare id with `#` and must know
+// a position when it sees one: `#L27` is an id, so the prefix would change what
+// the address means.
+export const BARE_LINE = /^[Ll](\d+)(?:-(\d+))?$/;
+// One `[…]` step. Anchored and applied in a single left-to-right walk, never
+// as a global regex over the whole selector, so a pathological string cannot
+// make the engine try divisions of it (the lesson FENCE_SEL above records).
+const COORD_STEP = /^\[[ \t]*(?:(\d+)|"([^"]*)"|([A-Za-z][A-Za-z0-9_-]*))[ \t]*\]/;
+// The bracket path of a coordinate selector, or null when the tail is not one.
+// Null means "not a coordinate", never "a broken coordinate": an id cannot
+// contain `[`, so anything that fails here was not addressing a unit inside a
+// block and falls through to the id form, where the caller's own error names it.
+export function parseCoordPath(tail) {
+    const path = [];
+    let rest = tail;
+    while (rest !== "") {
+        const m = COORD_STEP.exec(rest);
+        if (!m)
+            return null;
+        if (m[1] !== undefined)
+            path.push({ kind: "index", n: Number(m[1]) });
+        else if (m[2] !== undefined)
+            path.push({ kind: "key", name: m[2] });
+        else
+            path.push({ kind: "word", name: m[3] });
+        rest = rest.slice(m[0].length).trimStart();
+    }
+    return path.length > 0 ? path : null;
+}
+// Parse selector TEXT. Never touches a document: every form is decided by
+// lexis alone, which is also what keeps the two selector namespaces on
+// `history get <file> <rev> <selector>` from overlapping (history design §10.2).
+// `attrsIdOf` lets the caller reuse its own `{…}` parser (parseAttrs) rather
+// than this module growing a second one.
+export function parseSelector(raw, attrsIdOf) {
+    if (raw === undefined || raw.trim() === "")
+        return { form: "list" };
+    const s = raw.trim();
+    const bare = BARE_AT.exec(s);
+    if (bare)
+        return { form: "content", hex: bare[1].toLowerCase(), nth: bare[2] ? Number(bare[2]) : 0 };
+    const fence = FENCE_SEL.exec(s);
+    if (fence) {
+        const type = fence[1];
+        const at = fence[2];
+        const braces = fence[3];
+        // `=== type {#id}` / `=== type {@<hex>}` are the two keys written out in
+        // full — redundant but legal (§2). Any OTHER key is declared-not-implemented.
+        if (braces !== undefined)
+            return keyForm(braces, type, attrsIdOf, at);
+        if (at !== undefined) {
+            const m = BARE_AT.exec(at);
+            return { form: "content", type, hex: m[1].toLowerCase(), nth: m[2] ? Number(m[2]) : 0 };
+        }
+        return { form: "type", type };
+    }
+    // Checked before the id fallthrough, so a bare `L27` is a position. An id
+    // that really is spelled `L27` keeps its explicit key form, `#L27` — the
+    // same "short form for the common case, key form always available" rule
+    // `@<hex>` already relies on.
+    const line = s.match(BARE_LINE);
+    if (line) {
+        const from = Number(line[1]);
+        const to = line[2] !== undefined ? Number(line[2]) : from;
+        // Reject rather than clamp: `L0` and `L10-5` are typos, and a selector that
+        // silently means something else is worse than one that refuses.
+        if (from >= 1 && to >= from)
+            return { form: "line", from, to };
+    }
+    // A coordinate: an id form, then `[…]` steps. Checked before the id
+    // fallthrough because the whole string would otherwise be taken for one id
+    // and reported missing — which is what `#fy[2]["Q1"]` did before GEP 0011.
+    const bracket = s.indexOf("[");
+    if (bracket > 0) {
+        const path = parseCoordPath(s.slice(bracket));
+        if (path) {
+            // The base is "whatever an id form would have been", and `{#fy}` IS one —
+            // so normalize it here and every consumer downstream keeps seeing `#fy`.
+            const head = s.slice(0, bracket).trimEnd();
+            if (BRACED.test(head)) {
+                const k = keyForm(head, undefined, attrsIdOf);
+                if (k.form === "id")
+                    return { form: "coord", base: k.raw, path };
+            }
+            return { form: "coord", base: head, path };
+        }
+    }
+    // `{#id}` / `{@<hex>}` with no type in front — the other half of §2's
+    // abbreviation rule. Checked after the coordinate so `{#fy}[2]` is one.
+    if (BRACED.test(s))
+        return keyForm(s, undefined, attrsIdOf);
+    // Anything else is an id or a pasted heading line; the caller resolves it.
+    return { form: "id", raw: s };
+}
+// `{@<hex>}` / `{@<hex>~n}` — the content key written out in full. Read here
+// rather than by `attrsIdOf`, because `@` is not an attribute-object key: the
+// braces are §2's KEY container, and an attribute object is only one thing that
+// container can hold.
+const AT_KEY = /^@([0-9a-fA-F]+)(?:~(\d+))?$/;
+function atKeyOf(braces) {
+    const m = AT_KEY.exec(braces.replace(/^\{/, "").replace(/\}$/, "").trim());
+    return m ? { hex: m[1].toLowerCase(), nth: m[2] ? Number(m[2]) : 0 } : undefined;
+}
+// A braced key, with or without a type in front. §2's rule is that `#id` is
+// `{#id}` written short and `@<hex>` is `{@<hex>}` written short — so the long
+// form has to parse, or the abbreviation is an abbreviation of nothing. Both
+// spellings land on the same Selector here, which is what keeps every consumer
+// downstream from having to know there are two.
+function keyForm(braces, type, attrsIdOf, outerAt) {
+    // Every key the caller typed, in order: `@<hex>` in front of the braces, then
+    // each token inside them. One key keeps its own form; several are a filter in
+    // which every key must hold, so none of them can be dropped.
+    const tokens = tokenize(braces.trim().replace(/^\{/, "").replace(/\}$/, ""));
+    const keys = outerAt === undefined ? tokens : [outerAt, ...tokens];
+    const id = attrsIdOf(braces);
+    if (keys.length === 1 && id !== undefined) {
+        return type === undefined ? { form: "id", raw: `#${id}` } : { form: "id", raw: `#${id}`, type };
+    }
+    const at = atKeyOf(braces);
+    if (keys.length === 1 && at !== undefined) {
+        return type === undefined
+            ? { form: "content", hex: at.hex, nth: at.nth }
+            : { form: "content", type, hex: at.hex, nth: at.nth };
+    }
+    // Anything else is an attribute filter. Content keys are taken out first —
+    // `@` is not an attribute-object key — and the rest is read with the same
+    // parser as a block's own attribute object, so a quoted value or a class
+    // means what it means in the document.
+    const content = [];
+    const rest = [];
+    for (const k of keys) {
+        const m = AT_KEY.exec(k);
+        if (m)
+            content.push({ hex: m[1].toLowerCase(), nth: m[2] ? Number(m[2]) : 0 });
+        else
+            rest.push(k);
+    }
+    const a = parseAttrs(`{${rest.join(" ")}}`);
+    return {
+        form: "attr",
+        ...(type !== undefined ? { type } : {}),
+        ...(a.id !== undefined ? { id: a.id } : {}),
+        content, classes: a.classes, attrs: a.attrs, keys,
+    };
+}
+// Is this whole selector one braced key? Anchored on both ends so a brace
+// inside a quoted value cannot make a partial string look like one.
+const BRACED = /^\{[\s\S]*\}$/;
+export function addressUnits(units, textOf) {
+    const seen = new Map();
+    return units.map((unit) => {
+        // LF-normalized so a CRLF checkout and an LF one address the same block.
+        const hex = sha8(textOf(unit).replace(/\r\n?/g, "\n"));
+        const nth = seen.get(hex) ?? 0;
+        seen.set(hex, nth + 1);
+        return { unit, hex, nth };
+    });
+}
+// What shortestAddress asks of the whole listing, counted once per listing:
+// asked per row, a pass over every unit made a listing of n blocks cost n².
+// geml.ts's nameKey (NFD), restated: geml.ts imports this module, not the reverse.
+const nameKey = (name) => name.normalize("NFD");
+const TALLY = new WeakMap();
+function tallyOf(all) {
+    let t = TALLY.get(all);
+    if (t === undefined) {
+        const types = new Map();
+        const firstById = new Map();
+        let metaId = false;
+        for (const x of all) {
+            if (x.unit.type !== undefined)
+                types.set(x.unit.type, (types.get(x.unit.type) ?? 0) + 1);
+            if (x.unit.id === "meta")
+                metaId = true;
+            if (x.unit.id !== undefined && !firstById.has(nameKey(x.unit.id)))
+                firstById.set(nameKey(x.unit.id), x);
+        }
+        t = { types, metaId, firstById };
+        TALLY.set(all, t);
+    }
+    return t;
+}
+// §6.1 — the SHORTEST address that identifies this unit uniquely, which is what
+// the listing prints. `#id` when it has one; else the bare type when the
+// document holds exactly one block of it; else the content address. The three
+// cases are one rule ("shortest unique"), not three rules.
+export function shortestAddress(a, all) {
+    const u = a.unit;
+    const { types, metaId, firstById } = tallyOf(all);
+    // A duplicate id names the first unit that declares it (§4), so a later one
+    // falls through to its content address, as a unit with no id does: `#id`
+    // would paste back to a different block.
+    // Compared by place, not by object: a caller may pass a unit from another
+    // listing of the same document.
+    const first = u.id === undefined ? undefined : firstById.get(nameKey(u.id))?.unit;
+    if (first !== undefined && first.span.start === u.span.start && first.span.end === u.span.end && first.kind === u.kind)
+        return `#${u.id}`;
+    if (u.type === undefined)
+        return `@${a.hex}${a.nth ? `~${a.nth}` : ""}`;
+    const sameType = types.get(u.type) ?? 0;
+    // `#meta` is the reserved id for the merged metadata view, and with exactly
+    // one `meta` block the view and the block are the same thing — so the
+    // shortest address for that block is the id, not its type. With several the
+    // id addresses the MERGE and no single block, and with another unit already
+    // declaring `meta` it would be that unit's, so both fall through to the type.
+    if (u.type === "meta" && sameType === 1 && !metaId)
+        return "#meta";
+    if (sameType === 1)
+        return `=== ${u.type}`;
+    return `=== ${u.type}@${a.hex}${a.nth ? `~${a.nth}` : ""}`;
+}
+export function matchContent(sel, all) {
+    const hit = all.find((a) => a.hex === sel.hex && a.nth === sel.nth);
+    if (!hit)
+        return { ok: false, why: "no-match" };
+    if (sel.type !== undefined && hit.unit.type !== sel.type) {
+        return { ok: false, why: "wrong-type", found: hit.unit.type ?? hit.unit.kind };
+    }
+    return { ok: true, unit: hit.unit };
+}
+// Where to send a caller whose selector found nothing: the listing IS the
+// discovery command, and every address it prints pastes straight back (§6.2).
+// One place, so `get`, `set` and `history get` all point at the same next step.
+export function discoveryHint(where) {
+    return ` — run \`geml get ${where}\` to list every addressable block`;
+}
+// Match a position selector: the SMALLEST unit that fully contains the range.
+// "Smallest" is what makes this ≤1 match instead of N. Spans nest — a heading's
+// span covers its whole section, so line 30 of the comparison doc sits inside
+// both `#capability-matrix` (L25-65) and `#caps` (L27-58) — and returning both
+// would emit the inner block twice, once alone and once inside its section.
+// The innermost is also the answer the question actually wants: a line number
+// arrived from grep or a stack trace, and the caller means "the thing I have to
+// edit", which is never the enclosing chapter.
+export function matchLine(sel, all) {
+    let best;
+    for (const a of all) {
+        const start = a.unit.span.start + 1; // spans are 0-based; selectors are 1-based, as the listing prints them
+        const end = a.unit.span.end;
+        if (start > sel.from || end < sel.to)
+            continue; // must FULLY contain the range
+        if (best === undefined || end - start < best.span.end - (best.span.start + 1))
+            best = a.unit;
+    }
+    return best;
+}
+// Match a type filter: every block of that type in document order. Blocks that
+// carry an id are INCLUDED — the selector says nothing about ids, so filtering
+// by whether one is present would be a rule nobody wrote down (§2).
+export function matchType(type, all) {
+    return all.filter((a) => a.unit.type === type).map((a) => a.unit);
+}
+// An attribute filter's matches, in document order (§2). A unit matches when it
+// carries every key given: the type if one was written, the id (compared by
+// `sameId`, which the caller supplies so ids match the way they do everywhere
+// else), the content address, every class, and every key=value pair with the
+// same value. A heading has no type, so a type prefix leaves headings out.
+export function matchAttr(sel, all, sameId) {
+    return all.filter(({ unit: u, hex, nth }) => (sel.type === undefined || u.type === sel.type)
+        && (sel.id === undefined || (u.id !== undefined && sameId(u.id, sel.id)))
+        && sel.content.every((c) => c.hex === hex && c.nth === nth)
+        && sel.classes.every((c) => u.classes?.includes(c) === true)
+        && Object.entries(sel.attrs).every(([k, v]) => u.attrs !== undefined && Object.hasOwn(u.attrs, k) && u.attrs[k] === v))
+        .map((a) => a.unit);
+}

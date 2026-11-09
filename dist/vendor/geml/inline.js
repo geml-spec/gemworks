@@ -1,0 +1,754 @@
+// GEML reference parser — Milestone 2: inline content (§5).
+//
+// Parses the inline grammar of unfenced blocks (paragraphs, headings, list
+// items): escapes, code spans, inline math, images, links, auto-references,
+// footnote references, then emphasis/strong/strike — in the §5.3 priority order.
+// Every internal/cross-document reference is reported to a `RefSink` so the
+// document layer can resolve and validate it at build time (§8).
+import { parseAttrs } from "./attrs.js";
+import { INLINE_NESTING } from "./bounds.js";
+// parseInline and scanAtoms recurse into each other; INLINE_NESTING caps it (R2-7 DoS).
+/** Length of the backtick run starting at `i`. */
+export function backtickRun(s, i) {
+    let n = 0;
+    while (s.charCodeAt(i + n) === 96)
+        n++;
+    return n;
+}
+/**
+ * §5.3(1): where the code span opened by the run of `n` backticks at `i`
+ * closes — the index of the next run of EXACTLY `n` backticks (CommonMark's
+ * rule), or -1 when there is none, in which case the opening run is literal
+ * text. A run of any other length is content, which is how `` ``a`b`` ``
+ * carries a backtick and why `` `a``b` `` is one span, not two. Shared with the
+ * heading-id derivation (§4 step 3) and the Markdown importer, so a code span
+ * is one thing everywhere.
+ */
+export function findCodeSpanClose(s, i, n) {
+    let j = i + n;
+    while (j < s.length) {
+        const k = s.indexOf("`", j);
+        if (k < 0)
+            return -1;
+        const m = backtickRun(s, k);
+        if (m === n)
+            return k;
+        j = k + m;
+    }
+    return -1;
+}
+// §4: the source pattern of a `{{key}}` metadata reference. Owned here as the
+// single definition of what a reference looks like — the parser substitutes it
+// (geml.ts), the serializer escapes it on emit (serialize.ts), and the md
+// converter escapes it on conversion (from-md.ts). Build flagged variants with
+// `new RegExp(META_REF_SRC, flags)`.
+export const META_REF_SRC = "\\{\\{\\s*([A-Za-z_][A-Za-z0-9_-]*)\\s*\\}\\}";
+// §5: URL schemes that may be emitted as an href/src. A destination that names
+// any other scheme (javascript:, vbscript:, data:text/html, file:, …) is a
+// script-injection / local-read vector at the HTML sink, so it is neutralized
+// here at the parse layer — every consumer of the model inherits the guard.
+const SAFE_SCHEMES = new Set(["http", "https", "mailto", "tel"]);
+// The leading `scheme:` (RFC-3986 grammar), lowercased — or null when the
+// destination has none (a relative path, `#anchor`, or cross-document ref).
+export function schemeOf(url) {
+    // Browsers strip leading/embedded C0 controls and spaces before acting on a
+    // URL, so `java\tscript:` and `\x01javascript:` execute as javascript:. Strip
+    // every [\x00-\x20] before detecting the scheme so the allowlist can't be
+    // evaded that way (R2-2).
+    const m = /^([a-z][a-z0-9+.-]*):/i.exec(url.replace(/[\x00-\x20]/g, ""));
+    return m ? m[1].toLowerCase() : null;
+}
+// A destination is safe to emit when it has no scheme (relative / anchor /
+// cross-doc), or names an allowlisted scheme. `data:` is permitted only for
+// media and only for `image/*` payloads (never `data:text/html`, which scripts).
+export function isSafeUrl(url, allowDataImage = false) {
+    const scheme = schemeOf(url);
+    if (scheme === null)
+        return true;
+    if (SAFE_SCHEMES.has(scheme))
+        return true;
+    if (allowDataImage && scheme === "data")
+        return /^\s*data:image\//i.test(url);
+    return false;
+}
+// §5.1: when `as` is omitted, infer the media kind from the source extension.
+const VIDEO_EXT = /\.(mp4|webm|mov|m4v|ogv|mkv)(?:[?#].*)?$/i;
+const AUDIO_EXT = /\.(mp3|wav|ogg|oga|m4a|flac|aac|opus)(?:[?#].*)?$/i;
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico|tiff?)(?:[?#].*)?$/i;
+function inferAs(src) {
+    if (VIDEO_EXT.test(src))
+        return "video";
+    if (AUDIO_EXT.test(src))
+        return "audio";
+    if (IMAGE_EXT.test(src))
+        return "image";
+    return undefined;
+}
+// Classify a link/image destination into {href|doc, anchor}.
+function classifyDest(dest) {
+    const d = dest.trim();
+    if (schemeOf(d) !== null) {
+        // Scheme-bearing destination: emit as an href only if the scheme is
+        // allowlisted; otherwise drop it entirely so the link renders inert
+        // (render() defaults a hrefless link to `#`, keeping the visible text).
+        return isSafeUrl(d) ? { href: d } : {};
+    }
+    const hash = d.indexOf("#");
+    if (hash === 0)
+        return { anchor: d.slice(1) };
+    if (hash > 0)
+        return { doc: d.slice(0, hash), anchor: d.slice(hash + 1) };
+    if (d)
+        return { doc: d };
+    return {};
+}
+// Markdown reading: CommonMark lets a title follow a link's destination —
+// `[t](#x "Title")`, `'Title'` or `(Title)` — and lets `<…>` wrap the
+// destination. Only the destination is a target (GitHub shows the title as a
+// tooltip), so that is what is classified; read whole, `#x "Title"` named an
+// anchor no heading has. GEML's own grammar has neither form, so a `.geml`
+// reads the parenthesis as it always did.
+function markdownDest(content) {
+    const d = content.trim();
+    if (d.startsWith("<")) {
+        const end = d.indexOf(">");
+        if (end > 0)
+            return d.slice(1, end);
+    }
+    const m = /^(\S+)\s+(?:"[^"]*"|'[^']*'|\([^()]*\))$/.exec(d);
+    return m ? m[1] : d;
+}
+// §5.3(3): a link's text and an image's alt balance only the brackets phase 1's
+// first item leaves outside a code span, inline math and a backslash escape —
+// CommonMark's rule, those atoms binding tighter than link text. A
+// destination's parentheses skip a `\` and the character after it. A
+// reference's or a footnote's brackets are an address's, and are counted raw.
+//
+// One pass builds all three maps, reading char codes. A document's inline
+// strings come in several representations (one- and two-byte, sliced,
+// concatenated), and reading them as one-character strings made every read a
+// polymorphic load: three passes of that doubled the parse of a long document.
+const isEscapable = (c) => (c >= 33 && c <= 47) || (c >= 58 && c <= 64) || (c >= 91 && c <= 96) || (c >= 123 && c <= 126);
+function pairsOf(s) {
+    const n = s.length;
+    const br = new Int32Array(n).fill(-1);
+    const lb = new Int32Array(n).fill(-1);
+    const pa = new Int32Array(n).fill(-1);
+    const bs = [], ls = [], ps = [];
+    // Link text resumes at lbFrom past an escape, a code span or inline math; a
+    // destination's parentheses resume at paFrom past a backslash's character.
+    let lbFrom = 0, paFrom = 0;
+    for (let i = 0; i < n; i++) {
+        const c = s.charCodeAt(i);
+        if (c === 91)
+            bs.push(i);
+        else if (c === 93) {
+            const j = bs.pop();
+            if (j !== undefined)
+                br[j] = i;
+        }
+        if (i >= lbFrom) {
+            if (c === 92 && isEscapable(s.charCodeAt(i + 1)))
+                lbFrom = i + 2;
+            else if (c === 96) {
+                const k = backtickRun(s, i);
+                const close = findCodeSpanClose(s, i, k);
+                lbFrom = close >= 0 ? close + k : i + k;
+            }
+            else if (c === 36) {
+                const close = s.indexOf("$", i + 1);
+                lbFrom = close > i + 1 ? close + 1 : i + 1;
+            }
+            else if (c === 91)
+                ls.push(i);
+            else if (c === 93) {
+                const j = ls.pop();
+                if (j !== undefined)
+                    lb[j] = i;
+            }
+        }
+        if (i >= paFrom) {
+            if (c === 92)
+                paFrom = i + 2;
+            else if (c === 40)
+                ps.push(i);
+            else if (c === 41) {
+                const j = ps.pop();
+                if (j !== undefined)
+                    pa[j] = i;
+            }
+        }
+    }
+    return { br, lb, pa, off: 0 };
+}
+// A link label is a bracket-balanced span, so the map restricted to it IS the
+// map of the substring — the maps are built ONCE for the whole inline and read
+// through an offset by every nesting level, rather than rebuilt per level (which
+// at the 100-deep cap would have multiplied a 1 MB line's map memory by 100).
+// A partner falling outside the window means "unbalanced here", which is what
+// the substring-local scan reported.
+function pairEnd(m, p, s, i) {
+    const j = m[p.off + i];
+    if (j === undefined || j < 0)
+        return -1;
+    const end = j - p.off;
+    return end < s.length ? end : -1;
+}
+// Read a destination's balanced `(...)` starting at s[i]==='('. Returns content
+// and index just past the closing ')', or null if unbalanced or broken by a
+// line end (§5.3(3)).
+function readParen(s, i, p) {
+    if (s[i] !== "(")
+        return null;
+    const j = pairEnd(p.pa, p, s, i);
+    if (j < 0)
+        return null;
+    const content = s.slice(i + 1, j);
+    return content.includes("\n") ? null : { content, end: j + 1 };
+}
+// Read a link's text or an image's alt, `[...]` starting at s[i]==='[' (§5.3(3)).
+function readLabel(s, i, p) {
+    if (s[i] !== "[")
+        return null;
+    const j = pairEnd(p.lb, p, s, i);
+    return j < 0 ? null : { content: s.slice(i + 1, j), end: j + 1 };
+}
+// Read a balanced `[...]` starting at s[i]==='['. Returns content and index
+// just past the closing ']', or null if unbalanced.
+function readBracket(s, i, p) {
+    if (s[i] !== "[")
+        return null;
+    const j = pairEnd(p.br, p, s, i);
+    return j < 0 ? null : { content: s.slice(i + 1, j), end: j + 1 };
+}
+// Where a scan for the `}` that closes an attribute object ends, from every
+// index of `s` at once: `end[k]` is that `}` for a scan starting unquoted at k,
+// or -1. Built right to left in one pass, with `inq` the same answer for a scan
+// already inside quotes. Scanning afresh at every `{` made a paragraph of
+// `[a](b){`, none closed, cost the square of its length.
+function attrEnds(s) {
+    const end = new Int32Array(s.length + 2).fill(-1);
+    const inq = new Int32Array(s.length + 2).fill(-1);
+    for (let k = s.length - 1; k >= 0; k--) {
+        const c = s[k];
+        if (c === "\\" && (s[k + 1] === '"' || s[k + 1] === "\\"))
+            inq[k] = inq[k + 2];
+        else
+            inq[k] = c === '"' ? end[k + 1] : inq[k + 1];
+        end[k] = c === "}" ? k : c === '"' ? inq[k + 1] : end[k + 1];
+    }
+    return end;
+}
+// Optional `{…}` attribute object immediately following a construct. §4: it
+// closes at the first `}` outside a quoted span, so `{title="a}b"}` is one
+// object; with no such `}` there is none and the `{` stays text.
+function readAttrs(s, i, p) {
+    if (s[i] !== "{")
+        return null;
+    if (p.ab?.s !== s)
+        p.ab = { s, end: attrEnds(s) };
+    const k = p.ab.end[i + 1];
+    return k < 0 ? null : { attrs: parseAttrs(s.slice(i, k + 1)), end: k + 1 };
+}
+// `lineOf(s, first)(k)`: the 1-based line holding offset `k` of `s`, when `s`
+// begins on line `first`. Exported because the `{{key}}` pass over a paragraph
+// has the same shape of problem and must answer it the same way.
+export function lineOf(s, first) {
+    const nl = [];
+    for (let k = s.indexOf("\n"); k >= 0; k = s.indexOf("\n", k + 1))
+        nl.push(k);
+    if (nl.length === 0)
+        return () => first;
+    return (k) => {
+        let lo = 0, hi = nl.length;
+        while (lo < hi) {
+            const m = (lo + hi) >> 1;
+            if (nl[m] < k)
+                lo = m + 1;
+            else
+                hi = m;
+        }
+        return first + lo;
+    };
+}
+// Phase A: pull out high-priority atoms (escapes, code, math, media, links,
+// auto-refs, footnotes, hard breaks). Everything else is left as text runs for
+// phase B (emphasis). Children of links are fully re-parsed.
+function scanAtoms(s, line, sink, depth, p) {
+    const out = [];
+    // The line a construct is ON. `line` is where this string starts, and a
+    // paragraph or list item arrives here as ONE string with its lines joined, so
+    // reporting `line` for everything in it sent a reference on a paragraph's
+    // third line to its first — and an author looking there found nothing wrong.
+    const at = lineOf(s, line);
+    // Literal text is the source between atoms, so it is cut out once, at the
+    // next atom or the end, from where the last atom ended.
+    let textFrom = 0;
+    const flush = (to) => { if (to > textFrom)
+        out.push(s.slice(textFrom, to)); };
+    // Emit `node` as the atom occupying source span [start, end).
+    const atom = (node, start, end) => {
+        flush(start);
+        out.push({ node, first: s[start], last: s[end - 1] });
+        textFrom = end;
+    };
+    let i = 0;
+    while (i < s.length) {
+        // Only `\`, a backtick, `$`, `[` and `!` can start an atom; anything else is
+        // text, passed over by its char code (see pairsOf on why not `s[i]`).
+        const code = s.charCodeAt(i);
+        if (code !== 92 && code !== 96 && code !== 36 && code !== 91 && code !== 33) {
+            i++;
+            continue;
+        }
+        const c = s[i];
+        // §5.3(1): backslash escape / hard break.
+        if (c === "\\") {
+            const next = s[i + 1];
+            if (next === undefined || next === "\n") { // line-final backslash
+                const end = i + (next === undefined ? 1 : 2);
+                atom({ type: "break" }, i, end);
+                i = end;
+                continue;
+            }
+            if (/[!-/:-@[-`{-~]/.test(next)) {
+                // ASCII punctuation -> literal, emitted as its own text atom so phase B
+                // (emphasis) cannot mistake an escaped `*`/`~` for a delimiter (§5.3(1)).
+                atom({ type: "text", value: next }, i, i + 2);
+                i += 2;
+                continue;
+            }
+            i++;
+            continue;
+        }
+        // §5.3(1): code span — opened by a run of n backticks, closed by the next
+        // run of EXACTLY n (findCodeSpanClose); content kept raw.
+        if (c === "`") {
+            const n = backtickRun(s, i);
+            const close = findCodeSpanClose(s, i, n);
+            if (close >= 0) {
+                atom({ type: "code", value: s.slice(i + n, close) }, i, close + n);
+                i = close + n;
+                continue;
+            }
+            i += n;
+            continue;
+        }
+        // §5.3(1): inline math $…$ (raw).
+        if (c === "$") {
+            const close = s.indexOf("$", i + 1);
+            if (close > i + 1) {
+                atom({ type: "math", value: s.slice(i + 1, close) }, i, close + 1);
+                i = close + 1;
+                continue;
+            }
+            i++;
+            continue;
+        }
+        // Markdown reading: `[[name#frag|alias]]` and `![[…]]` are Obsidian's
+        // wikilink and embed, not GEML's reference and projection. The alias is
+        // display text; the name is a NOTE name, `.md` implied and found anywhere
+        // in the vault (the host's findNote); a heading fragment may be the
+        // heading's text; `#^id` is a block marker. And an embed is a link that
+        // previews — `![[#Section]]` pulls a section in Obsidian, which GEML's
+        // projection rules would refuse twice over (not inline content; a cycle).
+        // A name ending in `.geml` is a GEML document and keeps GEML's check.
+        if (sink.markdown && (c === "[" ? s[i + 1] === "[" : c === "!" && s[i + 1] === "[" && s[i + 2] === "[")) {
+            const inner = readBracket(s, c === "!" ? i + 2 : i + 1, p);
+            if (inner && s[inner.end] === "]") {
+                const bar = inner.content.indexOf("|");
+                const dest = (bar < 0 ? inner.content : inner.content.slice(0, bar)).trim();
+                const hash = dest.indexOf("#");
+                const name = (hash < 0 ? dest : dest.slice(0, hash)).trim();
+                const frag = hash < 0 ? undefined : dest.slice(hash + 1).trim();
+                // A note name never carries a scheme (Obsidian refuses `:` in one), and
+                // the renderer joins the name into an href as written: `[[javascript:…#x]]`
+                // made a live `javascript:` link. Such a wikilink stays text, as it does
+                // in a `.geml`.
+                if ((name !== "" || (frag !== undefined && frag !== "")) && schemeOf(name) === null) {
+                    const node = frag !== undefined
+                        ? { type: "autoref", anchor: frag, ...(name !== "" ? { doc: name } : {}) }
+                        : { type: "text", value: s.slice(i, inner.end + 1) };
+                    atom(node, i, inner.end + 1);
+                    if (/\.geml$/i.test(name)) {
+                        sink.refs.push({ kind: "cross", doc: name, anchor: frag, line: at(i), ...(node.type === "autoref" ? { node } : {}) });
+                    }
+                    else {
+                        sink.refs.push({ kind: "wikilink", ...(name !== "" ? { doc: name } : {}), anchor: frag, line: at(i) });
+                    }
+                    i = inner.end + 1;
+                    continue;
+                }
+            }
+        }
+        // §5.3(2): image ![alt](src){…}.
+        // §5.3 precedence: inline projection `![[…]]` is tried BEFORE the image atom.
+        // Otherwise `![[#x]]` reads as an image whose label happens to be `[#x]`, and
+        // `![[#x]](y)` would be claimed whole — the parenthesis run has to stay
+        // literal text, which is what this ordering pins.
+        if (c === "!" && s[i + 1] === "[" && s[i + 2] === "[") {
+            const inner = readBracket(s, i + 2, p); // the inner [...] after `![`
+            if (inner && s[inner.end] === "]") {
+                const { doc, anchor } = classifyDest(inner.content.trim());
+                if (anchor) {
+                    const node = { type: "project", anchor };
+                    if (doc)
+                        node.doc = doc;
+                    atom(node, i, inner.end + 1);
+                    // Validated by the same §8 resolver as any reference; the target's TYPE
+                    // is checked separately, since only inline content can be projected.
+                    sink.refs.push({ kind: doc ? "cross" : "autoref", doc, anchor, line: at(i), node });
+                    (sink.projections ??= []).push(doc === undefined ? { anchor, line: at(i) } : { doc, anchor, line: at(i) });
+                    i = inner.end + 1;
+                    continue;
+                }
+            }
+        }
+        if (c === "!" && s[i + 1] === "[") {
+            const label = readLabel(s, i + 1, p);
+            const paren = label ? readParen(s, label.end, p) : null;
+            if (label && paren) {
+                const a = readAttrs(s, paren.end, p);
+                const attrObj = a ? a.attrs : { classes: [], attrs: {} };
+                // Media src bypasses classifyDest, so guard the scheme here: a disallowed
+                // scheme (javascript:, data:text/html, …) is neutralized to an empty src
+                // so the HTML sink cannot load/execute it. Relative paths, http(s), and
+                // image/* data URIs pass through.
+                const rawSrc = paren.content.trim();
+                const src = isSafeUrl(rawSrc, true) ? rawSrc : "";
+                // A GEML target here means the author wanted a transclusion, which is a
+                // block: `=== embed`. Recorded for the caller to report.
+                if (/\.geml(#|$)/i.test(src))
+                    (sink.mediaDocTargets ??= []).push({ src, line: at(i) });
+                const node = {
+                    type: "image", alt: label.content, src, attrs: attrObj.attrs,
+                };
+                const as = attrObj.attrs["as"];
+                if (typeof as === "string")
+                    node.as = as;
+                else {
+                    const inf = inferAs(node.src);
+                    if (inf)
+                        node.as = inf;
+                }
+                atom(node, i, a ? a.end : paren.end);
+                i = a ? a.end : paren.end;
+                continue;
+            }
+        }
+        // §5.3(2): auto-reference [[#id]].
+        if (c === "[" && s[i + 1] === "[") {
+            const inner = readBracket(s, i + 1, p); // inner [...] after the first [
+            if (inner && s[inner.end] === "]") {
+                const target = inner.content.trim();
+                const { doc, anchor } = classifyDest(target);
+                if (anchor) {
+                    const node = { type: "autoref", anchor };
+                    if (doc)
+                        node.doc = doc;
+                    atom(node, i, inner.end + 1);
+                    sink.refs.push({ kind: doc ? "cross" : "autoref", doc, anchor, line: at(i), node });
+                    i = inner.end + 1;
+                    continue;
+                }
+            }
+        }
+        // §5.3(2): footnote reference [^id].
+        if (c === "[" && s[i + 1] === "^") {
+            const br = readBracket(s, i, p);
+            if (br && br.content.startsWith("^")) {
+                const ref = br.content.slice(1).trim();
+                atom({ type: "footnote", ref }, i, br.end);
+                sink.refs.push({ kind: "footnote", anchor: ref, line: at(i) });
+                i = br.end;
+                continue;
+            }
+        }
+        // §5.3(2): link [text](dest){…}.
+        if (c === "[") {
+            const label = readLabel(s, i, p);
+            const paren = label ? readParen(s, label.end, p) : null;
+            if (label && paren) {
+                const a = readAttrs(s, paren.end, p);
+                const attrObj = a ? a.attrs : { classes: [], attrs: {} };
+                const dest = classifyDest(sink.markdown ? markdownDest(paren.content) : paren.content);
+                const node = {
+                    type: "link",
+                    // The label window starts one character past this `[`, so the shared
+                    // maps are read at that offset instead of being rebuilt for it.
+                    children: parseInline(label.content, at(i + 1), sink, depth + 1, { br: p.br, lb: p.lb, pa: p.pa, off: p.off + i + 1 }),
+                    attrs: attrObj.attrs,
+                };
+                if (dest.href)
+                    node.href = dest.href;
+                if (dest.doc)
+                    node.doc = dest.doc;
+                if (dest.anchor)
+                    node.anchor = dest.anchor;
+                if (dest.anchor || dest.doc) {
+                    sink.refs.push({ kind: dest.doc ? "cross" : "internal", doc: dest.doc, anchor: dest.anchor, line: at(i) });
+                }
+                atom(node, i, a ? a.end : paren.end);
+                i = a ? a.end : paren.end;
+                continue;
+            }
+        }
+        i++;
+    }
+    flush(s.length);
+    return out;
+}
+// Phase B: emphasis / strong / strikethrough over the whole inline sequence
+// (§5.3, GEP-0007).
+//
+// A maximal run of `*` in literal text is an emphasis delimiter (one `*` ->
+// emphasis, two -> strong, longer runs pair greedily); a maximal run of two or
+// more `~` is a strikethrough delimiter (a lone `~` is literal). Whether a run
+// may *open* and/or *close* is fixed by flanking: it must hug a non-space
+// character, and on the side facing a punctuation character it must also have
+// whitespace or punctuation on the far side (the CommonMark left/right-flanking
+// rule). Runs are then paired by a single left-to-right stack scan with the
+// rule of three, so nested and adjacent delimiters resolve to exactly one tree
+// — no leftmost-regex guesswork. Delimiters pair across phase-A atoms — a pair
+// may wrap a code span, math, a link or image — but the atoms themselves are
+// opaque: characters inside one are never delimiters, and at an atom boundary
+// the flanking test reads the atom's edge source characters (AtomPart). A
+// delimiter run never pairs across a block boundary, and any run left unpaired
+// is literal text.
+// Unicode punctuation, not just ASCII (§5.3). With an ASCII-only test, `“` and
+// `，` count as ordinary letters, and a run hugged by CJK punctuation on the
+// outside and ASCII punctuation on the inside stops flanking: `“*(foo)*”` loses
+// its emphasis. CommonMark's rule is Unicode-wide, and the algorithm here is
+// meant to be that rule restricted to `*` and `~~` — not a narrower one.
+const PUNCT = /[\p{P}\p{S}]/u;
+const isPunct = (c) => c !== undefined && PUNCT.test(c);
+const isWS = (c) => c === undefined || /\s/.test(c);
+// Left/right-flanking for a delimiter run, given the chars on either side.
+function flank(before, after) {
+    const bWS = isWS(before), aWS = isWS(after), bP = isPunct(before), aP = isPunct(after);
+    return { open: !aWS && (!aP || bWS || bP), close: !bWS && (!bP || aWS || aP) };
+}
+// Split the mixed phase-A sequence into a doubly-linked list of text,
+// delimiter-run, and atom nodes. A delimiter run at the edge of a text part
+// flanks against the neighboring part's edge character — an atom's recorded
+// source edge, or the adjacent char of a neighboring text part — and against
+// nothing (whitespace) at the ends of the sequence.
+function tokenizeRuns(parts) {
+    let head = null, tail = null;
+    const push = (node) => { node.prev = tail; if (tail)
+        tail.next = node;
+    else
+        head = node; tail = node; };
+    // …and thread every delimiter onto the delimiter-only chain as it is pushed.
+    let dhead = null, dtail = null, dn = 0;
+    const pushDelim = (d) => {
+        d.idx = dn++;
+        d.dprev = dtail;
+        if (dtail)
+            dtail.dnext = d;
+        else
+            dhead = d;
+        dtail = d;
+        push(d);
+    };
+    for (let k = 0; k < parts.length; k++) {
+        const part = parts[k];
+        if (typeof part !== "string") {
+            push({ t: "atom", node: part.node, prev: null, next: null });
+            continue;
+        }
+        const s = part;
+        // A text part's neighbors are always atoms (or the sequence edge):
+        // scanAtoms flushes buffered text exactly when it emits an atom, so two
+        // text parts are never adjacent.
+        const before0 = k > 0 ? parts[k - 1].last : undefined;
+        const after0 = k + 1 < parts.length ? parts[k + 1].first : undefined;
+        let i = 0;
+        while (i < s.length) {
+            const c = s[i];
+            if (c === "*" || c === "~") {
+                let j = i;
+                while (s[j] === c)
+                    j++;
+                const n = j - i;
+                if (c === "~" && n < 2)
+                    push({ t: "text", v: "~", prev: null, next: null });
+                else {
+                    const f = flank(i > 0 ? s[i - 1] : before0, j < s.length ? s[j] : after0);
+                    pushDelim({ t: "delim", ch: c, n, open: f.open, close: f.close, idx: 0, dprev: null, dnext: null, prev: null, next: null });
+                }
+                i = j;
+            }
+            else {
+                let j = i;
+                while (j < s.length) {
+                    const d = s.charCodeAt(j);
+                    if (d === 42 || d === 126)
+                        break;
+                    j++;
+                } // `*`, `~`
+                push({ t: "text", v: s.slice(i, j), prev: null, next: null });
+                i = j;
+            }
+        }
+    }
+    return { head, first: dhead };
+}
+// Rule of three: when either side can also play the other role, a combined
+// length that is a multiple of three is only allowed if both lengths are.
+function rule3(o, c) {
+    if (o.close || c.open)
+        return (o.n + c.n) % 3 !== 0 || (o.n % 3 === 0 && c.n % 3 === 0);
+    return true;
+}
+// Drop a delimiter from the delimiter-only chain. Called for a spent delimiter
+// and for every delimiter that a new wrap swallows: the chain must hold exactly
+// the delimiters still pairable AT THIS LEVEL, or an opener search would reach
+// inside a finished span and splice its own list.
+function unlinkDelim(d) {
+    if (d.dprev)
+        d.dprev.dnext = d.dnext;
+    if (d.dnext)
+        d.dnext.dprev = d.dprev;
+    d.dprev = null;
+    d.dnext = null;
+}
+function unlink(node, head) {
+    if (node.prev)
+        node.prev.next = node.next;
+    else
+        head = node.next;
+    if (node.next)
+        node.next.prev = node.prev;
+    if (node.t === "delim")
+        unlinkDelim(node);
+    return head;
+}
+// The CommonMark emphasis algorithm over the delimiter list: scan closers left
+// to right, pair each with the nearest eligible opener, wrap the span, and bound
+// future searches with `bottom` so the scan stays linear and deterministic.
+function processEmphasis(head, first) {
+    // The cut-off is a delimiter POSITION, not a node: the delimiter it names can
+    // be consumed and unlinked later on, and a stale node reference would then
+    // never be reached — the search would run to the head of the list every time,
+    // which is the O(n^2) blowup this map exists to prevent. -1 means "no bound
+    // yet" (the whole prefix is searchable), matching an unset entry.
+    const bottom = new Map();
+    let closer = first;
+    while (closer) {
+        // A `~` run pairs TWO characters at a time, so one leftover character is no
+        // longer a delimiter — exactly as a lone `~` was never one (tokenizeRuns).
+        // Skipping it here is what keeps `n` from going negative: pairing a spent run
+        // again drove `n` past 0, and since the loop only advances on `n === 0` the
+        // same closer was re-paired forever, allocating a wrap each time (a hang on
+        // `~~~a~~~`) or reaching finalize with n = -1 (`"~".repeat(-1)` threw a
+        // RangeError on `~~~~a~~~`).
+        if (!closer.close || (closer.ch === "~" && closer.n < 2)) {
+            closer = closer.dnext;
+            continue;
+        }
+        const ch = closer.ch;
+        const key = `${ch}${closer.open ? 1 : 0}${closer.n % 3}`;
+        const stop = bottom.get(key) ?? -1;
+        let opener = closer.dprev;
+        let found = null;
+        while (opener && opener.idx > stop) {
+            // …and the same for the opener side: a `~` run down to one character can
+            // no longer open, so `use = 2` never takes more than a side has left.
+            if (opener.open && opener.ch === ch && (ch !== "~" || opener.n >= 2) && rule3(opener, closer)) {
+                found = opener;
+                break;
+            }
+            opener = opener.dprev;
+        }
+        if (found) {
+            const use = ch === "~" ? 2 : (found.n >= 2 && closer.n >= 2 ? 2 : 1);
+            const kind = ch === "~" ? "strike" : use === 2 ? "strong" : "emph";
+            // Gather and detach the nodes strictly between opener and closer. Any
+            // delimiter among them is now inside the new span — unpaired and literal —
+            // so it leaves the delimiter chain with them.
+            let kidsHead = null, kidsTail = null;
+            for (let p = found.next; p && p !== closer;) {
+                const q = p.next;
+                if (p.t === "delim")
+                    unlinkDelim(p);
+                p.prev = kidsTail;
+                p.next = null;
+                if (kidsTail)
+                    kidsTail.next = p;
+                else
+                    kidsHead = p;
+                kidsTail = p;
+                p = q;
+            }
+            const wrap = { t: "wrap", kind, kids: kidsHead, prev: found, next: closer };
+            found.next = wrap;
+            closer.prev = wrap;
+            found.n -= use;
+            closer.n -= use;
+            if (found.n === 0)
+                head = unlink(found, head);
+            if (closer.n === 0) {
+                const after = closer.dnext;
+                head = unlink(closer, head);
+                closer = after;
+            }
+            // else: keep the same closer (it still has delimiter characters left).
+        }
+        else {
+            // Nothing before this closer can open for this key, so no later closer
+            // with the same key need look past the delimiter just before it either.
+            bottom.set(key, closer.dprev ? closer.dprev.idx : -1);
+            closer = closer.dnext;
+        }
+    }
+    return head;
+}
+// Linked list of (possibly nested) nodes -> Inline[]; unpaired delimiters and
+// empty text vanish into literal text, with adjacent text runs merged. An
+// escaped-punctuation atom is a text Inline, so it folds into its neighbors —
+// the emitted sequence is canonical with no adjacent text nodes at any level.
+function finalize(head) {
+    const out = [];
+    const pushText = (v) => {
+        const last = out[out.length - 1];
+        if (last && last.type === "text")
+            last.value += v;
+        else if (v)
+            out.push({ type: "text", value: v });
+    };
+    for (let n = head; n; n = n.next) {
+        if (n.t === "text")
+            pushText(n.v);
+        else if (n.t === "delim")
+            pushText(n.ch.repeat(n.n));
+        else if (n.t === "atom") {
+            if (n.node.type === "text")
+                pushText(n.node.value);
+            else
+                out.push(n.node);
+        }
+        else
+            out.push({ type: n.kind, children: finalize(n.kids) });
+    }
+    return out;
+}
+function emphasize(parts) {
+    const { head, first } = tokenizeRuns(parts);
+    return head ? finalize(processEmphasis(head, first)) : [];
+}
+// `pairs` is internal: the bracket/paren partner maps of the WHOLE inline, with
+// the offset of this call's window into them. Only the recursive link-label call
+// supplies it; every external caller omits it and gets the maps built here.
+export function parseInline(s, line, sink, depth = 0, pairs) {
+    if (depth > INLINE_NESTING) {
+        // Pathological nesting (thousands of nested link labels) would overflow the
+        // call stack (R2-7). Degrade the over-deep content to text — emphasis only,
+        // no further link recursion — and flag it; never throw RangeError.
+        const diags = sink.diags;
+        if (Array.isArray(diags) && !diags.some((d) => d.code === "inline-nesting-too-deep"))
+            diags.push({ severity: "error", code: "inline-nesting-too-deep", message: `inline nesting too deep (max ${INLINE_NESTING})`, line });
+        return emphasize([s]);
+    }
+    return emphasize(scanAtoms(s, line, sink, depth, pairs ?? pairsOf(s)));
+}

@@ -1,0 +1,392 @@
+// GEML -> Markdown projection (the inverse direction of from-md.ts).
+//
+// This is a *lossy* export: Markdown has no typed-block primitive, so each GEML
+// construct is projected to the nearest GFM shape — headings, fenced code,
+// blockquotes (note), GFM tables (from the computed table model), `$$`
+// math, mermaid fences, YAML frontmatter (meta), footnote definitions. Things
+// GFM cannot express (geml-chart, `{hidden}` blocks, block ids/classes) are
+// dropped or degraded, and each such loss is reported in `notes` so a caller
+// (and an agent) knows the conversion was not faithful.
+import { docTitle, headingShift } from "./doc-title.js";
+import { buildStatechart, mermaidOf } from "./statechart.js";
+// ---------------------------------------------------------------------------
+// Inline
+// ---------------------------------------------------------------------------
+// Escape the characters that could start a Markdown inline construct, so a
+// literal text run renders verbatim. Kept deliberately light — Markdown is
+// forgiving, and over-escaping produces noisy output. `<` and `&` are among
+// them: GEML has no raw HTML (§1(5)), so `<img onerror=…>` in its prose is text,
+// and Markdown would hand it to the renderer as a live tag; an entity would
+// decode where GEML shows it as written.
+function escText(s) {
+    return s.replace(/[\\`*_\[\]<&]/g, (c) => "\\" + c);
+}
+// A code span's fence is one backtick longer than the longest run inside it,
+// padded when the value starts or ends with a backtick or is wrapped in spaces
+// (CommonMark §6.1). With a single backtick a value closed its own span, and
+// what followed it — a tag included — was live Markdown.
+function codeSpan(v) {
+    const longest = Math.max(0, ...(v.match(/`+/g) ?? []).map((r) => r.length));
+    const fence = "`".repeat(longest + 1);
+    // Wrapped in spaces with something else inside. Both ends being spaces, "a
+    // non-space anywhere" is "a non-space inside": no backtracking pattern needed.
+    const wrapped = v.startsWith(" ") && v.endsWith(" ") && /\S/.test(v);
+    const pad = /^`|`$/.test(v) || wrapped ? " " : "";
+    return fence + pad + v + pad + fence;
+}
+// TeX between `$` is not HTML, but a renderer without math support reads it as
+// Markdown, and `<` there opens a tag. `\lt` is the same glyph to KaTeX and MathJax.
+const mathText = (v) => v.replace(/</g, "\\lt ");
+// A destination is written as GEML kept it, but Markdown ends one at a space and
+// reads `<` as its bracketed form, so those are percent-encoded.
+const mdDest = (d) => d.replace(/[ <>]/g, (c) => encodeURIComponent(c));
+function linkDest(n) {
+    if (n.href !== undefined)
+        return mdDest(n.href);
+    if (n.doc !== undefined)
+        return mdDest(n.anchor !== undefined ? `${n.doc}#${n.anchor}` : n.doc);
+    if (n.anchor !== undefined)
+        return mdDest(`#${n.anchor}`);
+    return "";
+}
+function inline(n, ctx) {
+    switch (n.type) {
+        case "text": return escText(n.value);
+        case "emph": return `*${seq(n.children, ctx)}*`;
+        case "strong": return `**${seq(n.children, ctx)}**`;
+        case "strike": return `~~${seq(n.children, ctx)}~~`;
+        case "code": return codeSpan(n.value);
+        case "math": return `$${mathText(n.value)}$`;
+        case "break": return "  \n";
+        case "image": return `![${escText(n.alt)}](${mdDest(n.src)})`;
+        case "link": return `[${seq(n.children, ctx)}](${linkDest(n)})`;
+        // Markdown has no auto-reference; project to a plain link to the anchor.
+        case "autoref": {
+            // GEP 0011: a coordinate says its value and links to the block holding it.
+            if (n.value !== undefined && n.base === undefined)
+                return escText(n.value); // no block to link to
+            const anchor = n.base ?? n.anchor;
+            const target = n.doc !== undefined ? `${n.doc}#${anchor}` : `#${anchor}`;
+            return `[${escText(n.value ?? target)}](${mdDest(target)})`;
+        }
+        // An inline projection is the inline sibling of `=== embed`, and gets the
+        // same treatment: resolve it and let the CONTENT stand here, as `--to html`
+        // does. Flattened to one line — it is standing inside a sentence.
+        case "project": {
+            // A resolved coordinate is its value, nothing to expand and nothing to link.
+            if (n.value !== undefined)
+                return escText(n.value);
+            const src = n.doc !== undefined ? `${n.doc}#${n.anchor}` : `#${n.anchor}`;
+            const got = ctx.resolveEmbed?.(src);
+            if (got !== undefined && got.trim() !== "") {
+                ctx.notes.add("inline projection expanded in place; the projection itself has no Markdown equivalent and is gone");
+                return got.trim().replace(/\s*\n+\s*/g, " ");
+            }
+            ctx.notes.add("inline projection could not be resolved; emitted a link to the target instead");
+            return `[${escText(src)}](${mdDest(src)})`;
+        }
+        case "footnote": return `[^${n.ref}]`;
+    }
+}
+function seq(ns, ctx) {
+    let out = "";
+    ns.forEach((n, k) => { out += n.type === "code" && fencedSpan(n.value, out, ns[k + 1]) ? codeFence(n.value) : inline(n, ctx); });
+    return out;
+}
+// A code span whose delimiters stand alone on their lines — the ``` pair of
+// §3.1, which GEML reads as ONE span of flow text. Markdown has the same shape
+// as a fenced code block, and that is the only faithful way to write it there:
+// a single-backtick span (all codeSpan would pick for content without
+// backticks) is inline code, whose lines GitHub runs together, and each line of
+// it is re-read for block structure first — a `- x` or `# x` inside became a
+// list item or a heading. So: the opening delimiter at the start of its line,
+// the closing one ending its line, and the content opening and closing with a
+// line break.
+function fencedSpan(v, before, next) {
+    return /^[ \t]*\n/.test(v) && /\n[ \t]*$/.test(v)
+        && /(?:^|\n)[ \t]*$/.test(before)
+        && (next === undefined || (next.type === "text" && /^[ \t]*(?:\n|$)/.test(next.value)));
+}
+// Written back between the delimiters it came with, so indentation (a list
+// item's included) and every line are exactly the source's. Longer than any
+// backtick run inside, so no line of the content can close it — in Markdown,
+// and in GEML, whose span closes on the next run of the same length.
+function codeFence(v) {
+    const longest = Math.max(0, ...(v.match(/`+/g) ?? []).map((r) => r.length));
+    const f = "`".repeat(Math.max(3, longest + 1));
+    return f + v + f;
+}
+// Escape a `|` so GFM keeps it inside the cell instead of splitting the row.
+// GitHub's tables (cmark-gfm, and markdown-it with it) read ANY `|` right after
+// a `\` as cell content and drop that one backslash before the inline parse —
+// inside a code span too, where nothing else is unescaped. So the inverse is one
+// backslash in front of every pipe, whatever stands before it. Doubling a
+// backslash run first, as a reader that counts the run's parity would need (marked
+// does), left an extra backslash in every code span holding `\|`. GEML's visual
+// form reads a row the same way (§6(a)), so `--to md` and `--from md` invert.
+function escPipe(s) {
+    return s.replace(/\|/g, "\\|");
+}
+// Inline text for a table cell: render inlines, then neutralise the two bytes
+// that would break a GFM cell.
+function cellText(c, ctx) {
+    return escPipe(seq(c.inlines, ctx)).replace(/\n/g, " ");
+}
+// ---------------------------------------------------------------------------
+// Tables
+// ---------------------------------------------------------------------------
+function sep(a) {
+    if (a === "center")
+        return ":--:";
+    if (a === "right")
+        return "---:";
+    if (a === "left")
+        return ":---";
+    return "---";
+}
+function tableToMd(t, ctx) {
+    // A `src=` table IS inlined when the parser could read it — the rows are in
+    // the model. The note used to fire on `src` alone and claim "emitted header
+    // only" over a table that had every row, which is worse than saying nothing:
+    // a reader told the data is missing goes and adds it back. And a source that
+    // WAS read has columns even when no row survives — a view filtered to nothing,
+    // a file holding only its header — so it is the missing columns that say the
+    // source could not be read, not the missing rows.
+    if (t.src !== undefined && t.columns.length === 0) {
+        ctx.notes.add(`table from external source \`${t.src}\` could not be read; emitted header only`);
+    }
+    const cols = t.columns;
+    const lines = [];
+    if (t.caption)
+        lines.push(`*${escText(t.caption)}*`, "");
+    lines.push(`| ${cols.map((c) => escPipe(escText(c))).join(" | ")} |`);
+    lines.push(`| ${cols.map((_, i) => sep(t.align[i])).join(" | ")} |`);
+    const pad = (cells) => {
+        while (cells.length < cols.length)
+            cells.push("");
+        return cells.slice(0, cols.length);
+    };
+    for (const row of t.rows)
+        lines.push(`| ${pad(row.map((c) => cellText(c, ctx))).join(" | ")} |`);
+    if (t.summary)
+        lines.push(`| ${pad(t.summary.map((c) => cellText(c, ctx))).join(" | ")} |`);
+    return lines.join("\n");
+}
+// ---------------------------------------------------------------------------
+// Blocks
+// ---------------------------------------------------------------------------
+function listToMd(b, indent, ctx) {
+    const out = [];
+    const start = b.start ?? 1;
+    b.items.forEach((item, k) => {
+        const marker = b.ordered ? `${start + k}. ` : "- ";
+        const task = item.checked === undefined ? "" : item.checked ? "[x] " : "[ ] ";
+        // A soft-wrapped item (§2.2) keeps its wrap: continuation lines indented to
+        // the content column, which both GFM and a GEML re-parse read as the same
+        // single item.
+        const [head, ...cont] = seq(item.inlines, ctx).split("\n");
+        out.push(indent + marker + task + head);
+        const contIndent = indent + " ".repeat(marker.length + task.length);
+        for (const l of cont)
+            out.push(contIndent + l);
+        for (const child of item.children ?? []) {
+            out.push(child.kind === "list" ? listToMd(child, indent + "  ", ctx) : block(child, ctx));
+        }
+        if (b.loose && k < b.items.length - 1)
+            out.push("");
+    });
+    return out.join("\n");
+}
+function fence(lang, body) {
+    // Use a longer fence than any backtick run in the body so it can't close early.
+    let max = 2;
+    for (const ln of body) {
+        const m = /^(`+)/.exec(ln.trim());
+        if (m)
+            max = Math.max(max, m[1].length);
+    }
+    const f = "`".repeat(Math.max(3, max + 1));
+    // An info string may not hold a backtick, or the line is no fence at all.
+    return [f + lang.replace(/[`\r\n]/g, ""), ...body, f].join("\n");
+}
+function attr(b, key) {
+    const v = b.attrs[key];
+    return typeof v === "string" ? v : v === undefined ? undefined : String(v);
+}
+// A typed block (raw / flow). meta is hoisted to frontmatter elsewhere.
+function typedToMd(b, ctx) {
+    if (b.hidden) {
+        ctx.notes.add("`{hidden}` block(s) dropped (not part of the rendered output)");
+        return "";
+    }
+    // A prose body (GEP-0013) projects like a flow one: its children are
+    // paragraphs, and a prose block is prose, so it lands as plain paragraphs
+    // rather than in the raw-fence path below.
+    if (b.mode === "flow" || b.mode === "prose") {
+        // A note the author marked `.footnote` projects to a Markdown footnote
+        // definition. The parser no longer synthesizes this class — the `[^id]: text`
+        // definition line was withdrawn from §5.2 — but an author still writes it,
+        // and it is the only way this projection can be produced.
+        if (b.type === "note" && b.classes.includes("footnote") && b.id) {
+            const text = (b.children ?? []).map((c) => block(c, ctx)).join(" ").replace(/\n+/g, " ").trim();
+            return `[^${b.id}]: ${text}`;
+        }
+        const inner = (b.children ?? []).map((c) => block(c, ctx)).filter(Boolean).join("\n\n");
+        // `text` is an addressable prose container, not a callout: its children
+        // project as plain paragraphs. Only `note` carries blockquote semantics.
+        if (b.prose === true)
+            return inner;
+        return inner.split("\n").map((l) => (l ? `> ${l}` : ">")).join("\n");
+    }
+    // raw modes
+    const raw = b.raw ?? [];
+    if (b.type === "code")
+        return fence(attr(b, "lang") ?? "", raw);
+    // GEP-0005: a data block projects as a fenced code block in its format —
+    // the nearest GFM shape (Markdown has no verified-data construct; that loss
+    // is the usual --to md lossiness, not a defect of the projection).
+    if (b.type === "data") {
+        // A `src=` data block has no body — the parser put the loaded value in the
+        // model instead. Emitting `raw` here produced an EMPTY fence and said
+        // nothing about it, while `--to html` showed the value: content lost in
+        // silence, which is the one outcome this projection may never have. Written
+        // the way `--to geml` canonicalises it: json at two-space indent, jsonl one
+        // compact value per line.
+        const fmt = attr(b, "format") ?? "json";
+        if (raw.length === 0 && b.value !== undefined) {
+            const v = b.value;
+            const body = fmt === "jsonl" && Array.isArray(v)
+                ? v.map((x) => JSON.stringify(x))
+                : JSON.stringify(v, null, 2).split("\n");
+            ctx.notes.add(`data from external source \`${attr(b, "src") ?? "?"}\` inlined as its loaded value`);
+            return fence(fmt, body);
+        }
+        return fence(fmt, raw);
+    }
+    if (b.type === "math")
+        return ["$$", ...raw.map(mathText), "$$"].join("\n");
+    // A `view` (GEP-0012) publishes a relation and nothing else, so it exports as
+    // the grid it renders. Without this it fell through to the unknown-type path
+    // and became an EMPTY ```view fence: `--to html` showed the rows and
+    // `--to md` showed nothing, which is the exact shape of the three losses the
+    // export-parity test was written for.
+    if ((b.type === "table" || b.type === "view") && b.table)
+        return tableToMd(b.table, ctx);
+    // §3.3: a remote source, or a view over one, has no rows at build time.
+    if (b.type === "table" || b.type === "view")
+        return `*External data ${codeSpan(attr(b, "src") ?? "")} — loaded at render time.*`;
+    if (b.type === "diagram") {
+        const fmt = attr(b, "format") ?? "";
+        if (fmt === "geml-chart") {
+            // No Markdown chart primitive: degrade to a labelled descriptor.
+            ctx.notes.add("`geml-chart` block(s) cannot render in Markdown; emitted a descriptor");
+            const desc = ["type", "data", "x", "y", "series"].map((k) => { const v = attr(b, k); return v ? `${k}=${v}` : ""; }).filter(Boolean).join(" ");
+            return fence("geml-chart", [desc]);
+        }
+        if (fmt === "geml-statechart") {
+            // geml-statechart §2.7: the picture, as Mermaid GitHub draws; the attributes
+            // stay in the source. A definition held in `data=` is a reference this
+            // single-block projection cannot follow: it degrades to a descriptor.
+            if (attr(b, "data") !== undefined) {
+                ctx.notes.add("`geml-statechart` block(s) defined in a `data=` block cannot render in Markdown; emitted a descriptor");
+                return fence("geml-statechart", [`data=${attr(b, "data")}`]);
+            }
+            const { model } = buildStatechart({ body: raw.join("\n"), attrs: b.attrs });
+            if (model !== null)
+                return fence("mermaid", mermaidOf(model).split("\n"));
+            ctx.notes.add("`geml-statechart` block(s) with errors cannot render in Markdown; emitted the body");
+            return fence("json", raw);
+        }
+        return fence(fmt, raw); // mermaid renders on GitHub; others stay as a code block
+    }
+    if (b.type === "embed") {
+        // Markdown has no transclusion, so the projection is resolved and its
+        // CONTENT stands here — the same thing `--to html` does. A reader of the
+        // export came for the text; a link to `#src` sends them looking for it.
+        //
+        // What is lost is the machinery, not the content, and it is lost on
+        // purpose. An export invites edits, and anything that let a return trip put
+        // the `embed` back — a marker in an HTML comment, say — would re-evaluate
+        // the projection over the top of those edits and lose them without a word.
+        // A snapshot does not carry the machine that produced it.
+        const target = typeof b.attrs["src"] === "string" ? b.attrs["src"].trim() : "";
+        const inlined = target === "" ? undefined : ctx.resolveEmbed?.(target, b.attrs, { headingShift: ctx.shift });
+        if (inlined !== undefined && inlined.trim() !== "") {
+            ctx.notes.add("block transclusion expanded in place; the `embed` itself has no Markdown equivalent and is gone");
+            return inlined.trimEnd();
+        }
+        // Unresolvable: no resolver, an unreachable document, a cycle. What cannot
+        // be read cannot be inlined, and a link keeps the target findable.
+        ctx.notes.add("block transclusion could not be resolved; emitted a link to the target instead");
+        return target === "" ? "" : `[${escText(target)}](${mdDest(target)})`;
+    }
+    // Unknown raw type: preserve the body in a fenced block tagged with the type.
+    ctx.notes.add(`unknown block type \`${b.type}\` emitted as a fenced code block`);
+    return fence(b.type, raw);
+}
+function block(b, ctx) {
+    switch (b.kind) {
+        case "heading": {
+            if (b.hidden) {
+                ctx.notes.add("hidden heading dropped");
+                return "";
+            }
+            if (b.id)
+                ctx.notes.add("heading id/attributes dropped (Markdown has no attribute syntax)");
+            const level = b.level + ctx.shift;
+            if (level > 6)
+                ctx.notes.add("heading deeper than level 6 after the title shift was clamped to level 6");
+            return "#".repeat(Math.min(6, level)) + " " + seq(b.inlines, ctx);
+        }
+        case "paragraph": return seq(b.inlines, ctx);
+        case "hidden": return ""; // `%%` line: never rendered
+        case "list": return listToMd(b, "", ctx);
+        case "block": return typedToMd(b, ctx);
+    }
+}
+// ---------------------------------------------------------------------------
+// Frontmatter (meta)
+// ---------------------------------------------------------------------------
+function yamlValue(v) {
+    if (typeof v === "boolean" || typeof v === "number")
+        return String(v);
+    return /^[\w .,/@-]+$/.test(v) && v.trim() === v && v !== "" ? v : JSON.stringify(v);
+}
+function frontmatter(metas) {
+    const merged = {};
+    for (const m of metas)
+        Object.assign(merged, m);
+    const keys = Object.keys(merged);
+    if (!keys.length)
+        return "";
+    return ["---", ...keys.map((k) => `${k}: ${yamlValue(merged[k])}`), "---"].join("\n");
+}
+export function gemlToMd(doc, opts = {}) {
+    const notes = new Set();
+    // The title settles the heading levels before any heading is written: with
+    // `title` in meta and no heading echoing it, the title becomes the `h1` and
+    // the body's headings move down one level (doc-title.ts). Borrowed content
+    // takes its host's shift instead of working one out from its own meta.
+    const t = opts.embedded ? undefined : docTitle(doc);
+    const shift = opts.headingShift ?? (t ? headingShift(t) : 0);
+    const ctx = { notes, shift, ...(opts.resolveEmbed ? { resolveEmbed: opts.resolveEmbed } : {}) };
+    const metas = [];
+    const parts = [];
+    for (const b of doc.children) {
+        // Hoist every `meta` block to a single YAML frontmatter at the top.
+        if (b.kind === "block" && b.type === "meta" && b.mode === "data") {
+            metas.push(b.data ?? {});
+            continue;
+        }
+        const md = block(b, ctx);
+        if (md !== "")
+            parts.push(md);
+    }
+    // A borrowed document's meta is the host's business: its frontmatter would
+    // land mid-page, and its title is metadata, not a heading of the host.
+    const fm = opts.embedded ? "" : frontmatter(metas);
+    const titleLine = t?.title !== undefined && !t.echo ? `# ${escText(t.title)}` : "";
+    const body = [titleLine, ...parts].filter((s) => s !== "").join("\n\n");
+    const md = (fm ? fm + "\n\n" : "") + body + "\n";
+    return { md, notes: [...notes] };
+}

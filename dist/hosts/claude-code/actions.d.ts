@@ -1,0 +1,509 @@
+import type { Lesson } from "../../core/dictionary.js";
+export type BoardTab = "sessions" | "flow" | "items" | "made" | "journal" | "tools";
+export type JournalFilter = "all" | "artifacts" | "evidence" | "moves" | "refusals" | "depends";
+export type Dialog = "settings" | "upgrade" | "about" | "share";
+/** What the share dialog shares, and how. */
+/** What the share dialog gives: where the work stands, a flow (a light one with its practices and rules, or the strict workflow), the session, a strict work item's journal. */
+export type ShareWhat = "status" | "journal" | "session" | "flow";
+export type ShareHow = "copy" | "file" | "pr";
+/** The question a press that cannot be taken back asks before it acts, and the word that says yes. */
+export interface Confirm {
+    question: string;
+    yes: string;
+}
+export type BoardAction = 
+/**
+ * A person's way out. `file`: the work item it is taken on, under a `file:`
+ * unit, when that is not the current one. `say`: what the person chose, in
+ * their words, sent into the conversation once it is taken, so the model
+ * hears of it.
+ */
+{
+    op: "advance";
+    to: string;
+    file?: string;
+    say?: string;
+} | {
+    op: "mark";
+    variable: string;
+    checked: boolean;
+} | {
+    op: "bind";
+    id: string;
+} | {
+    op: "refresh";
+} | {
+    op: "pause";
+} | {
+    op: "resume";
+}
+/** A person's word about keys, into the dictionary. */
+ | {
+    op: "learn";
+    lessons: Lesson[];
+    confirm?: Confirm;
+}
+/** Let the next call judged on these keys through, once; nothing is learned. */
+ | {
+    op: "pass-once";
+    keys: string[];
+}
+/** Start the bridge again after a failure. */
+ | {
+    op: "retry";
+}
+/** Show a tab; the journal's with `filter`. */
+ | {
+    op: "tab";
+    tab: BoardTab;
+    filter?: JournalFilter;
+}
+/** A work item's arrow (coach.ts): the flow tab, its flow first and the item marked. */
+ | {
+    op: "coach-go";
+    flow: string;
+    id: string;
+} | {
+    op: "filter";
+    filter: JournalFilter;
+}
+/** Open one journal entry's menu (its key), or close it. */
+ | {
+    op: "expand";
+    entry: string | null;
+}
+/** Show one journal entry's evidence under it (its key), or none. */
+ | {
+    op: "evidence";
+    entry: string | null;
+}
+/** A person takes the work item back to an earlier revision: the recorded state and variables only, never what was done. */
+ | {
+    op: "rollback";
+    rev: number;
+}
+/** Show one state of the flow below the picture: its uses and tools. */
+ | {
+    op: "flow-state";
+    id: string;
+}
+/** Open the list of workflows to switch to, or close it. */
+ | {
+    op: "flow-switch";
+    open: boolean;
+}
+/** Open a tool row's menu (its key), or close it. */
+ | {
+    op: "tool-menu";
+    key: string | null;
+}
+/** Show the field that names a new use for a tool (its key), or hide it. */
+ | {
+    op: "tool-name";
+    key: string | null;
+}
+/** What the tools tab is narrowed to, as typed. */
+ | {
+    op: "tool-search";
+    query: string;
+}
+/** List a group's tools that did not run, or fold them. */
+ | {
+    op: "tool-fold";
+    group: string;
+    open: boolean;
+}
+/** Ask for the newest version again. */
+ | {
+    op: "check-update";
+}
+/** Make a new work item's file (a matter) and put away the suggestion it answers. */
+ | {
+    op: "new-item";
+    path: string;
+    title: string;
+    text: string;
+    dismiss?: string;
+}
+/** The turn's judgement: take what it picked, drop it, or take back what it took. */
+ | {
+    op: "judge-yes";
+}
+/** Take the judgement's n-th other likely pick instead. */
+ | {
+    op: "judge-pick";
+    n: number;
+} | {
+    op: "judge-no";
+} | {
+    op: "judge-undo";
+}
+/** Put a suggestion away: it is not asked again. */
+ | {
+    op: "dismiss";
+    key: string;
+}
+/** Bring a card put away back (a branch held back, from 已暂缓): nothing is said. */
+ | {
+    op: "undismiss";
+    key: string;
+}
+/** List the closed (or the dropped) work items, or only count them; list every document the work item changed, or the newest two. */
+ | {
+    op: "fold";
+    what: "done" | "dropped" | "docs" | "held";
+    open: boolean;
+}
+/** Open the menu under an artifact (`<kind>:<name>`), or close it. */
+ | {
+    op: "artifact-menu";
+    key: string | null;
+}
+/** The 产物 tab (made.ts): one work item's artifacts alone, there (null: every one's); narrow it to one kind, or every one; list the next page. */
+ | {
+    op: "made-item";
+    id: string | null;
+} | {
+    op: "made-kind";
+    kind: "all" | "link" | "doc" | "file" | "image";
+} | {
+    op: "made-more";
+}
+/** Close a merged work item: its worktree and its local branch removed, by the model, once the person said yes. */
+ | {
+    op: "close-item";
+    id: string;
+    worktree?: string;
+}
+/** On the sessions tab: a session's record written as GEML where the press asks — `own`, or another session's id. */
+ | {
+    op: "export";
+    session: string;
+} | {
+    op: "dialog";
+    dialog: Dialog | null;
+}
+/** `expand`: the flows whose practices the flow tab lists as it opens (`*` those for every flow): 新学到 n 条 pressed. */
+ | {
+    op: "open-board";
+    tab?: BoardTab;
+    expand?: string[];
+}
+/** The band's screenshot button: the system's region capture on `platform` (win32, darwin or linux, as the bridge reported it). */
+ | {
+    op: "capture";
+    platform: string;
+} | {
+    op: "use";
+    workflow: string;
+} | {
+    op: "add";
+    workflow: string;
+}
+/** Write a workflow directory or file from a path into the project's .geml/workflows/. */
+ | {
+    op: "import";
+    path: string;
+} | {
+    op: "setting";
+    key: string;
+    value: string | boolean;
+} | {
+    op: "copy";
+    text: string;
+}
+/** Words sent into the conversation as the person's own, as if typed: an answer on the band, a step it offers; `dismiss` puts its card away first (a branch held back), `toast` says where it went. */
+/** `decisions`: what the press decides, recorded in the session record as the person's own (an answer to a registered question). */
+ | {
+    op: "say";
+    text: string;
+    confirm?: Confirm;
+    dismiss?: string;
+    toast?: string;
+    decisions?: string[];
+}
+/** A step of a work item the person judges, pressed (coach.ts pressEvent): `yes` meets it, no takes the item back; `label` the press's words, said when the item is this session's. */
+ | {
+    op: "work-meet";
+    id: string;
+    step: string;
+    yes: boolean;
+    label: string;
+}
+/** A work item put aside by the person, or taken up again. */
+ | {
+    op: "work-hold";
+    id: string;
+    held: boolean;
+}
+/** 转到本会话: another session's work item taken over by this one, which then offers its 好，做吧. */
+ | {
+    op: "work-take";
+    id: string;
+}
+/** 标为完成, 放下: a work item closed by the person's word, any session's. */
+ | {
+    op: "work-close";
+    id: string;
+    status: "done" | "dropped";
+}
+/** 好，做吧 on a work item's next step: said into the session, and the button gives way to 排队中/进行中 while the item stands as it was pressed (`at`, its record then). */
+ | {
+    op: "work-go-on";
+    id: string;
+    next: string;
+    at: string;
+}
+/** A flow of the flow tab opened (its practices listed, or a flow with none on the way shown whole), or folded; `*` the practices for every flow. */
+ | {
+    op: "manual-open";
+    flow: string;
+    open: boolean;
+}
+/** A practice taken out by the person (kept as a tombstone, so it is not learned again). */
+ | {
+    op: "practice-delete";
+    id: string;
+}
+/** A practice moved between the person's layer and the project's. */
+ | {
+    op: "practice-layer";
+    id: string;
+    layer: "personal" | "project";
+}
+/** A proposal answered: accepted (the flow changes, the project's own) or declined (not proposed again). */
+ | {
+    op: "proposal-answer";
+    id: string;
+    yes: boolean;
+}
+/** gemworks's proposal to take a skipped step out of a flow, answered. */
+ | {
+    op: "proposal-skip";
+    flow: string;
+    step: string;
+    yes: boolean;
+}
+/** 改成规定 on a practice: the model is asked to write the rule (the rule tool), which only that press lets it. */
+ | {
+    op: "practice-rule";
+    id: string;
+}
+/** A flow shared with the team: its route (the project's own), its rules and its practices, into the repository's .gemworks/, for the person to commit. */
+ | {
+    op: "flow-share";
+    flow: string;
+}
+/** A flow exported as one GEML file (its route, practices and rules), into the project's .geml/exports/. */
+ | {
+    op: "flow-export";
+    flow: string;
+}
+/** One practice shared with the team (the repository's .gemworks/practices.geml). */
+ | {
+    op: "practice-share";
+    id: string;
+}
+/** A practice for every time, asked to be written into CLAUDE.md, the change shown to the person first. */
+ | {
+    op: "practice-claude-md";
+    id: string;
+}
+/** 设为通用做法: a practice hung on every flow and step, as what it asks was said off its step too. */
+ | {
+    op: "practice-everywhere";
+    id: string;
+}
+/** 记为做法: a theme of corrections written as a practice, on the step it was said at (or every one), and linked to the theme. */
+ | {
+    op: "practice-from-theme";
+    theme: string;
+    rule: string;
+    flow: string;
+    step: string;
+    why: string;
+}
+/** A ledger card put away (忽略, 保留), with what it counted: it comes back two corrections later. */
+ | {
+    op: "ledger-dismiss";
+    key: string;
+    n: number;
+}
+/** A reference imported: an exported flow's file, or another project's .gemworks/; its steps the project lacks are offered back. */
+ | {
+    op: "reference-import";
+    path: string;
+}
+/** A work item unfolded under its row (its history), or folded (null). */
+ | {
+    op: "work-unfold";
+    id: string | null;
+}
+/** The sessions tab showing only the prompts that moved a work item (null: every prompt). */
+ | {
+    op: "session-item";
+    id: string | null;
+}
+/** A group of the work items tab listed whole, or folded to its first few. */
+ | {
+    op: "work-fold";
+    group: "you" | "me" | "wait" | "held";
+    open: boolean;
+}
+/** One answer of several asked in one reply, the `index`-th: kept until every one is answered, then all said in one prompt. */
+ | {
+    op: "pick";
+    index: number;
+    answer: string;
+}
+/** A slash command run as if the person typed it (`/reload-plugins`), once the session is idle. */
+ | {
+    op: "command";
+    command: string;
+}
+/** Another session's decision put in the prompt box, so the next prompt names it. */
+ | {
+    op: "use-decision";
+    text: string;
+    from: string;
+}
+/** Unfold another session's turns on the session tab (its id), or fold them. */
+ | {
+    op: "session-open";
+    id: string | null;
+}
+/** The sessions tab: list every other session, or fold the rest after the first few. */
+ | {
+    op: "sessions-more";
+    all: boolean;
+}
+/** Open a local file or folder with the machine's own app (a `file:` link opens nothing on a remote surface); with `reveal`, show it selected in its folder. */
+ | {
+    op: "open-file";
+    path: string;
+    reveal?: boolean;
+}
+/** The sessions tab: list every decision, or fold the rest after the first twenty. */
+ | {
+    op: "decisions-more";
+    shown: number;
+}
+/** The sessions tab: draw thirty more of this session's turns. */
+ | {
+    op: "turns-more";
+}
+/** Show a turn's whole prompt and answer on the session tab (its prompt's id), or fold it. */
+ | {
+    op: "expand-turn";
+    id: string | null;
+}
+/** Show the session's prompts of one flow (its title), or all. */
+ | {
+    op: "session-flow";
+    flow: string | null;
+}
+/** Unfold a run of turns in another flow (its first prompt's id), or fold it. */
+ | {
+    op: "session-run";
+    id: string;
+    open: boolean;
+}
+/** Scroll the conversation to this prompt's row. */
+ | {
+    op: "locate";
+    id: string;
+    uuid?: string;
+}
+/** Ask the model to move this prompt's turn and every turn after it (the last one stays) into a new session, with the split-session skill; a person says yes first. */
+ | {
+    op: "split";
+    id: string;
+}
+/** The sessions tab: check or uncheck one of this session's turns. */
+ | {
+    op: "pick-turn";
+    id: string;
+    on: boolean;
+}
+/** The sessions tab: check every turn after the newest one checked. */
+ | {
+    op: "pick-after";
+}
+/** The sessions tab: uncheck every turn. */
+ | {
+    op: "pick-clear";
+}
+/** The sessions tab: start picking turns to split or delete (整理), or stop, which unchecks them. */
+ | {
+    op: "tidy";
+    on: boolean;
+}
+/** Ask the model to move the checked turns into one new session, or with `remove` out of the session, with the split-session skill naming them by their record ids; a person says yes first. */
+ | {
+    op: "split-picked";
+    remove: boolean;
+}
+/** The journal's memory: show one type of it, or every type (null). */
+ | {
+    op: "memory-group";
+    group: string | null;
+}
+/** Unfold one memory to what can be done to it, or fold it. */
+ | {
+    op: "memory-menu";
+    file: string | null;
+}
+/** Show the field that rewrites one memory's hook, or hide it. */
+ | {
+    op: "memory-edit";
+    file: string | null;
+}
+/** List every memory of the group unfolded, or the newest ten. */
+ | {
+    op: "memory-more";
+    shown: number;
+}
+/** Give one memory's index line a new hook. */
+ | {
+    op: "memory-set";
+    file: string;
+    hook: string;
+}
+/** Move one memory into gemworks's trash, its index line dropped; a person says yes first. */
+ | {
+    op: "memory-delete";
+    file: string;
+}
+/** Ask the model to move this prompt's one turn into a session of its own, with the split-session skill; a person says yes first. */
+ | {
+    op: "remove";
+    id: string;
+}
+/** Under a `file:` unit, make this file the current work item (the shell's last written file). */
+ | {
+    op: "switch-file";
+    file: string;
+    say?: string;
+} | {
+    op: "share";
+    what: ShareWhat;
+    how: ShareHow;
+    strip: boolean;
+    flow?: string;
+}
+/** A pick in the share dialog: what to share, how, whether paths are stripped, which flow; the dialog redraws, nothing else. */
+ | {
+    op: "share-pick";
+    what?: ShareWhat;
+    how?: ShareHow;
+    strip?: boolean;
+    flow?: string;
+};
+/** A button as the pure modules describe it: its address, its label, whether it is the main one, and what it does. */
+export interface Pressable {
+    key: string;
+    label: string;
+    primary?: boolean;
+    action: BoardAction; /** A menu entry's weight: one that destroys, one that only closes. */
+    tone?: "danger" | "quiet";
+}

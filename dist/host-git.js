@@ -1,0 +1,844 @@
+// What git and gh say about the project, for the branch unit and the git
+// signals, and which checkout a directory is in, for the work item a tool call
+// is attributed to and the place the journals live. Every call is an argument
+// vector (no shell) with a timeout; a tool that is missing or fails reads as
+// "not established", never as false.
+import { spawnSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { realPath } from "./host-fs.js";
+const TIMEOUT_MS = 10_000;
+function run(cmd, args, cwd, trim = true, timeout = TIMEOUT_MS) {
+    const r = spawnSync(cmd, args, {
+        cwd, encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+        // Never wait for a person: a prompt would hold the hook until the timeout.
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1" },
+    });
+    const error = r.error?.code;
+    return {
+        ok: r.status === 0 && !r.error,
+        out: trim ? (r.stdout ?? "").trim() : r.stdout ?? "",
+        err: (r.stderr ?? "").trim(),
+        // ENOENT is also what a working directory that is not there looks like.
+        missing: error === "ENOENT" && existsSync(cwd),
+        status: r.status,
+        ...(r.error ? { error: error ?? r.error.message } : {}),
+    };
+}
+/** `run` with extra environment variables (a private index for the content tree). */
+function runIn(cmd, args, cwd, env) {
+    const r = spawnSync(cmd, args, {
+        cwd, encoding: "utf8", timeout: TIMEOUT_MS, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...env },
+    });
+    return { ok: r.status === 0 && !r.error, out: (r.stdout ?? "").trim(), err: (r.stderr ?? "").trim(), missing: false };
+}
+/**
+ * What hardly changes for a checkout — its top, its index's path, its default
+ * branch and that branch's ref — read once and read again after MEMO_MS: one
+ * request asks it several times (a git run costs 100–200 ms on Windows), and a
+ * long-lived server (gemworks mcp) reads it afresh soon enough.
+ */
+const MEMO_MS = 5_000;
+const memo = new Map();
+/** Forget what was remembered: the next question goes to git (a test that answers several requests in one process, as several processes would). */
+export function forgetGitFacts() {
+    memo.clear();
+    asked.clear();
+}
+/**
+ * What git said during the request being answered, said once: one request
+ * opens the session's workspace and the one a tool call is attributed to, and
+ * each read the branch and how far it is ahead. Only inside a request the
+ * bridge opened (beginGitRequest, then endGitRequest): outside one — a test, the
+ * MCP server — every question goes to git, as it always did.
+ */
+let inRequest = false;
+const asked = new Map();
+export function beginGitRequest() {
+    asked.clear();
+    inRequest = true;
+}
+export function endGitRequest() {
+    asked.clear();
+    inRequest = false;
+}
+function once(key, read) {
+    if (!inRequest)
+        return read();
+    if (asked.has(key))
+        return asked.get(key);
+    const value = read();
+    asked.set(key, value);
+    return value;
+}
+/**
+ * The checkout's git directory and the repository's common one (a worktree's
+ * .git is a file naming its own directory, whose commondir names the shared
+ * one); undefined when root holds no .git, or one this does not read.
+ */
+function gitDirsOf(root) {
+    const dot = join(root, ".git");
+    try {
+        if (statSync(dot).isDirectory())
+            return { git: dot, common: dot };
+        const named = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dot, "utf8"));
+        if (named === null)
+            return undefined;
+        const git = resolve(root, named[1]);
+        let common = git;
+        try {
+            common = resolve(git, readFileSync(join(git, "commondir"), "utf8").trim());
+        }
+        catch { /* a directory of its own */ }
+        return { git, common };
+    }
+    catch {
+        return undefined;
+    }
+}
+/**
+ * Whether .git's files are the whole of what git would say: no variable sends git to another directory, index or
+ * ceiling, and the refs are kept as files (loose, or in packed-refs), not in a reftable. Then a ref the files lack is
+ * not there, and git need not be started to say so — each start costs 150–400 ms on Windows.
+ */
+const GIT_ENV = ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM"];
+function filesAreAll(common) {
+    return !GIT_ENV.some((k) => (process.env[k] ?? "") !== "") && !existsSync(join(common, "reftable"));
+}
+/** A ref's commit as the files keep it, loose or packed; undefined when they do not have it. */
+function shaInFiles(common, ref) {
+    try {
+        const loose = readFileSync(join(common, ...ref.split("/")), "utf8").trim();
+        return /^[0-9a-f]{40,64}$/.test(loose) ? loose : undefined;
+    }
+    catch { /* not a loose ref: packed, or none */ }
+    try {
+        for (const line of readFileSync(join(common, "packed-refs"), "utf8").split(/\r?\n/)) {
+            const m = /^([0-9a-f]{40,64}) (.+)$/.exec(line);
+            if (m !== null && m[2] === ref)
+                return m[1];
+        }
+    }
+    catch { /* no packed refs */ }
+    return undefined;
+}
+/** Whether a ref is in the repository's common directory, loose or packed. */
+function refInFiles(common, ref) {
+    try {
+        if (statSync(join(common, ...ref.split("/"))).isFile())
+            return true;
+    }
+    catch { /* not loose */ }
+    try {
+        return readFileSync(join(common, "packed-refs"), "utf8").split(/\r?\n/).some((l) => l.endsWith(` ${ref}`));
+    }
+    catch {
+        return false;
+    }
+}
+/** HEAD's commit as the files keep it, on a branch or detached; undefined when they do not say it plainly. */
+function headShaInFiles(dirs) {
+    let head;
+    try {
+        head = readFileSync(join(dirs.git, "HEAD"), "utf8").trim();
+    }
+    catch {
+        return undefined;
+    }
+    const named = /^ref:\s*(refs\/heads\/.+)$/.exec(head);
+    if (named !== null)
+        return shaInFiles(dirs.common, named[1]);
+    return /^[0-9a-f]{40,64}$/.test(head) ? head : undefined;
+}
+/**
+ * The working tree `dir` is in, from the `.git` it or a directory above it holds — as `git rev-parse --show-toplevel`
+ * finds it; undefined where the files do not say it plainly (a variable that redirects git, a directory inside .git
+ * itself, one that is not there), and git is asked.
+ */
+function topInFiles(dir) {
+    if (!existsSync(dir))
+        return undefined;
+    const from = resolve(dir);
+    for (let d = from;; d = dirname(d)) {
+        if (existsSync(join(d, ".git"))) {
+            const dirs = gitDirsOf(d);
+            if (dirs === undefined || !filesAreAll(dirs.common))
+                return undefined;
+            const inGit = relative(dirs.git, from);
+            return inGit === "" || (!inGit.startsWith("..") && !isAbsolute(inGit)) ? undefined : d;
+        }
+        if (dirname(d) === d)
+            return undefined;
+    }
+}
+/**
+ * The branch HEAD names, read from .git's files: `{ branch }` on a branch
+ * that has commits, `"detached"` on a commit; undefined where the files do not
+ * say it plainly (an unborn branch, no .git at root, an odd HEAD), and git is
+ * asked as before.
+ */
+function headFromFiles(root) {
+    const dirs = gitDirsOf(root);
+    if (dirs === undefined)
+        return undefined;
+    let head;
+    try {
+        head = readFileSync(join(dirs.git, "HEAD"), "utf8").trim();
+    }
+    catch {
+        return undefined;
+    }
+    const named = /^ref:\s*refs\/heads\/(.+)$/.exec(head);
+    if (named !== null)
+        return refInFiles(dirs.common, `refs/heads/${named[1]}`) ? { branch: named[1] } : undefined;
+    return /^[0-9a-f]{40,64}$/.test(head) ? "detached" : undefined;
+}
+function remembered(key, read) {
+    const now = Date.now();
+    const hit = memo.get(key);
+    if (hit !== undefined && now - hit.at < MEMO_MS)
+        return hit.value;
+    const value = read();
+    memo.set(key, { at: now, value });
+    return value;
+}
+/** The default branch's ref: the local branch, else the remote's; undefined when there is neither. */
+function baseRefOf(root) {
+    return remembered(`base\0${root}`, () => {
+        const name = defaultBranchOf(root);
+        return name === undefined ? undefined
+            : [`refs/heads/${name}`, `refs/remotes/origin/${name}`].find((ref) => refExists(root, ref));
+    });
+}
+/** The remote's default branch, else a local `main` or `master`. */
+function defaultBranchOf(root) {
+    return remembered(`default\0${root}`, () => readDefaultBranch(root));
+}
+function readDefaultBranch(root) {
+    // origin/HEAD read from its file where it is one (git writes it so); else git is asked.
+    const dirs = gitDirsOf(root);
+    if (dirs !== undefined) {
+        try {
+            const named = /^ref:\s*refs\/remotes\/origin\/(.+)$/.exec(readFileSync(join(dirs.common, "refs", "remotes", "origin", "HEAD"), "utf8").trim());
+            if (named !== null)
+                return named[1];
+        }
+        catch { /* not a file: asked below */ }
+    }
+    // A symbolic ref is never packed: where the files are all there is, no origin/HEAD file means none, and git is not asked.
+    if (dirs === undefined || !filesAreAll(dirs.common)) {
+        const origin = run("git", ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], root);
+        if (origin.ok && origin.out !== "")
+            return origin.out.replace(/^origin\//, "");
+    }
+    for (const name of ["main", "master"]) {
+        if (refExists(root, `refs/heads/${name}`))
+            return name;
+    }
+    return undefined;
+}
+/** Whether a ref exists: from .git's files where they say so, either way where they are all there is, else git's rev-parse --verify. */
+function refExists(root, ref) {
+    const dirs = gitDirsOf(root);
+    if (dirs !== undefined && refInFiles(dirs.common, ref))
+        return true;
+    if (dirs !== undefined && filesAreAll(dirs.common))
+        return false;
+    return run("git", ["rev-parse", "--verify", "--quiet", ref], root).ok;
+}
+/**
+ * How many commits HEAD has that the default branch has not: its local branch, or failing that the remote's. A
+ * branch whose tip is the default branch's own commit has none, read from the files; a base the files do not have
+ * is not there; git counts the rest.
+ */
+function commitsAhead(root, defaultBranch) {
+    const dirs = gitDirsOf(root);
+    const files = dirs !== undefined && filesAreAll(dirs.common) ? dirs : undefined;
+    const head = files !== undefined ? headShaInFiles(files) : undefined;
+    for (const base of [`refs/heads/${defaultBranch}`, `refs/remotes/origin/${defaultBranch}`]) {
+        if (files !== undefined) {
+            const at = shaInFiles(files.common, base);
+            if (at === undefined && !refInFiles(files.common, base))
+                continue;
+            if (at !== undefined && at === head)
+                return 0;
+        }
+        const r = run("git", ["rev-list", "--count", `${base}..HEAD`], root);
+        if (r.ok && /^\d+$/.test(r.out))
+            return Number(r.out);
+    }
+    return undefined;
+}
+export function repoFacts(root) {
+    return once(`repo\0${root}`, () => readRepoFacts(root));
+}
+function readRepoFacts(root) {
+    // The branch from .git's files (no git started: each costs 150–400 ms here); git where they do not say it plainly.
+    const fromFiles = headFromFiles(root);
+    let head = fromFiles === undefined ? run("git", ["rev-parse", "--abbrev-ref", "HEAD"], root) : { ok: true, out: fromFiles === "detached" ? "HEAD" : fromFiles.branch, err: "", missing: false };
+    // A git that did not answer (a busy machine) is asked once more, given longer; still silent, it says nothing of the branch —
+    // never that the branch has no commits, which would take the work item away and refuse what is done on it.
+    if (!head.ok && head.error === "ETIMEDOUT")
+        head = run("git", ["rev-parse", "--abbrev-ref", "HEAD"], root, true, 3 * TIMEOUT_MS);
+    if (!head.ok && head.error === "ETIMEDOUT")
+        return { unanswered: true };
+    if (!head.ok || head.out === "") {
+        // A repository whose branch has no commit yet: rev-parse has no HEAD to resolve, but symbolic-ref still reads the branch's name.
+        const unborn = run("git", ["symbolic-ref", "--short", "-q", "HEAD"], root);
+        return unborn.ok && unborn.out !== "" ? { branch: unborn.out, noCommits: true } : {};
+    }
+    const facts = { branch: head.out };
+    const defaultBranch = defaultBranchOf(root);
+    if (defaultBranch === undefined)
+        return facts;
+    facts.defaultBranch = defaultBranch;
+    if (facts.branch === defaultBranch)
+        facts.committed = false;
+    else if (facts.branch !== "HEAD") {
+        // A detached HEAD is on no branch: whether "the branch" has commits is not established.
+        const ahead = commitsAhead(root, defaultBranch);
+        if (ahead !== undefined)
+            facts.committed = ahead > 0;
+    }
+    return facts;
+}
+/**
+ * What a checkout holds, as one id (an `until = change` signal's evidence):
+ * the git tree of its working content — every tracked and untracked file git
+ * does not ignore, as it is on disk — written from a copy of the index, so the
+ * real index is never touched and only changed files are hashed. A commit
+ * changes nothing (same content, same tree); an edit, a rebase or a pull does.
+ * Paths under .geml and node_modules are left out, so Gemworks's own writes
+ * change nothing. Undefined when git cannot say (no repository, git missing).
+ */
+export function treeFingerprint(root) {
+    // The top and its index from .git's files where they say them plainly (no git started), else from git.
+    const top = remembered(`top\0${root}`, () => {
+        const found = topInFiles(root);
+        return found !== undefined ? { ok: true, out: found, err: "", missing: false } : run("git", ["rev-parse", "--show-toplevel"], root);
+    });
+    if (!top.ok || top.out === "")
+        return undefined;
+    const index = remembered(`index\0${top.out}`, () => {
+        const dirs = gitDirsOf(top.out);
+        return dirs !== undefined && filesAreAll(dirs.common) ? { ok: true, out: join(dirs.git, "index"), err: "", missing: false }
+            : run("git", ["rev-parse", "--path-format=absolute", "--git-path", "index"], top.out);
+    });
+    if (!index.ok || index.out === "")
+        return undefined;
+    const dir = mkdtempSync(join(tmpdir(), "gemworks-tree-"));
+    try {
+        const copy = join(dir, "index");
+        if (existsSync(index.out))
+            copyFileSync(index.out, copy);
+        const env = { GIT_INDEX_FILE: copy };
+        const exclude = [":(exclude,glob)**/.geml/**", ":(exclude,glob)**/node_modules/**"];
+        if (!runIn("git", ["add", "-A", "--", ".", ...exclude], top.out, env).ok)
+            return undefined;
+        const tree = runIn("git", ["write-tree"], top.out, env);
+        return tree.ok && tree.out !== "" ? `tree:${tree.out}` : undefined;
+    }
+    finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+}
+/** An ISO time as git's own date format, which every git reads: `2026-10-15 01:23:45 +0000`. */
+const gitDate = (iso) => {
+    const ms = Date.parse(iso);
+    if (!Number.isFinite(ms))
+        return undefined;
+    const d = new Date(ms).toISOString();
+    return `${d.slice(0, 10)} ${d.slice(11, 19)} +0000`;
+};
+/**
+ * The commits on HEAD a work item's window holds, newest first, at most
+ * `limit`: with `ownBranch`, the ones the default branch has not (a
+ * branch's own); otherwise the ones committed since `since` and until
+ * `until`, only those that touch `paths` when given. Empty when git cannot
+ * say: no repository, no default branch, no commits.
+ */
+export function commitsOf(root, w, limit = 20) {
+    const args = ["-c", "core.quotePath=false", "log", `--max-count=${limit}`, "--relative", "--name-only", "--format=%x1e%H%x1f%cI%x1f%s"];
+    if (w.ownBranch === true) {
+        const base = baseRefOf(root);
+        if (base === undefined)
+            return [];
+        args.push(`${base}..HEAD`);
+    }
+    else {
+        const since = w.since !== undefined ? gitDate(w.since) : undefined;
+        const until = w.until !== undefined ? gitDate(w.until) : undefined;
+        if (since !== undefined)
+            args.push(`--since=${since}`);
+        if (until !== undefined)
+            args.push(`--until=${until}`);
+        args.push("HEAD");
+    }
+    // --full-diff: a commit that touched one of the paths lists every file it changed, not only those.
+    if (w.paths !== undefined && w.paths.length > 0)
+        args.push("--full-diff", "--", ...w.paths);
+    const r = run("git", args, root, false);
+    if (!r.ok)
+        return [];
+    const out = [];
+    for (const chunk of r.out.split("\u001e").slice(1)) {
+        const [head = "", ...rest] = chunk.split(/\r?\n/);
+        const [sha, at, subject] = head.split("\u001f");
+        if (sha === undefined || at === undefined || subject === undefined)
+            continue;
+        out.push({ sha, at, subject, files: rest.filter((line) => line !== "") });
+    }
+    return out;
+}
+/** Whether `name` is an existing local branch of the repository at `root`. */
+export function isLocalBranch(root, name) {
+    return run("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${name}`], root).ok;
+}
+/**
+ * The checkout `dir` is in: `git -C <dir> rev-parse --show-toplevel` and the
+ * common directory, whose parent is the main working tree when it is a `.git`
+ * directory — a worktree's `.git` file points into it. Undefined outside any
+ * working tree: no repository, a bare one, git missing, the directory gone.
+ */
+export function checkoutOf(dir) {
+    // From .git's files where they say it plainly: the `.git` above the directory, and the common directory it names.
+    const found = topInFiles(dir);
+    const dirs = found !== undefined ? gitDirsOf(found) : undefined;
+    if (found !== undefined && dirs !== undefined) {
+        const top = realPath(found);
+        const common = realPath(dirs.common);
+        return basename(common) === ".git" ? { top, common, main: dirname(common) } : { top, common };
+    }
+    const r = run("git", ["-C", dir, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"], dir);
+    if (!r.ok)
+        return undefined;
+    const lines = r.out.split(/\r?\n/).filter((l) => l !== "");
+    const [topLine, commonLine] = lines.slice(-2);
+    if (lines.length < 2 || topLine === undefined || commonLine === undefined)
+        return undefined;
+    const top = realPath(resolve(dir, topLine));
+    const common = realPath(resolve(dir, commonLine));
+    return basename(common) === ".git" ? { top, common, main: dirname(common) } : { top, common };
+}
+/**
+ * The directory whose `.geml/journals/` holds a project's journals: the main
+ * working tree's copy of the project's directory, which every checkout of the
+ * repository shares — a branch has one journal whichever checkout it is worked
+ * in, and removing a worktree loses none of it. A project in no repository, or
+ * in one with no main working tree to share, keeps its own (`root`, as given).
+ * git is asked only when the nearest `.git` at or above the root is a file (a
+ * worktree's): a `.git` directory there makes the root part of the main
+ * working tree already.
+ */
+export function journalBaseOf(root) {
+    const real = realPath(root);
+    for (let d = real;;) {
+        let gitDir;
+        try {
+            gitDir = statSync(join(d, ".git")).isDirectory();
+        }
+        catch {
+            gitDir = undefined;
+        }
+        if (gitDir === true)
+            return root;
+        // The `.git` file says where the main working tree is; git is asked only when it cannot be read. A git that
+        // failed once (a timeout while a plugin reloads) once made a worktree start a journal of its own.
+        if (gitDir === false)
+            return sharedBase(linkedCheckout(d) ?? checkoutOf(real), real, root);
+        const up = dirname(d);
+        if (up === d)
+            return root;
+        d = up;
+    }
+}
+/** The files git tracks under `dir`, absolute; none where `dir` is in no repository; undefined when git cannot say. */
+export function trackedUnder(dir) {
+    if (!existsSync(dir))
+        return new Set();
+    const r = run("git", ["-C", dir, "ls-files", "-z"], dir, false);
+    if (!r.ok)
+        return /not a git repository/i.test(r.err) ? new Set() : undefined;
+    return new Set(r.out.split("\0").filter((p) => p !== "").map((p) => resolve(dir, p)));
+}
+/**
+ * Which of `paths` (relative to `root`) git does not keep: the ones it
+ * ignores and does not track, every one where `root` is in no repository;
+ * undefined when git cannot say.
+ */
+export function unkeptOf(root, paths) {
+    const out = new Set();
+    for (let i = 0; i < paths.length; i += 200) {
+        const chunk = paths.slice(i, i + 200);
+        const r = run("git", ["-c", "core.quotePath=false", "check-ignore", "--", ...chunk], root, false);
+        // 0: some are ignored; 1: none is.
+        if (r.status === 1)
+            continue;
+        if (r.status !== 0) {
+            if (/not a git repository/i.test(r.err))
+                return new Set(paths);
+            return undefined;
+        }
+        for (const p of r.out.split(/\r?\n/))
+            if (p !== "")
+                out.add(p.replace(/\\/g, "/"));
+    }
+    return out;
+}
+/**
+ * A linked working tree's checkout, read from its `.git` file (`gitdir: <dir>`)
+ * and that directory's `commondir`, with no git run; undefined when either
+ * cannot be read, or the `.git` file is a submodule's (no `commondir`).
+ */
+function linkedCheckout(top) {
+    try {
+        const m = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(join(top, ".git"), "utf8"));
+        if (m === null)
+            return undefined;
+        const gitDir = resolve(top, m[1]);
+        const commonDir = join(gitDir, "commondir");
+        if (!existsSync(commonDir))
+            return undefined;
+        const common = realPath(resolve(gitDir, readFileSync(commonDir, "utf8").trim()));
+        const out = { top: realPath(top), common };
+        return basename(common) === ".git" ? { ...out, main: dirname(common) } : out;
+    }
+    catch {
+        return undefined;
+    }
+}
+/** The main working tree's copy of the project directory `real`; `root` when there is none, or it is this one. */
+function sharedBase(c, real, root) {
+    if (c?.main === undefined)
+        return root;
+    const rel = relative(c.top, real);
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel))
+        return root;
+    const base = rel === "" ? c.main : join(c.main, rel);
+    return base === real ? root : base;
+}
+const unavailable = (reason) => ({ available: false, reason });
+/** Why gh could not be asked at all, if that is the case. */
+function notRun(r) {
+    if (r.missing)
+        return "gh is not installed";
+    if (r.error === "ETIMEDOUT")
+        return `gh did not answer within ${TIMEOUT_MS / 1000} s`;
+    if (r.error)
+        return `gh could not be run (${r.error})`;
+    return undefined;
+}
+function parseJson(text) {
+    try {
+        return JSON.parse(text);
+    }
+    catch {
+        return undefined;
+    }
+}
+/** The first line gh printed to say what went wrong, for the reason shown to a person. */
+function firstLine(r) {
+    const line = (r.err || r.out).split(/\r?\n/, 1)[0].trim();
+    return line === "" ? "" : `: ${line.length > 200 ? `${line.slice(0, 200)}...` : line}`;
+}
+/** The newest pull request among those whose head is the branch (the highest number), and nothing when there is none. */
+function newestPr(list) {
+    if (!Array.isArray(list))
+        return null;
+    let newest;
+    for (const pr of list) {
+        if (pr === null || typeof pr !== "object" || typeof pr.state !== "string" || typeof pr.number !== "number")
+            return null;
+        if (newest === undefined || pr.number > newest.number)
+            newest = { state: pr.state, number: pr.number };
+    }
+    return newest;
+}
+/** What a finished run's conclusion means for CI: a skipped or neutral run did not fail. */
+const PASSING = new Set(["success", "skipped", "neutral"]);
+/** The conclusions of a run that finished and failed; one still going has none. */
+const FAILING = new Set(["failure", "cancelled", "timed_out", "action_required", "startup_failure"]);
+/**
+ * The pull request of `branch` and the CI runs on its head, as `gh` reports
+ * them. The binary is `o.gh`, else `GEMWORKS_GH`, else `gh`. The pull request is
+ * the newest one whose head is the branch (`pr list --head`, which never reads
+ * a branch named `123` as pull request 123 the way `pr view` does); a branch
+ * with none is a fact (not open, not merged); a gh that is missing, not logged
+ * in, or has no GitHub remote to ask is `available: false` with a reason, so
+ * the signals stay not established rather than turning false. Of the runs on
+ * the head each workflow counts by its newest run alone. A binary ending in
+ * `.js`, `.mjs` or `.cjs` is a stand-in run by this Node, which Windows needs:
+ * it starts no script from its shebang.
+ */
+export function ghFacts(root, branch, o = {}) {
+    const gh = (args) => ghRun(root, args, o);
+    const pr = gh(["pr", "list", "--head", branch, "--state", "all", "--json", "state,number"]);
+    const failed = notRun(pr);
+    if (failed)
+        return unavailable(failed);
+    if (!pr.ok)
+        return unavailable(`gh could not be queried (not logged in, or no GitHub remote)${firstLine(pr)}`);
+    const newest = newestPr(parseJson(pr.out));
+    if (newest === null)
+        return unavailable("gh returned output that is not a JSON list of pull requests for `pr list`");
+    const facts = { available: true, prOpen: newest?.state === "OPEN", prMerged: newest?.state === "MERGED" };
+    // Only the runs on the commit the branch is at now count: an older run says nothing about it.
+    const head = run("git", ["rev-parse", "HEAD"], root);
+    if (head.ok && head.out !== "") {
+        const runs = gh(["run", "list", "--branch", branch, "--limit", "20", "--json", "workflowName,conclusion,headSha,createdAt"]);
+        const list = runs.ok ? parseJson(runs.out) : undefined;
+        if (Array.isArray(list)) {
+            const newestOf = new Map();
+            for (const r of list) {
+                if (r === null || typeof r !== "object" || r.headSha !== head.out)
+                    continue;
+                const workflow = String(r.workflowName ?? "");
+                const at = typeof r.createdAt === "string" ? r.createdAt : "";
+                const seen = newestOf.get(workflow);
+                // gh lists the newest first, so on equal (or missing) times the earlier line stands.
+                if (seen === undefined || at > seen.at)
+                    newestOf.set(workflow, { at, success: PASSING.has(String(r.conclusion)), failed: FAILING.has(String(r.conclusion)) });
+            }
+            facts.ci = [...newestOf].map(([workflow, v]) => ({ workflow, success: v.success, ...(v.failed ? { failed: true } : {}) }));
+            facts.head = head.out;
+        }
+    }
+    return facts;
+}
+/**
+ * Local branches with commits their upstream does not have, across the
+ * repository — a worktree's branch too, since worktrees share it. `newestAt`
+ * is the branch tip's commit time. A branch with no upstream is not listed: it
+ * was never pushed, so nothing is "not pushed yet" about it. Undefined when
+ * git cannot say.
+ */
+export function branchesAhead(root) {
+    const r = run("git", ["for-each-ref", "refs/heads", "--format=%(refname:short)%09%(upstream:track)%09%(committerdate:iso-strict)"], root);
+    if (!r.ok)
+        return undefined;
+    const out = [];
+    for (const line of r.out.split(/\r?\n/)) {
+        const [branch, track, at] = line.split("\t");
+        const m = /ahead (\d+)/.exec(track ?? "");
+        if (branch !== undefined && branch !== "" && m)
+            out.push({ branch, ahead: Number(m[1]), ...(at !== undefined && at !== "" ? { newestAt: at } : {}) });
+    }
+    return out;
+}
+/** The `version` a package.json or plugin.json names; undefined when it is not JSON or has none. */
+function versionIn(text) {
+    try {
+        const v = JSON.parse(text).version;
+        return typeof v === "string" && v !== "" ? v : undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
+/** Whether version `a` is above `b`, number by number (1.2.10 above 1.2.9). */
+function above(a, b) {
+    const na = a.split(".").map((x) => Number.parseInt(x, 10));
+    const nb = b.split(".").map((x) => Number.parseInt(x, 10));
+    for (let i = 0; i < Math.max(na.length, nb.length); i++) {
+        const x = na[i] ?? 0;
+        const y = nb[i] ?? 0;
+        if (x !== y)
+            return x > y;
+    }
+    return false;
+}
+/**
+ * A version bump not yet committed: among the checkout's uncommitted changes,
+ * the first package.json or plugin.json whose `version` is above the one
+ * HEAD holds — a release-like change waiting for its commit. Undefined when
+ * there is none, or git cannot say.
+ */
+export function uncommittedBump(root) {
+    const r = run("git", ["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=no"], root, false);
+    if (!r.ok)
+        return undefined;
+    for (const line of r.out.split(/\r?\n/)) {
+        if (line.length < 4)
+            continue;
+        const named = line.slice(3);
+        const path = named.includes(" -> ") ? named.slice(named.lastIndexOf(" -> ") + 4) : named;
+        if (!/(^|\/)(package\.json|plugin\.json)$/.test(path))
+            continue;
+        let now;
+        try {
+            now = versionIn(readFileSync(join(root, path), "utf8"));
+        }
+        catch {
+            continue;
+        }
+        const h = run("git", ["show", `HEAD:${path}`], root, false);
+        const was = h.ok ? versionIn(h.out) : undefined;
+        if (now !== undefined && was !== undefined && above(now, was))
+            return { path, version: now, was };
+    }
+    return undefined;
+}
+/** The conclusions of a check that finished and failed, as gh's statusCheckRollup spells them (a check run's, or a status's state). */
+const ROLLUP_FAILED = new Set(["FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR"]);
+const ROLLUP_PASSED = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
+/**
+ * The open pull requests the person opened, with their checks: `green` when
+ * every check finished and passed, `failing` the checks that finished and
+ * failed. Undefined when gh cannot be asked — the band then says nothing of
+ * pull requests, and a hold on one is not let go. The binary is chosen as
+ * ghFacts chooses it.
+ */
+export function openPullRequests(root, o = {}) {
+    const r = ghRun(root, ["pr", "list", "--state", "open", "--author", "@me", "--limit", "30", "--json", "number,headRefName,statusCheckRollup"], o);
+    if (!r.ok)
+        return undefined;
+    const list = parseJson(r.out);
+    if (!Array.isArray(list))
+        return undefined;
+    const out = [];
+    for (const pr of list) {
+        if (pr === null || typeof pr !== "object" || typeof pr.number !== "number" || typeof pr.headRefName !== "string")
+            continue;
+        const checks = Array.isArray(pr.statusCheckRollup) ? pr.statusCheckRollup : [];
+        const read = checks.filter((c) => c !== null && typeof c === "object").map((c) => {
+            const conclusion = String(c["conclusion"] ?? c["state"] ?? "").toUpperCase();
+            const done = c["status"] === undefined || String(c["status"]).toUpperCase() === "COMPLETED";
+            return { name: String(c["name"] ?? c["context"] ?? "check"), passed: done && ROLLUP_PASSED.has(conclusion), failed: done && ROLLUP_FAILED.has(conclusion) };
+        });
+        out.push({ number: pr.number, branch: pr.headRefName, green: read.length > 0 && read.every((c) => c.passed), failing: [...new Set(read.filter((c) => c.failed).map((c) => c.name))] });
+    }
+    return out;
+}
+/**
+ * Every local branch at once — a few git runs for all of them, not one per
+ * work item — and the default branch's ref they are measured against.
+ */
+export function branchesFacts(root) {
+    const branches = new Map();
+    const base = baseRefOf(root);
+    // `%(ahead-behind:…)` is git 2.41's; before it, one count per branch.
+    let refs = base === undefined ? undefined : run("git", ["for-each-ref", "refs/heads", `--format=%(refname:short)%09%(objectname)%09%(ahead-behind:${base})`], root);
+    const counted = refs?.ok === true;
+    if (!counted)
+        refs = run("git", ["for-each-ref", "refs/heads", "--format=%(refname:short)%09%(objectname)"], root);
+    if (refs === undefined || !refs.ok)
+        return { ok: false, branches };
+    // The default branch holds a branch exactly when the branch has nothing it has not: with ahead-behind counted, that
+    // is its ahead of 0, and `git branch --merged` would only say it again; before git 2.41, git is asked.
+    const merged = counted ? undefined : new Set(base === undefined ? [] : run("git", ["branch", "--merged", base, "--format=%(refname:short)"], root).out.split(/\r?\n/).filter((b) => b !== ""));
+    for (const line of refs.out.split(/\r?\n/)) {
+        const [branch, tip, aheadBehind] = line.split("\t");
+        if (branch === undefined || branch === "" || tip === undefined)
+            continue;
+        let ahead = counted ? Number((aheadBehind ?? "").split(" ")[0]) : undefined;
+        if (!counted && base !== undefined) {
+            const c = run("git", ["rev-list", "--count", `${base}..refs/heads/${branch}`], root);
+            ahead = c.ok ? Number(c.out) : undefined;
+        }
+        const known = ahead !== undefined && Number.isFinite(ahead);
+        branches.set(branch, { tip, ...(known ? { ahead } : {}), inDefault: merged !== undefined ? merged.has(branch) : known && ahead === 0 });
+    }
+    // The linked worktrees: the main working tree comes first in the list, and a branch checked out there is in no worktree of its own.
+    const wt = run("git", ["worktree", "list", "--porcelain"], root);
+    let at;
+    let seen = 0;
+    for (const line of wt.ok ? wt.out.split(/\r?\n/) : []) {
+        if (line.startsWith("worktree "))
+            at = seen++ === 0 ? undefined : line.slice("worktree ".length);
+        const m = /^branch refs\/heads\/(.+)$/.exec(line);
+        const b = m === null ? undefined : branches.get(m[1]);
+        if (b !== undefined && at !== undefined)
+            b.worktree = at;
+    }
+    return { ok: true, ...(base !== undefined ? { base } : {}), branches };
+}
+/** Every working tree of the repository `root` is in, the main one first, as git names them; none when git cannot say. */
+export function worktreesOf(root) {
+    const wt = run("git", ["worktree", "list", "--porcelain"], root);
+    if (!wt.ok)
+        return [];
+    return wt.out.split(/\r?\n/).filter((l) => l.startsWith("worktree ")).map((l) => l.slice("worktree ".length));
+}
+/** Whether the default branch `base` holds commit `sha`; undefined when git cannot say (a commit it no longer has). */
+export function holdsCommit(root, base, sha) {
+    const r = run("git", ["merge-base", "--is-ancestor", sha, base], root);
+    if (r.ok)
+        return true;
+    // Not an ancestor is a quiet exit 1; a commit git does not have says so on stderr.
+    return r.error === undefined && r.err === "" ? false : undefined;
+}
+/** The project's pull requests by the branch each was opened from, the newest of a branch's; none when gh cannot be asked. */
+export function pullRequestsByBranch(root, o = {}) {
+    const r = ghRun(root, ["pr", "list", "--state", "all", "--limit", "100", "--json", "number,state,headRefName"], o);
+    const out = new Map();
+    const list = r.ok ? parseJson(r.out) : undefined;
+    if (!Array.isArray(list))
+        return out;
+    for (const pr of list) {
+        if (pr === null || typeof pr !== "object" || typeof pr.number !== "number" || typeof pr.headRefName !== "string")
+            continue;
+        const state = String(pr.state ?? "").toLowerCase();
+        if (state !== "open" && state !== "merged" && state !== "closed")
+            continue;
+        const had = out.get(pr.headRefName);
+        if (had === undefined || had.number < pr.number)
+            out.set(pr.headRefName, { number: pr.number, state });
+    }
+    return out;
+}
+/**
+ * One gh question. The binary is `o.gh`, else `GEMWORKS_GH`, else `gh`; one
+ * ending in .js, .mjs or .cjs is a stand-in this Node runs. gh's own answers are
+ * kept GH_KEEP_MS on disk (gh goes over the network: two of them are half the
+ * board's time), each by the checkout and the question; a failure is not kept,
+ * so gh answers again as soon as it can; `fresh` asks anew (after a git
+ * operation, a pull request may have just changed); a stand-in is never kept.
+ */
+const GH_KEEP_MS = 60_000;
+function ghRun(root, args, o = {}) {
+    const named = o.gh || process.env["GEMWORKS_GH"];
+    const bin = named || "gh";
+    const ask = () => (/\.[cm]?js$/i.test(bin) ? run(process.execPath, [bin, ...args], root) : run(bin, args, root));
+    if (named)
+        return ask();
+    const key = `${root}\0${args.join("\0")}`;
+    const path = join(tmpdir(), "gemworks", "gh-answers.json");
+    let kept = {};
+    try {
+        kept = JSON.parse(readFileSync(path, "utf8"));
+    }
+    catch {
+        kept = {};
+    }
+    const now = Date.now();
+    const hit = kept[key];
+    if (o.fresh !== true && hit !== undefined && now - hit.at < GH_KEEP_MS && typeof hit.out === "string")
+        return { ok: true, out: hit.out, err: "", missing: false, status: 0 };
+    const r = ask();
+    if (r.ok) {
+        for (const [k, v] of Object.entries(kept))
+            if (now - v.at >= GH_KEEP_MS)
+                delete kept[k];
+        kept[key] = { at: now, out: r.out };
+        try {
+            mkdirSync(dirname(path), { recursive: true });
+            writeFileSync(path, JSON.stringify(kept));
+        }
+        catch { /* kept next time */ }
+    }
+    return r;
+}
+/** ghFacts, asked at most once per branch by the function this returns: one request or tool call may read gh's facts twice (a refresh, then the status). `fresh`: past what gh said in the last minute. */
+export function ghOncePerBranch(o = {}) {
+    const asked = new Map();
+    return (root, branch) => {
+        const hit = asked.get(branch);
+        if (hit)
+            return hit;
+        const facts = ghFacts(root, branch, o.fresh === true ? { fresh: true } : {});
+        asked.set(branch, facts);
+        return facts;
+    };
+}

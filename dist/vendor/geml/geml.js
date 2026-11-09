@@ -1,0 +1,4430 @@
+#!/usr/bin/env node
+// GEML reference parser — Milestones 1 & 2: block scanner + inline content.
+//
+// M1: typed-block fences (equal-length close + longer-fence nesting), the
+// `meta` data block, ATX headings, lists and paragraphs, the attribute object
+// with §4 value typing, and a document-model JSON serialization.
+//
+// M2: inline parsing of unfenced blocks (§5 — emphasis/strong/strike, code,
+// math, media embeds, links, auto-references, footnotes) and build-time
+// reference validation (§8 — unique ids, resolvable internal/cross-document
+// references).
+// The library needs almost nothing from Node: PARSER_VERSION reads the
+// package.json beside dist/ at runtime (so it never needs hand-bumping), and
+// path joins are pure string math. Everything that touches the filesystem, the
+// home directory or a child process now lives in cli.ts — which is what keeps
+// this module safe to bundle for a browser.
+import { readFileSync, realpathSync } from "node:fs";
+import { dirname, join, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
+import { normalizeSource } from "./diagnostics.js";
+import { coerce, duplicateNames, oddNames, parseAttrs } from "./attrs.js";
+import { META_REF_SRC, parseInline, isSafeUrl, schemeOf, lineOf, backtickRun, findCodeSpanClose } from "./inline.js";
+import { deriveView, parseTable, trimWhiteSpace } from "./table.js";
+import { USES, buildChart } from "./chart.js";
+import { parseYaml } from "./yaml.js";
+import { parseEdn } from "./edn.js";
+import { iJsonFault, inexactNumber, numberLiterals, tooDeep, valueFault } from "./ijson.js";
+import { BLOCK_NESTING, BORROWED_CELLS, CHAIN_DEPTH, DATA_DEPTH } from "./bounds.js";
+import { addressUnits, } from "./selector.js";
+export { mdToGeml } from "./from-md.js";
+export { renderHtml, pageAssets } from "./render-html.js";
+// `geml-codemap/v1`'s diagram renderer. Exported so a HOST registers it —
+// codemap's own tooling, the `--to html` verb, the viewer — rather than the
+// core dispatch knowing the format by name (RenderOptions.diagrams).
+export { codeGraphDiagram } from "./codemap-render.js";
+export { declaredVocabularies, unrecognizedVocabularies, enableProfileRegistration, registerProfile, knownProfiles } from "./profiles.js";
+export { serialize } from "./serialize.js";
+export { gemlToMd } from "./to-md.js";
+export { docTitle, headingShift } from "./doc-title.js";
+export { translateBlocks, translateInlines, resolveTarget, glossaryFrom, HELD_BACK } from "./translate.js";
+// A block id is any non-whitespace run (§4), so it may contain regex
+// metacharacters. Every place that builds a RegExp from an id MUST run it
+// through this first, or a crafted id (`#a(`, `#(x+x+)+y`) turns a labeled-close
+// or reference match into an uncaught `SyntaxError` or a ReDoS on the main
+// parse path (SEC: document-controlled RegExp injection).
+export function reLit(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+// §3's labeled fence: a `=` run of any length >= 3, then the block's id, the
+// space between them optional (`===#id` closes, as fences.json pins). Every walk
+// that decides where a block ends asks this one test: two spellings of it let
+// the model and the address index disagree about a block's extent, and a write
+// checked against one landed by the other.
+export function labeledClose(id) {
+    return new RegExp(`^={3,}[ \\t]*#${reLit(id)}[ \\t]*$`);
+}
+// The `data` block's format engines (GEP-0005), shared by the inline-body
+// path and the `src=` pass: parse `body` under `fmt`, returning the value
+// and/or diagnostics. `openLineNo` anchors line numbers — the open fence for
+// an inline body, the block's own line for external content.
+function parseDataBody(fmt, body, openLineNo) {
+    const diags = [];
+    // §3.2: valid JSON is not yet a value of the domain — see ijson.ts.
+    const outside = (why, line) => {
+        diags.push({ severity: "error", code: "data-parse", message: `data: ${why}, which the value domain excludes (I-JSON)`, line });
+    };
+    const tooDeepAt = (line) => {
+        diags.push({ severity: "error", code: "data-parse", message: `data: nesting deeper than ${DATA_DEPTH} levels is outside what this processor reads`, line });
+    };
+    // §3.2: each number is its nearest binary64 value; one that does not read
+    // back as written is said, so the author can make it a string first.
+    const exactness = (literal, value, line) => {
+        const shown = inexactNumber(literal, value);
+        if (shown !== null)
+            diags.push({ severity: "warning", code: "inexact-number", message: inexactMessage(literal, shown), line });
+    };
+    const numbersRead = (read) => {
+        for (const n of read)
+            exactness(n.literal, Number(n.literal), openLineNo + 1 + n.line);
+    };
+    if (fmt === "json") {
+        const text = body.join("\n");
+        let value;
+        try {
+            value = JSON.parse(text);
+        }
+        catch (e) {
+            diags.push({ severity: "error", code: "data-parse", message: `data: body is not valid JSON (${e instanceof Error ? e.message : String(e)})`, line: jsonErrorLine(e, text, openLineNo) });
+            return { diags };
+        }
+        const deep = tooDeep(text);
+        if (deep >= 0) {
+            tooDeepAt(openLineNo + text.slice(0, deep).split("\n").length);
+            return { diags };
+        }
+        const fault = iJsonFault(text);
+        if (!fault) {
+            for (const n of numberLiterals(text))
+                exactness(n.literal, Number(n.literal), openLineNo + text.slice(0, n.offset).split("\n").length);
+            return { value, diags };
+        }
+        outside(fault.why, openLineNo + text.slice(0, fault.offset).split("\n").length);
+    }
+    else if (fmt === "jsonl") {
+        const values = [];
+        let ok = true;
+        for (let li = 0; li < body.length; li++) {
+            const t = body[li].trim();
+            if (t === "")
+                continue; // blank lines are permitted and ignored
+            try {
+                values.push(JSON.parse(t));
+            }
+            catch {
+                diags.push({ severity: "error", code: "data-parse", message: `data: body line ${li + 1} is not one JSON value`, line: openLineNo + 1 + li });
+                ok = false;
+                continue;
+            }
+            if (tooDeep(t) >= 0) {
+                tooDeepAt(openLineNo + 1 + li);
+                ok = false;
+                continue;
+            }
+            const fault = iJsonFault(t);
+            if (fault) {
+                outside(`body line ${li + 1}: ${fault.why}`, openLineNo + 1 + li);
+                ok = false;
+                continue;
+            }
+            for (const n of numberLiterals(t))
+                exactness(n.literal, Number(n.literal), openLineNo + 1 + li);
+        }
+        if (ok)
+            return { value: values, diags };
+    }
+    else if (fmt === "yaml") {
+        // This processor HAS a yaml engine, for the subset `yaml.ts` documents:
+        // §3.2 reserves the name and leaves the engine optional, so a processor
+        // without one still keeps the body raw and warns. Reading a construct
+        // outside the subset is a parse failure, not a guess.
+        const read = [];
+        const r = parseYaml(body, read);
+        if ("value" in r) {
+            const fault = valueFault(r.value);
+            if (!fault) {
+                numbersRead(read);
+                return { value: r.value, diags };
+            }
+            outside(fault, openLineNo);
+        }
+        else
+            diags.push({ severity: "error", code: "data-parse", message: `data: body is not YAML this processor reads (${r.error})`, line: openLineNo + 1 + r.line });
+    }
+    else if (fmt === "edn") {
+        // §3.2 reserves the name; this processor ships an engine for it (edn.ts),
+        // whose reading is deliberately NOT specified — see that file's header.
+        const read = [];
+        const r = parseEdn(body, read);
+        if ("value" in r) {
+            const fault = valueFault(r.value);
+            if (!fault) {
+                numbersRead(read);
+                return { value: r.value, diags };
+            }
+            outside(fault, openLineNo);
+        }
+        else
+            diags.push({ severity: "error", code: "data-parse", message: `data: body is not EDN this processor reads (${r.error})`, line: openLineNo + 1 + r.line });
+    }
+    else if (fmt === "toml") {
+        diags.push({ severity: "warning", code: "data-format-no-engine", message: `data: no \`${fmt}\` engine in this processor; body kept raw, not verified`, line: openLineNo });
+    }
+    else {
+        diags.push({ severity: "warning", code: "unknown-data-format", message: `unknown data format \`${fmt}\`; body kept raw`, line: openLineNo });
+    }
+    return { diags };
+}
+// Map a JSON.parse failure to the document line it happened on. V8 messages
+// carry "at position N" (newer Nodes add line/column, but position is the
+// stable token); counting newlines up to it gives the 1-based body line, and
+// the open fence line offsets it into the document. No position -> the fence.
+// The line a body stops being JSON on. The engine's message is no help: V8
+// names a position for some failures and not for others ("Unexpected token",
+// "Unexpected end"), which put the same kind of mistake on the fence line one
+// time and on its own line the next. So the text is scanned again here, only
+// once JSON.parse has refused it, for the first character no JSON value can
+// continue with — or its end, when it ends too soon.
+function jsonErrorLine(_e, text, openLineNo) {
+    return openLineNo + text.slice(0, jsonErrorOffset(text)).split("\n").length;
+}
+function jsonErrorOffset(text) {
+    const n = text.length;
+    let i = 0;
+    let depth = 0;
+    const stop = () => { throw new RangeError(String(i)); };
+    const digit = () => (text[i] ?? "") >= "0" && (text[i] ?? "") <= "9";
+    const ws = () => { while (i < n && (text[i] === " " || text[i] === "\t" || text[i] === "\n" || text[i] === "\r"))
+        i++; };
+    const str = () => {
+        i++;
+        while (i < n) {
+            const c = text[i];
+            if (c === "\"") {
+                i++;
+                return;
+            }
+            if (c < " ")
+                stop();
+            if (c === "\\") {
+                const e = text[i + 1];
+                if (e === "u") {
+                    for (let k = 2; k < 6; k++)
+                        if (!/[0-9a-fA-F]/.test(text[i + k] ?? "")) {
+                            i += k;
+                            stop();
+                        }
+                    i += 6;
+                    continue;
+                }
+                if (e === undefined || !"\"\\/bfnrt".includes(e)) {
+                    i++;
+                    stop();
+                }
+                i += 2;
+                continue;
+            }
+            i++;
+        }
+        stop();
+    };
+    const num = () => {
+        if (text[i] === "-")
+            i++;
+        if (text[i] === "0")
+            i++;
+        else if (digit())
+            while (digit())
+                i++;
+        else
+            stop();
+        if (text[i] === ".") {
+            i++;
+            if (!digit())
+                stop();
+            while (digit())
+                i++;
+        }
+        if (text[i] === "e" || text[i] === "E") {
+            i++;
+            if (text[i] === "+" || text[i] === "-")
+                i++;
+            if (!digit())
+                stop();
+            while (digit())
+                i++;
+        }
+    };
+    const value = () => {
+        ws();
+        const c = text[i];
+        if (c === "{" || c === "[") {
+            // Bounded as the value tree is (§3.2), so a body of ten thousand `[`
+            // cannot take the stack down with it.
+            if (++depth > DATA_DEPTH)
+                stop();
+            const close = c === "{" ? "}" : "]";
+            i++;
+            ws();
+            if (text[i] === close) {
+                i++;
+                depth--;
+                return;
+            }
+            for (;;) {
+                if (c === "{") {
+                    ws();
+                    if (text[i] !== "\"")
+                        stop();
+                    str();
+                    ws();
+                    if (text[i] !== ":")
+                        stop();
+                    i++;
+                }
+                value();
+                ws();
+                if (text[i] === ",") {
+                    i++;
+                    continue;
+                }
+                if (text[i] === close) {
+                    i++;
+                    depth--;
+                    return;
+                }
+                stop();
+            }
+        }
+        if (c === "\"")
+            return str();
+        if (c === "-" || digit())
+            return num();
+        for (const w of ["true", "false", "null"])
+            if (text.startsWith(w, i)) {
+                i += w.length;
+                return;
+            }
+        stop();
+    };
+    // `stop` is the only thing that throws here: the depth bound keeps the
+    // recursion short of the stack.
+    try {
+        value();
+        ws();
+        return Math.min(i, n);
+    }
+    catch (e) {
+        return Math.min(Number(e.message), n);
+    }
+}
+// Re-exported from ./diagnostics.js so that `Diagnostic` stays importable from
+// the package root. The catalogue of codes lives there (spec Appendix A).
+export { SEVERITY, CATALOGUE_EXEMPT } from "./diagnostics.js";
+import { vocabularyFor, unrecognizedVocabularies, declaredVocabularies, misnamespacedMetaKey } from "./profiles.js";
+import { parseCoordPath } from "./selector.js";
+import { inlineProjection, metaView, projectCoord, rowTable } from "./coord.js";
+// Type registry: which body mode each typed block uses. Unknown types are a
+// warning and fall back to `raw` (forward compatibility, §3/§8).
+//
+// A Map, not an object, because the key is the type name off a fence head — i.e.
+// document-controlled. Indexing a plain object with it answered for the whole
+// prototype chain: `=== constructor` (also toString, valueOf, hasOwnProperty,
+// isPrototypeOf, propertyIsEnumerable, toLocaleString) returned an inherited
+// FUNCTION, which is not undefined, so the unknown-block-type warning never
+// fired and a function reached the model's `mode` field — a value the published
+// `BodyMode` type says cannot occur, and one JSON.stringify silently drops.
+// Every other document-keyed registry here is already a Set or a Map.
+const REGISTRY = new Map([
+    ["code", "raw"],
+    ["diagram", "raw"],
+    ["math", "raw"],
+    ["table", "raw"], // structured table parsing lands in M3
+    ["view", "raw"], // GEP-0012: an empty derived relation
+    ["data", "raw"], // GEP-0005: value tree — a format engine parses the raw body in a second stage
+    ["embed", "raw"], // block transclusion: `src=` points at the content, body unused
+    ["note", "flow"],
+    ["text", "flow"], // addressable prose container: an id/attrs for a run of flow, no callout chrome
+    ["meta", "data"],
+]);
+// §7: built-in diagram renderer registry. Unknown formats are a warning (the
+// processor keeps the body raw rather than interpreting it).
+const DIAGRAM_RENDERERS = new Set(["mermaid", "graphviz", "dot", "d2", "plantuml", "geml-chart", "geml-code-graph"]);
+// ---------------------------------------------------------------------------
+// Lexical helpers
+// ---------------------------------------------------------------------------
+// The trailing `[ \t]*` lives INSIDE the optional attrs group on purpose. As
+// `…[ \t]*(\{.*\})?[ \t]*$` a head with no attrs had TWO runs competing for the
+// same whitespace, and the engine tried every split of it: `=== note` plus 40k
+// tabs and one stray byte took 750 ms, growing with the square. With the run
+// nested, the no-attrs case has exactly one way to match. Same language —
+// checked over a case set plus 60k random strings, byte-identical groups.
+export const FENCE_OPEN = /^(={3,})[ \t]*([A-Za-z][A-Za-z0-9_-]*)[ \t]*(?:(\{.*\})[ \t]*)?$/;
+// Heading head, matched by SCAN rather than by one regular expression. As
+// `^(#{1,6})[ \t]+(.*?)[ \t]*(\{[^}]*\})?[ \t]*$` this was the worst expression
+// in the parser: a lazy run and two whitespace runs all competing for the same
+// characters, so the engine tried every way to divide them. `# T` followed by
+// 8k tabs and one `{` took 84 SECONDS — an 8 KB line is a denial-of-service
+// payload, and headings are tested against every line of every document.
+// Nesting the trailing run only takes it from cubic to quadratic (still 18 s at
+// 128k), so the ambiguity has to go, not merely shrink.
+//
+// The scan reproduces the expression EXACTLY, and the two rules that make it
+// exact are both easy to get wrong:
+//   * `[^}]*` forbids a `}` INSIDE the group but happily allows `{`, so the
+//     group may swallow further open braces;
+//   * `(.*?)` is LAZY, so among the possible groups the engine takes the one
+//     leaving the SHORTEST text — the FIRST `{` that still works, not the last.
+// Together: the group runs to the end of the line and starts at the first `{`
+// after the last OTHER `}`. Returns the RegExpExecArray shape the call sites
+// already destructure.
+// A name in the attribute object that is not a NAME (§4). A WARNING, not an
+// error: it has always parsed, documents in the wild rely on the leniency, and
+// what the author needs is to be told — `{#a & b}` gives the id `a` and two
+// flags called `&` and `b`, which is a legal parse of something nobody wrote.
+// A name written twice in one attribute object (§4). An ERROR, not a warning,
+// unlike `name-not-a-name` above: this one makes §4's "attribute order is
+// insignificant" false, and it does it silently — the same failure shape the
+// style layer's shorthand-versus-side conflict has. There is nothing to be
+// lenient about, either: nobody writes a name twice on purpose when the second
+// one quietly wins.
+function reportDuplicateNames(a, line, diags) {
+    for (const name of duplicateNames(a)) {
+        diags.push({
+            severity: "error",
+            code: "duplicate-name",
+            message: `\`${name}\` is written more than once in one attribute object — `
+                + "a class, a `key=value` and a bare flag all write the same name (§4), and §4 says attribute order is insignificant, "
+                + "which a repeat makes false; write it once",
+            line,
+        });
+    }
+}
+function reportOddNames(a, line, diags) {
+    for (const { kind, name } of oddNames(a)) {
+        diags.push({
+            severity: "warning",
+            code: "name-not-a-name",
+            message: `${kind} \`${name}\` is not a NAME (§4: letters, digits, \`-\`, \`_\`)`
+                + (kind === "flag" ? " — an attribute object is whitespace-separated, so a space in an id or class splits it into flags like this one" : ""),
+            line,
+        });
+    }
+}
+const HEADING_HEAD = /^(#{1,6})[ \t]+/;
+function matchHeading(line) {
+    const m = HEADING_HEAD.exec(line);
+    if (!m)
+        return null;
+    const rest = trimSpaceTabEnd(line.slice(m[0].length));
+    const open = headingObjectStart(rest);
+    if (open >= 0)
+        return [line, m[1], trimSpaceTabEnd(rest.slice(0, open)), rest.slice(open)];
+    return [line, m[1], rest, undefined];
+}
+// §4, reading an attribute object: a heading's object is its trailing group.
+// Read leftwards from the final `}` — a `"` toggles a quoted span unless an odd
+// run of `\` precedes it — the nearest `{` outside a span, a code span and
+// inline math opens the object when whitespace precedes it; a `}` met first, or
+// a `{` glued to the text, means there is none. Leftwards, because the text
+// before the object may hold braces and quotes of its own (`## Set {a, b} …`,
+// `## 5" pipe {#p}`) while the object's own `"…"` may hold a `}`. Linear: one
+// pass to mark the verbatim atoms, one back to the `{`.
+function headingObjectStart(text) {
+    if (!text.endsWith("}"))
+        return -1;
+    const verbatim = verbatimMask(text);
+    if (verbatim[text.length - 1] === 1)
+        return -1;
+    let quoted = false;
+    for (let k = text.length - 2; k >= 0; k--) {
+        const c = text[k];
+        if (c === '"') {
+            let n = 0;
+            while (k - 1 - n >= 0 && text[k - 1 - n] === "\\")
+                n++;
+            if (n % 2 === 0)
+                quoted = !quoted;
+            continue;
+        }
+        if (quoted || (c !== "{" && c !== "}") || verbatim[k] === 1)
+            continue;
+        if (c === "}")
+            return -1;
+        return k === 0 || text[k - 1] === " " || text[k - 1] === "\t" ? k : -1;
+    }
+    return -1;
+}
+// The code spans and inline math of a line of inline text (§5.3(1)), as a mask:
+// 1 at every position inside one, delimiters included. Escapes are skipped the
+// way the inline parser skips them, so `\`` opens nothing.
+function verbatimMask(text) {
+    const mask = new Uint8Array(text.length);
+    let i = 0;
+    while (i < text.length) {
+        const c = text[i];
+        if (c === "\\") {
+            i += 2;
+            continue;
+        }
+        if (c === "`") {
+            const n = backtickRun(text, i);
+            const close = findCodeSpanClose(text, i, n);
+            if (close >= 0) {
+                mask.fill(1, i, close + n);
+                i = close + n;
+            }
+            else
+                i += n;
+            continue;
+        }
+        if (c === "$") {
+            const close = text.indexOf("$", i + 1);
+            if (close > i + 1) {
+                mask.fill(1, i, close + 1);
+                i = close + 1;
+            }
+            else
+                i++;
+            continue;
+        }
+        i++;
+    }
+    return mask;
+}
+// Does the text inside a `{…}` group read as an ATTRIBUTE OBJECT (§4), or as
+// prose that merely happens to contain braces? Gate for the heading diagnostic
+// below: `## Using {#hash} in URLs` really has lost its id and must warn, while
+// `# The {{key}} interpolation` and `## Set {a, b} notation` must not. Anchored
+// and linear — no lazy run — so the DoS note on matchHeading still holds.
+const ATTR_KEY_EQ = /^[A-Za-z][A-Za-z0-9_-]*=/;
+function looksLikeAttrObject(inner) {
+    const t = inner.trim();
+    return t !== "" && (t.startsWith("#") || t.startsWith(".") || ATTR_KEY_EQ.test(t));
+}
+function lastAttrObjectLike(text) {
+    let i = 0;
+    let pending = -1; // the `{` of a group still being read
+    let group = null;
+    while (i < text.length) {
+        const c = text[i];
+        if (c === "\\") {
+            i += 2;
+            continue;
+        }
+        if (c === "`") {
+            const n = backtickRun(text, i);
+            const close = findCodeSpanClose(text, i, n); // §5.3(1)
+            i = close >= 0 ? close + n : i + n;
+            continue;
+        }
+        if (c === "$") {
+            const close = text.indexOf("$", i + 1);
+            i = close > i + 1 ? close + 1 : i + 1;
+            continue;
+        }
+        // §4's `[^}]*` forbids a `}` inside the object but allows a `{`, so a group
+        // runs from the FIRST unmatched `{` to the next `}`.
+        if (c === "{") {
+            if (pending < 0)
+                pending = i;
+            i++;
+            continue;
+        }
+        if (c === "}") {
+            if (pending >= 0) {
+                const inner = text.slice(pending + 1, i);
+                if (looksLikeAttrObject(inner))
+                    group = { open: pending, close: i, inner };
+                pending = -1;
+            }
+            i++;
+            continue;
+        }
+        i++;
+    }
+    const tail = pending >= 0 ? text.slice(pending + 1) : "";
+    return { group, unclosed: looksLikeAttrObject(tail) ? tail : null };
+}
+// Clip an author's own text quoted back at them in a message: a heading line is
+// unbounded, and a diagnostic gets read in a terminal.
+function clip(s, max = 48) {
+    return s.length > max ? s.slice(0, max) + "…" : s;
+}
+// A line with the exact shape of a labeled close (§3): a `=` run and a `#id`,
+// nothing else. Matched against lines that fell through to paragraph text,
+// where such a line means the close closed nothing (stray-labeled-fence).
+const STRAY_LABELED_FENCE = /^={3,}[ \t]*#(\S+)[ \t]*$/;
+// The registered block types (§3's registry), for the fence-like check below:
+// an unknown word after `===` is likelier a wall of `=` art or foreign syntax,
+// so only a KNOWN type name earns the warning.
+const REGISTERED_TYPES = new Set(["code", "diagram", "table", "view", "math", "embed", "note", "text", "meta", "data"]);
+// A line that WANTS to open a fence — a `=` run and a registered type name —
+// but failed the fence production. The classic shape is bare, unbraced
+// attributes (`=== embed src=#a`): the line silently became prose and any
+// reference in it was never checked, which buried a real bug (all eight
+// embeds of the playground showcase shipped in this shape, rendering as
+// paragraphs under a green `check`). Matched, like STRAY_LABELED_FENCE, only
+// against lines that fell through to paragraph text — raw block bodies and
+// `\`-folded fence lines never reach that position, so the measured corpus
+// false-positive rate is zero.
+const FENCE_LIKE = /^={3,}[ \t]*([A-Za-z][A-Za-z0-9_-]*)\b/;
+// There was a `fence-glued-text` warning here, for a `=` run glued straight to
+// its type or id (`===note`, `===#sec`). It existed because the fence
+// productions demanded whitespace after the run, so those lines silently became
+// prose: a would-be OPEN turned its body into paragraphs, and a would-be CLOSE
+// stopped closing, surfacing hundreds of lines later as `unterminated-block`.
+// The productions accept them now — §3's grammar (`=== <type> <attrs>?`) never
+// required that whitespace, and `\===` is how a line is kept literal (§9) — so
+// the failure mode is gone rather than merely reported. What stays invalid is
+// a type name that does not start with a letter, and that is diagnosed the same
+// whether or not a space precedes it: not at all, exactly as `=== 3col {#a}`
+// has always behaved. A glued-only warning would have been the asymmetry.
+// Attribute evidence on a fence-like line whose type name is NOT registered: a
+// brace, or a `key=` token. With it, `=== aaa}` and `=== aaa src=#a` are
+// reported like their registered-type siblings (`=== note}`, `=== note src=#a`)
+// — one stray `}` used to buy total silence. Without it, a wall of `=` stays
+// quiet: `=== decorative divider ===` has no brace, and `divider ===` is not a
+// `key=` token.
+const ATTR_EVIDENCE = /[{}]|[A-Za-z][A-Za-z0-9_-]*=/;
+const LIST_ITEM = /^[ \t]*(?:[-*]|\d+\.)[ \t]+(.*)$/;
+// Maximum block/list nesting depth the recursive-descent scanner will build
+// before emitting a diagnostic instead of recursing further. Guards parse()
+// (scanBlocks / parseList) and, in step, the renderer against a deeply nested
+// document overflowing the call stack (DoS). 256 is far past any real document.
+export function isCloseFence(line, openLen) {
+    // trimEnd(), not /\s+$/: the regex is polynomial on a whitespace run that
+    // never reaches the end of the line, and this runs once PER LINE of every
+    // document parsed. Both strip the same set — JS `\s` and trimEnd's
+    // WhiteSpace ∪ LineTerminator are the same code points — so this is an exact
+    // swap, just without the backtracking.
+    const t = line.trimEnd();
+    return /^=+$/.test(t) && t.length === openLen;
+}
+// The id a heading derives when it carries no explicit `{#id}`.
+//
+// §4 makes this derivation NORMATIVE and spells it out as five ordered steps,
+// because `[[#id]]`, `other.geml#id` and a URL fragment have to name the same
+// block in every implementation. The five steps below ARE those steps, in that
+// order. Do not improve them here: an "improvement" makes this parser resolve
+// references differently from a conforming one, which is the one thing the
+// normative wording exists to prevent. Three such improvements were written and
+// reverted, and each is a real consequence the spec accepts rather than a defect:
+//
+//   • `## A - B` derives `a---b`, not `a-b`. Step 5 replaces runs of WHITESPACE;
+//     a literal `-` is content, and the spaces flanking it each become their own
+//     separator. Likewise `## --root` and `## root` stay distinct ids.
+//   • A heading that is only a code span derives the EMPTY id — step 2 deletes a
+//     code span "its backticks and its content alike". §4 says so in as many
+//     words: such an id "is a derived id like any other and therefore collides
+//     with a second such heading; give either one an explicit `{#id}`". Deriving
+//     a name from the code span instead also suppresses that `duplicate-id`
+//     error, which is a specified diagnostic.
+//   • A DERIVED id carries no diacritics: step 2 decomposes and step 4 then
+//     deletes every combining mark, so `## Café` derives `#cafe`. Normalising to
+//     NFC instead would keep the ones Unicode happens to have a precomposed form
+//     for and drop the rest — the same kind of input with two fates, decided by a
+//     lookup table. The cost is that headings differing only in their diacritics
+//     collide (`duplicate-id`, an error), which in a language where diacritics
+//     distinguish words is the normal case; such documents carry explicit ids.
+//     An EXPLICIT id is untouched by any of this — it is stored and reported
+//     verbatim, and only the NFD comparison in nameKey() makes its two spellings
+//     one name.
+// A `.md` file is read as Markdown (ParseOptions.markdown). One rule, in one
+// place, so no two surfaces can disagree about which files it is.
+export function isMarkdownPath(path) {
+    return /\.md$/i.test(path);
+}
+// A heading's id, for BOTH walks — the parse that registers it and the
+// addressing walk (collectSpans) that `list`/`get`/`set` read. They are two
+// computations of one name, and a heading renamed in one and not the other
+// would be two blocks to the reader and one to the writer.
+//
+// Under Markdown reading, a derived id already taken gets GitHub's suffix: the
+// second `## Notes` is `#notes-1`, the third `#notes-2`, skipping any suffix a
+// heading already holds — github-slugger's rule, so the address is the anchor
+// GitHub gives the same heading. §4's remedy for a collision is an explicit
+// `{#id}`, and a Markdown author has none to write: without this, one repeated
+// `## Summary` made the whole file unwritable, since duplicate-id is the one
+// defect no write forgives. Only headings take part, as on GitHub, and both
+// walks visit the same headings in the same order — so they agree by
+// construction. An explicit id is never renamed; a duplicate one is still an
+// error.
+function headingId(explicit, rawText, ctx) {
+    // §4: the empty string is never an id. `{#}` reads as if no id were written,
+    // and a heading whose text derives nothing has none.
+    const written = explicit === "" ? undefined : explicit;
+    let id = written ?? slug(rawText);
+    if (id === "")
+        return undefined;
+    if (!ctx.markdown)
+        return id;
+    const s = (ctx.headingSlugs ??= { used: new Set(), next: new Map() });
+    if (written === undefined && s.used.has(nameKey(id))) {
+        const base = id;
+        let n = s.next.get(nameKey(base)) ?? 0;
+        do {
+            n++;
+            id = `${base}-${n}`;
+        } while (s.used.has(nameKey(id)));
+        s.next.set(nameKey(base), n);
+    }
+    s.used.add(nameKey(id));
+    return id;
+}
+// GitHub's anchor for a heading, kept as a LINK TARGET under Markdown reading:
+// the `[C++](#c--rust)` a README's contents table carries works on GitHub, and
+// the heading's id — §4's derivation, which deletes code spans, folds whitespace
+// runs and drops diacritics — is `#c-rust`. The id stays the address; this only
+// lets the link GitHub follows resolve, as an `<a id>` anchor does.
+//
+// GitHub slugs the heading's RENDERED text: code text kept, a link's text kept
+// and its URL gone, emphasis markers and raw HTML tags gone, and a trailing
+// `{#id}` — GEML syntax, which GitHub prints — kept as text. github-slugger's
+// rule then lower-cases it, deletes every character that is not a letter, mark,
+// number, connector punctuation, space or `-`, and makes EACH space a `-` (not
+// each run), and a repeated anchor gets `-1`, `-2`, … by its own count.
+function registerGithubAnchor(ctx, h, inlines, line) {
+    const shown = withoutClosingHashes(trimSpaceTabEnd(h[0].replace(HEADING_HEAD, "")));
+    // Re-parse only when GitHub's text is not the one already parsed; a scratch
+    // sink, so GitHub's reading adds no reference of its own to the document.
+    const rendered = renderedText(shown === h[2] ? inlines : parseInline(shown, line, { refs: [], markdown: true }));
+    const base = rendered.toLowerCase().replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "").replace(/ /g, "-");
+    if (base === "")
+        return;
+    const seen = (ctx.githubAnchors ??= new Map());
+    let anchor = base;
+    while (seen.has(anchor)) {
+        // Defined: the first pass tests `base` itself, and every anchor handed out
+        // is recorded — so a count for `base` exists whenever this loop runs.
+        const n = seen.get(base) + 1;
+        seen.set(base, n);
+        anchor = `${base}-${n}`;
+    }
+    seen.set(anchor, 0);
+    (ctx.markdownTargets ??= new Set()).add(nameKey(anchor));
+}
+// CommonMark's optional closing sequence (`## Title ##`), which is not part of
+// the heading's text. Only a run of `#` that the text is separated from counts:
+// `## C#` keeps its `#`. Scanned from the end, so no regex backtracks over a
+// long whitespace run.
+function withoutClosingHashes(s) {
+    let k = s.length;
+    while (k > 0 && s[k - 1] === "#")
+        k--;
+    if (k === s.length || (k > 0 && s[k - 1] !== " " && s[k - 1] !== "\t"))
+        return s;
+    return trimSpaceTabEnd(s.slice(0, k));
+}
+// A heading's text as GitHub's renderer leaves it for the slug: what a reader
+// sees, with no markup. An image has alt text but no text content, and a raw
+// HTML tag (`<a id="x"></a>`, which Markdown reading keeps as text) is markup.
+// A text run with its tags removed — `<`, an optional `/`, a letter, then up to
+// the next `>` with no `<` or `>` between — and every `<` or `>` left over
+// dropped as well. One scan: `<scr<b>ipt>` loses `<b>` and then its stray
+// brackets, leaving `script`, which is what GitHub's anchor reads. Nothing that
+// comes out can open a tag, and the slug deletes brackets anyway; the result
+// is only ever slugged, never rendered. Each character is visited at most
+// twice: a failed tag scan stops at the next bracket, which is where the outer
+// loop resumes.
+function withoutMarkup(s) {
+    let out = "";
+    for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (c === ">")
+            continue;
+        if (c !== "<") {
+            out += c;
+            continue;
+        }
+        let j = i + 1;
+        if (s[j] === "/")
+            j++;
+        if (!/[A-Za-z]/.test(s[j] ?? ""))
+            continue;
+        let k = j + 1;
+        while (k < s.length && s[k] !== "<" && s[k] !== ">")
+            k++;
+        if (s[k] === ">")
+            i = k;
+    }
+    return out;
+}
+function renderedText(inlines) {
+    let out = "";
+    for (const n of inlines) {
+        if (n.type === "text")
+            out += withoutMarkup(n.value);
+        else if (n.type === "code" || n.type === "math")
+            out += n.value;
+        else if (n.type === "emph" || n.type === "strong" || n.type === "strike" || n.type === "link")
+            out += renderedText(n.children);
+        // No `break`: a heading is one line, and the only break it could hold is a
+        // trailing `\` — which the §4 continuation fold (foldFence) consumes before
+        // the text is ever inline-parsed. GitHub's anchor agrees: `## C++ & Rust\`
+        // is `#c--rust` there too.
+    }
+    return out;
+}
+// §4 step 3: delete every code span, recognized exactly as §5.3 phase 1 does —
+// an escaped backtick opens none, a run of n backticks closes on the next run
+// of n, and a `$…$` span is verbatim, so a backtick inside it opens nothing.
+// A single-backtick pattern here kept the content of ``x`` in the id.
+function withoutCodeSpans(s) {
+    let out = "";
+    let i = 0;
+    while (i < s.length) {
+        const c = s[i];
+        if (c === "\\" && /[!-/:-@[-`{-~]/.test(s.charAt(i + 1))) {
+            out += s.slice(i, i + 2);
+            i += 2;
+            continue;
+        }
+        if (c === "`") {
+            const n = backtickRun(s, i);
+            const close = findCodeSpanClose(s, i, n); // §5.3(1): a run of exactly n closes
+            if (close >= 0) {
+                i = close + n;
+                continue;
+            }
+            out += s.slice(i, i + n);
+            i += n;
+            continue;
+        }
+        if (c === "$") {
+            const close = s.indexOf("$", i + 1);
+            if (close > i + 1) {
+                out += s.slice(i, close + 1);
+                i = close + 1;
+                continue;
+            }
+        }
+        out += c;
+        i++;
+    }
+    return out;
+}
+// Whitespace is Unicode's White_Space property throughout, not `\s`: the two
+// differ on U+FEFF (not White_Space) and U+0085 (White_Space), and an id has to
+// come out the same in every implementation.
+function slug(text) {
+    const kept = withoutCodeSpans(text
+        .toLowerCase() // §4 step 1
+        .normalize("NFD")) // step 3
+        .replace(/[^\p{L}\p{N}\p{White_Space}\-_]/gu, ""); // step 4
+    return trimWhiteSpace(kept) // step 5
+        .replace(/\p{White_Space}+/gu, "-"); // step 6
+}
+// §4: two NAMEs are the same name when equal after NFD normalization. Every
+// comparison of an id, class or attribute key goes through this — never `===` on
+// the raw strings, or `Café` written with U+00E9 fails to match the identical
+// `Café` written as `e` + U+0301. NFD and not NFC only because decomposing is
+// cheaper; the form never escapes, because §4 also requires an id be REPORTED as
+// the document wrote it, and §0.5 forbids normalizing the stream itself (it would
+// move byte offsets inside a line and break byte-faithful block editing).
+export function nameKey(name) {
+    return name.normalize("NFD");
+}
+// ---------------------------------------------------------------------------
+// Block scanner
+// ---------------------------------------------------------------------------
+// §4: substitute `{{key}}` in flow text with the matching `=== meta` value.
+// An unknown key is a build error (single-source-of-truth, fail loudly).
+// The scan mirrors the §5.3(1) verbatim atoms: a `{{key}}` inside a code span
+// or inline math is left untouched (so GEML prose can document this very
+// syntax), and a backslash-escaped character can neither open a span nor a
+// `{{…}}` reference — `\{{key}}` renders as the literal text `{{key}}`.
+const META_REF = new RegExp(META_REF_SRC, "y");
+function interpolate(text, line, ctx) {
+    if (!text.includes("{{"))
+        return text;
+    // Markdown has no metadata interpolation: in a `.md`, `{{title}}` is a template
+    // engine's placeholder (Obsidian's, Templater's) and stays text — the same
+    // reading from-md.ts's escMetaRefs gives it on the way to GEML.
+    if (ctx.markdown)
+        return text;
+    // A paragraph arrives joined, so `line` is only where it starts; an unknown key
+    // on its third line is reported on its third line (see lineOf in inline.ts).
+    const at = lineOf(text, line);
+    let out = "";
+    let i = 0;
+    while (i < text.length) {
+        const c = text[i];
+        if (c === "\\" && i + 1 < text.length) {
+            out += c + text[i + 1];
+            i += 2;
+            continue;
+        }
+        if (c === "`") {
+            const n = backtickRun(text, i);
+            const close = findCodeSpanClose(text, i, n); // §5.3(1)
+            if (close >= 0) {
+                out += text.slice(i, close + n);
+                i = close + n;
+                continue;
+            }
+            out += text.slice(i, i + n); // unclosed run: literal, keep scanning
+            i += n;
+            continue;
+        }
+        if (c === "$") {
+            const close = text.indexOf("$", i + 1);
+            if (close > i + 1) {
+                out += text.slice(i, close + 1);
+                i = close + 1;
+                continue;
+            }
+            out += c;
+            i++;
+            continue;
+        }
+        if (c === "{" && text[i + 1] === "{") {
+            META_REF.lastIndex = i;
+            const m = META_REF.exec(text);
+            if (m) {
+                const key = m[1];
+                if (ctx.meta.has(key))
+                    out += ctx.meta.get(key);
+                else {
+                    ctx.diags.push({ severity: "error", code: "unknown-metadata-reference", message: `unknown metadata reference \`{{${key}}}\``, line: at(i) });
+                    out += m[0];
+                }
+                i = META_REF.lastIndex;
+                continue;
+            }
+        }
+        out += c;
+        i++;
+    }
+    return out;
+}
+// Register a block id, flagging duplicates as errors (§4: ids unique per doc).
+// §4: the empty string is never an id — `{#}` reads as if no id were written.
+function idOf(a) {
+    return a?.id === "" ? undefined : a?.id;
+}
+function registerId(ctx, id, line) {
+    const key = nameKey(id);
+    const first = ctx.ids.get(key);
+    if (first !== undefined) {
+        ctx.diags.push({ severity: "error", code: "duplicate-id", message: `duplicate id \`#${id}\` (first defined at line ${first.line})`, line });
+    }
+    else {
+        ctx.ids.set(key, { line, as: id });
+    }
+}
+// §5: a list marker — `-`/`*` (unordered) or `N.` (ordered) — capturing the
+// leading indent (in spaces; a tab counts as 4) and the item content. Nesting
+// is decided by that indent.
+const MARKER = /^([ \t]*)(?:[-*]|(\d+)\.)[ \t]+(.*)$/;
+function matchMarker(line) {
+    const m = MARKER.exec(line);
+    if (!m)
+        return null;
+    const ordered = m[2] !== undefined;
+    let indent = 0;
+    for (const ch of m[1]) {
+        if (ch === '\t')
+            indent += 4;
+        else
+            indent += 1;
+    }
+    const mk = { indent, ordered, rest: m[3] };
+    if (ordered)
+        mk.start = parseInt(m[2], 10);
+    return mk;
+}
+// Leading indentation in COLUMNS (a tab counts as 4), the same measure the
+// marker regex feeds into nesting decisions.
+function indentColumns(line) {
+    let n = 0;
+    for (const ch of line) {
+        if (ch === " ")
+            n += 1;
+        else if (ch === "\t")
+            n += 4;
+        else
+            break;
+    }
+    return n;
+}
+function makeListItem(mk, lineNo, ctx) {
+    let text = interpolate(mk.rest, lineNo, ctx);
+    // Task list item: a leading `[ ]` (open) or `[x]`/`[X]` (done) marker — on
+    // the item's FIRST line; continuation lines (§2.2) are already joined in,
+    // and a `[x]` there is content.
+    const nl = text.indexOf("\n");
+    const first = nl === -1 ? text : text.slice(0, nl);
+    const task = /^\[([ xX])\](?:[ \t]+(.*))?$/.exec(first);
+    const item = { text, inlines: [] };
+    if (task) {
+        item.checked = task[1] !== " ";
+        text = (task[2] ?? "") + (nl === -1 ? "" : text.slice(nl));
+        item.text = text;
+    }
+    item.inlines = parseInline(text, lineNo, ctx);
+    return item;
+}
+// §5: parse one list, nesting sub-lists by indentation. A list is a run of marker
+// lines; a deeper indent opens a sub-list under the preceding item, a shallower
+// indent closes back to an outer list, a blank line between siblings makes the
+// list *loose*, and any non-marker line ends the list.
+function parseList(lines, i, base, ctx) {
+    const mkList = (m) => {
+        const l = { kind: "list", ordered: m.ordered, items: [] };
+        if (m.ordered && m.start !== undefined)
+            l.start = m.start;
+        return l;
+    };
+    const root = mkList(matchMarker(lines[i]));
+    const stack = [{ list: root, indent: matchMarker(lines[i]).indent }];
+    let prevBlank = false;
+    let tooDeep = false;
+    while (i < lines.length) {
+        if (lines[i].trim() === "") {
+            prevBlank = true;
+            i++;
+            continue;
+        }
+        const mk = matchMarker(lines[i]);
+        if (!mk)
+            break; // a non-marker line ends the list
+        while (stack.length > 1 && mk.indent < stack[stack.length - 1].indent)
+            stack.pop();
+        const top = stack[stack.length - 1];
+        let cur;
+        if (mk.indent > top.indent) {
+            const parent = top.list.items[top.list.items.length - 1];
+            if (!parent)
+                break; // deeper indent with no parent item: defensive stop
+            if (stack.length >= BLOCK_NESTING) {
+                // Refuse to nest deeper than the cap: keep the item at the current level
+                // rather than building a model that overflows the renderer (DoS). One
+                // diagnostic per over-deep list; content is preserved, just flattened.
+                if (!tooDeep) {
+                    ctx.diags.push({ severity: "error", code: "list-nesting-too-deep", message: `list nesting too deep (max ${BLOCK_NESTING})`, line: base + i + 1 });
+                    tooDeep = true;
+                }
+                cur = top.list;
+            }
+            else {
+                cur = mkList(mk);
+                (parent.children ??= []).push(cur);
+                stack.push({ list: cur, indent: mk.indent });
+            }
+        }
+        else {
+            // §5: a change of marker type (bullet ↔ ordered) at the same level ends
+            // this list; scanBlocks then opens a fresh one at this marker. Without it,
+            // `- a` then `1. b` would merge into one mis-typed list (CommonMark §5.3).
+            if (mk.ordered !== top.list.ordered)
+                break;
+            cur = top.list;
+        }
+        if (prevBlank && cur.items.length > 0)
+            cur.loose = true;
+        // §2.2 continuation lines: a non-blank line directly below the
+        // item, indented past its MARKER, that is neither an item line nor a `%%`
+        // comment, continues the item's inline content as a soft wrap — the same
+        // join a paragraph gives its lines. A blank line still ends the item, so
+        // multi-paragraph items remain outside the language.
+        let j = i + 1;
+        while (j < lines.length) {
+            const cand = lines[j];
+            const body = cand.trim();
+            if (body === "" || body.startsWith("%%") || matchMarker(cand) !== null || indentColumns(cand) <= mk.indent)
+                break;
+            mk.rest += "\n" + body;
+            j++;
+        }
+        cur.items.push(makeListItem(mk, base + i + 1, ctx));
+        prevBlank = false;
+        i = j;
+    }
+    return { block: root, next: i };
+}
+/**
+ * A fenced block's body, and the index of the line that ended it.
+ *
+ * A block closes on the FIRST line that is a bare fence of exactly the opening
+ * length, OR — when it has an id — a labeled fence `=== #id` (a `=` run of any
+ * length >= 3 followed by the block's id). The labeled close cannot be gotten
+ * wrong by miscounting `=`, but it does NOT shadow the bare close: a same-length
+ * bare fence in the body still ends the block first, so nesting needs a longer
+ * outer fence (§3).
+ */
+function scanFenceBody(lines, start, base, openLen, id, type, openLineNo, ctx) {
+    const labeled = id !== undefined ? labeledClose(id) : null;
+    const body = [];
+    let j = start;
+    let closed = false;
+    let closedByBare = false;
+    for (; j < lines.length; j++) {
+        if (isCloseFence(lines[j], openLen)) {
+            closed = true;
+            closedByBare = true;
+            break;
+        }
+        if (labeled && labeled.test(lines[j])) {
+            closed = true;
+            break;
+        }
+        body.push(lines[j]);
+    }
+    // Remember a bare close of an id-bearing block (first definition wins,
+    // mirroring ctx.ids): if a `=== #id` line for it turns up later as plain
+    // text, the stray-labeled-fence warning can name the line that really
+    // closed the block.
+    if (closedByBare && id !== undefined && !ctx.bareClosed?.has(nameKey(id))) {
+        (ctx.bareClosed ??= new Map()).set(nameKey(id), base + j + 1);
+    }
+    if (!closed) {
+        const how = id !== undefined ? `${"=".repeat(openLen)} or \`=== #${id}\`` : "=".repeat(openLen);
+        ctx.diags.push({ severity: "error", code: "unterminated-block", message: `unterminated \`${type}\` block (no matching ${how})`, line: openLineNo });
+    }
+    return { body, end: j, closed };
+}
+/** 每个带类型的块都可以带的两个键（§4，以及 §5.2 自动引用的标签）。 */
+const UNIVERSAL_ATTRS = /^(hidden|caption)$/;
+/**
+ * `hidden` 与 `caption` 之外，只有 `allowed` 认的键合法。核心类型与 profile
+ * 放行的闭集类型共用这一段，两边的消息因此逐字相同。
+ */
+function reportUnknownAttrs(type, attrs, allowed, line, diags) {
+    for (const key of Object.keys(attrs.attrs)) {
+        if (UNIVERSAL_ATTRS.test(key) || allowed(key))
+            continue;
+        diags.push({ severity: "warning", code: "unknown-attribute", message: `unknown attribute \`${key}\` for block type \`${type}\``, line });
+    }
+}
+/**
+ * The body mode for a type, and — for the core's own types ONLY — a spelling
+ * check on its attribute keys.
+ *
+ * Which of the three branches runs decides whether that check happens at all: a
+ * profile-admitted type carries whatever keys its profile licenses, and an
+ * unknown type has already been warned about. Neither gets a second opinion.
+ */
+function bodyModeFor(type, attrs, openLineNo, ctx) {
+    const diags = ctx.diags;
+    let mode = REGISTRY.get(type);
+    if (mode === undefined && ctx.vocab.types.has(type)) {
+        // 一个 profile 放行的类型。体模式也来自 profile —— 它影响解析结果、不只是诊断，
+        // 所以必须是**显式声明**的（`bodies: { form: "flow" }`）；没声明的照旧 raw。
+        //
+        // 属性拼写检查**按类型 opt-in**：profile 给这个类型登记了 `attrs` ⇒ 闭集，查；
+        // 没登记 ⇒ 开集，不查。开集是 geml-style 要的 —— 它的非内含词一律透传给宿主
+        // 组件，核心不可能持有那份词典，一刀切会把每个透传参数报成笔误。在此之前这里
+        // 一律不查，于是 geml-form 给 form-field 登记的六个键从未被执行过：一张声明了
+        // 却不生效的表比没有更糟，它读起来像保证。
+        const licensed = ctx.vocab.attrs.get(type);
+        if (licensed !== undefined)
+            reportUnknownAttrs(type, attrs, (k) => licensed.has(k), openLineNo, diags);
+        return ctx.vocab.bodies.get(type) ?? "raw";
+    }
+    if (mode === undefined) {
+        diags.push({ severity: "warning", code: "unknown-block-type", message: `unknown block type \`${type}\`; body kept as raw`, line: openLineNo });
+        return "raw";
+    }
+    // `hidden` (§4) and `caption` (§4, and the label an auto-reference takes
+    // per §5.2) are not type-specific: every typed block may carry them. Only
+    // the extras below are per type.
+    let validRe;
+    if (type === "table")
+        validRe = /^(src|format|delim|header|format-data)$/;
+    else if (type === "view")
+        validRe = /^(src|where|order|limit|select|compute\d*|summary\d*|by|aggregate\d*)$/;
+    else if (type === "data")
+        validRe = /^(format|schema|src)$/;
+    else if (type === "embed")
+        validRe = /^(src|part)$/;
+    else if (type === "diagram")
+        validRe = /^(src|data|format|format-data|delim|header|type|rows|x|y|size|series)$/;
+    else if (type === "code")
+        validRe = /^(lang|src)$/;
+    else
+        validRe = /^$/;
+    // 本文档声明的 profile 额外放行的键（§8.6）。在此之前 codemap 的
+    // `anchor`/`name`/`entry-via` 硬编码在上面的 `code` 分支里，于是它们在
+    // 每份文档的每个 code 块上都静默通过 —— 现在只对声明了 codemap/v1 的
+    // 文档放行，其余文档拿回拼写检查。
+    const licensed = ctx.vocab.attrs.get(type);
+    reportUnknownAttrs(type, attrs, (k) => validRe.test(k) || licensed?.has(k) === true, openLineNo, diags);
+    return mode;
+}
+/**
+ * `embed`'s `src=`, registered as an ordinary reference so the existing §8
+ * resolver validates the document and the id. Without that, an embed would be
+ * the one reference shape whose rot is silent.
+ */
+function recordEmbedSrc(block, attrs, body, openLineNo, ctx) {
+    const diags = ctx.diags;
+    const src = typeof attrs.attrs["src"] === "string" ? attrs.attrs["src"].trim() : "";
+    // `part=` narrows a heading's section to its heading LINE or to what is
+    // under it. An unrecognised value keeps the whole target rather than
+    // silently selecting nothing — a projection that quietly loses content is
+    // the failure this whole design exists to remove.
+    const partAttr = attrs.attrs["part"];
+    if (partAttr !== undefined && !["whole", "head", "body", "intro"].includes(String(partAttr))) {
+        diags.push({ severity: "warning", code: "bad-embed-part", message: `embed: \`part=${String(partAttr)}\` is not \`whole\`, \`head\`, \`body\` or \`intro\`; the whole target stands`, line: openLineNo });
+    }
+    if (src === "") {
+        diags.push({ severity: "error", code: "embed-missing-src", message: "embed: missing `src=`", line: openLineNo });
+    }
+    else {
+        const hash = src.indexOf("#");
+        const docPath = hash < 0 ? src : src.slice(0, hash);
+        const anchor = hash < 0 ? undefined : src.slice(hash + 1);
+        // §9.5: a destination naming a scheme outside the allowlist MUST NOT be
+        // emitted as a navigable or loadable target, and the check belongs HERE —
+        // when the model is built — so no consumer of the model can reintroduce
+        // it. The attribute is blanked as well as reported, the same treatment a
+        // media `src` already gets: a diagnostic alone would still leave the
+        // string in `attrs` for a renderer to put in an href.
+        if (!isSafeUrl(src)) {
+            diags.push({ severity: "error", code: "unsafe-embed-scheme", message: `embed: \`src=${src}\` names a disallowed URL scheme`, line: openLineNo });
+            block.attrs = { ...block.attrs, src: "" };
+        }
+        else if (docPath !== "" && !/\.geml$/i.test(docPath)) {
+            diags.push({ severity: "error", code: "embed-target-not-geml", message: `embed: \`${docPath}\` is not a GEML document; \`src=\` names a \`.geml\` file (optionally with a #fragment)`, line: openLineNo });
+        }
+        else if (docPath === "") {
+            // Recorded with an empty doc so the self-cycle pass can see it.
+            if (anchor !== undefined)
+                (ctx.embeds ??= []).push({ doc: "", anchor, ...partOf(block.attrs), line: openLineNo });
+            // `src=#id`: a block of THIS document. Validated against local ids.
+            if (anchor !== undefined)
+                ctx.refs.push({ kind: "internal", anchor, line: openLineNo, embed: true });
+        }
+        else {
+            ctx.refs.push({ kind: "cross", doc: docPath, anchor, line: openLineNo, embed: true });
+            // Kept apart from refs: a transclusion can pull in a document that
+            // transcludes further, so cycle detection has to walk the graph.
+            (ctx.embeds ??= []).push(anchor === undefined ? { doc: docPath, ...partOf(block.attrs), line: openLineNo } : { doc: docPath, anchor, ...partOf(block.attrs), line: openLineNo });
+        }
+    }
+    if (body.some((l) => l.trim() !== "")) {
+        diags.push({ severity: "warning", code: "ignored-embed-body", message: "embed body is ignored; the target lives in `src=`", line: openLineNo });
+    }
+}
+/**
+ * What a raw body means to the types that read it in a SECOND stage.
+ *
+ * Every arm shares one shape: the body stayed raw at scan time, and this is where
+ * the type's own engine — a format, the table parser, a chart spec — reads it, or
+ * records it for a later pass that can see the whole document. A type with
+ * nothing to add has no arm.
+ */
+/**
+ * §GEP-0005's value tree, plus the two references a `data` block can carry.
+ * The body stayed raw at scan time; a format engine reads it here — the same
+ * two-stage shape `table` uses. `src=` and an inline body are exclusive, and
+ * `schema=` is reference-checked only.
+ */
+function readDataBody(block, attrs, body, openLineNo, ctx) {
+    const diags = ctx.diags;
+    // §GEP-0005: the value tree. The body stayed raw at scan time; a
+    // format engine parses it here — the same two-stage shape `table`
+    // uses. Admission to the format registry requires a SELF-DESCRIBING
+    // syntax (bytes alone determine the value): the core ships `json`
+    // (default — the model's own serialization) and `jsonl`; `yaml` and
+    // `toml` are reserved names with no engine here, and degrade exactly
+    // like an unknown `diagram` format: body kept raw, one warning.
+    const fmtRaw = attrs.attrs["format"];
+    const fmt = fmtRaw === undefined ? "json" : String(fmtRaw);
+    // `src=` names external content — the same one-source rule tables
+    // have (§6): exactly one of `src=` and an inline body. The engine
+    // runs over the file in a second pass (resolveDataSources); running
+    // it here over the empty body would report a spurious parse error.
+    const srcAttr = typeof attrs.attrs["src"] === "string" ? attrs.attrs["src"].trim() : undefined;
+    const hasBody = body.some((l) => l.trim() !== "");
+    if (srcAttr !== undefined && srcAttr !== "" && hasBody) {
+        diags.push({ severity: "error", code: "data-src-and-body", message: "data: carries both `src=` and an inline body; exactly one is permitted (the body wins here)", line: openLineNo });
+    }
+    if (srcAttr !== undefined && srcAttr !== "" && !hasBody) {
+        (ctx.dataSources ??= []).push({ block, line: openLineNo, target: srcAttr });
+    }
+    else {
+        const parsed = parseDataBody(fmt, body, openLineNo);
+        for (const d of parsed.diags)
+            diags.push(d);
+        if (parsed.value !== undefined)
+            block.value = parsed.value;
+    }
+    // `schema=` is reference-checked ONLY (GEP-0005): it must name a
+    // block or a GEML document; validating the value against it is a
+    // later GEP. The reference goes through the ordinary §8 resolver so
+    // a dangling schema rots loudly like any other reference.
+    const schema = attrs.attrs["schema"];
+    if (schema !== undefined) {
+        const s = typeof schema === "string" ? schema.trim() : "";
+        if (s.startsWith("#") && s.length > 1) {
+            ctx.refs.push({ kind: "internal", anchor: s.slice(1), line: openLineNo });
+        }
+        else if (/\.geml(#|$)/i.test(s)) {
+            const h = s.indexOf("#");
+            if (h < 0)
+                ctx.refs.push({ kind: "cross", doc: s, anchor: undefined, line: openLineNo });
+            else
+                ctx.refs.push({ kind: "cross", doc: s.slice(0, h), anchor: s.slice(h + 1), line: openLineNo });
+        }
+        else {
+            diags.push({ severity: "error", code: "bad-data-schema", message: `data: \`schema=${s}\` must name a block (\`#id\`) or a GEML document (\`doc.geml[#id]\`)`, line: openLineNo });
+        }
+    }
+    // First definition wins, matching ctx.ids/ctx.tables.
+    if (block.id !== undefined && block.value !== undefined && !ctx.dataValues?.has(nameKey(block.id))) {
+        (ctx.dataValues ??= new Map()).set(nameKey(block.id), block.value);
+    }
+}
+/**
+ * A `code` block's `src=` is a ROUTE to the code it shows —
+ * `<path>[#L<start>[-<end>]]` — resolved in a second pass, like a table's. The
+ * code-graph runtime has always fetched and sliced it at render time; checking
+ * it here is what makes a stale range a build error rather than a panel that
+ * silently shows a path.
+ */
+function readCodeBody(block, attrs, body, openLineNo, ctx) {
+    const diags = ctx.diags;
+    // `src=` on a code block is a ROUTE to the code it shows —
+    // `<path>[#L<start>[-<end>]]` — resolved in a second pass, like a
+    // table's `src=`. The code-graph runtime has always fetched and
+    // sliced it at render time; checking it here is what makes a stale
+    // range a build error instead of a panel that silently shows a path.
+    const srcAttr = typeof attrs.attrs["src"] === "string" ? attrs.attrs["src"].trim() : undefined;
+    if (srcAttr !== undefined && srcAttr !== "")
+        (ctx.codeSources ??= []).push({ block, line: openLineNo, target: srcAttr });
+}
+/**
+ * GEP-0008 §6: a `form-options` body is a value/label table, read by the SAME
+ * `parseTable` a `table` uses — another copy would drift from it, which is §10's
+ * lesson.
+ */
+function readFormOptionsBody(block, attrs, body, openLineNo, ctx) {
+    const diags = ctx.diags;
+    // 同一个 parseTable —— 另写一份迟早和 table 的语义分叉，§10 的教训。
+    const { model, diagnostics } = parseTable(body, attrs.attrs, openLineNo, ctx);
+    block.table = model;
+    for (const d of diagnostics)
+        diags.push({ ...d, line: openLineNo });
+}
+/**
+ * §6: the raw body (visual or csv/tsv) becomes one table model, and an
+ * id-bearing table registers as a relation so a `view` can name it.
+ */
+function readTableBody(block, attrs, body, openLineNo, ctx) {
+    const diags = ctx.diags;
+    const srcAttr = typeof attrs.attrs["src"] === "string" ? attrs.attrs["src"].trim() : undefined;
+    // §6: parse the raw body (visual or csv/tsv) into one table model.
+    const { model, diagnostics } = parseTable(body, attrs.attrs, openLineNo, ctx);
+    if (srcAttr !== undefined) {
+        if (srcAttr.includes("#"))
+            diags.push({ severity: "error", code: "table-source-is-block", message: `table source \`${srcAttr}\` names another block's output; use \`view\``, line: openLineNo });
+        else
+            (ctx.tableSources ??= []).push({ block, line: openLineNo, target: srcAttr });
+    }
+    block.table = model;
+    for (const d of diagnostics)
+        diags.push({ ...d, line: openLineNo });
+    // First definition wins, matching ctx.ids (a duplicate id is already
+    // reported as an error by registerId).
+    if (block.id !== undefined && !ctx.tables?.has(nameKey(block.id))) {
+        (ctx.tables ??= new Map()).set(nameKey(block.id), model);
+        (ctx.relations ??= new Map()).set(nameKey(block.id), block);
+    }
+}
+/**
+ * GEP-0012: a view is declared by `src=` and attributes ALONE — it has no body
+ * of its own, and its rows arrive in a later pass that can see the whole
+ * document.
+ */
+function readViewBody(block, attrs, body, openLineNo, ctx) {
+    const diags = ctx.diags;
+    const srcAttr = typeof attrs.attrs["src"] === "string" ? attrs.attrs["src"].trim() : "";
+    if (body.some((l) => l.trim() !== "")) {
+        diags.push({ severity: "error", code: "view-src-and-body", message: "view has a body; a view is declared by `src=` and attributes alone", line: openLineNo });
+    }
+    if (srcAttr === "") {
+        diags.push({ severity: "error", code: "view-missing-src", message: "view: missing required `src=`", line: openLineNo });
+    }
+    else {
+        (ctx.viewSources ??= []).push({ block, line: openLineNo, target: srcAttr });
+    }
+    block.table = { header: true, columns: [], align: [], rows: [], src: srcAttr };
+    if (block.id !== undefined && !ctx.tables?.has(nameKey(block.id))) {
+        (ctx.tables ??= new Map()).set(nameKey(block.id), block.table);
+        (ctx.relations ??= new Map()).set(nameKey(block.id), block);
+    }
+}
+/**
+ * §7: a diagram's format selects a RENDERER, so the body stays raw whatever it
+ * says. The two native formats are resolved in a second pass instead, and an
+ * unknown format is a warning unless a declared vocabulary admits it (§8.6.1).
+ */
+function readDiagramBody(block, attrs, body, openLineNo, ctx) {
+    const diags = ctx.diags;
+    const fmt = attrs.attrs["format"];
+    if (fmt === "geml-chart") {
+        // §7: native chart — resolved in a second pass (data=#id may be
+        // defined later in the document).
+        if (body.length > 0 && body.some((l) => l.trim() !== "")) {
+            diags.push({ severity: "warning", code: "ignored-diagram-body", message: "geml-chart body is ignored; the chart spec lives in attributes", line: openLineNo });
+        }
+        (ctx.charts ??= []).push({ block, line: openLineNo });
+    }
+    else if (fmt === "geml-code-graph") {
+        // Code-graph embed (GEP-0003): the ONLY attribute is src=, pointing
+        // at a codemap document; roots/depth come from that document's meta
+        // ("view config travels with the data"). Body is empty.
+        const src = attrs.attrs["src"];
+        if (typeof src !== "string" || src === "") {
+            diags.push({ severity: "warning", code: "code-graph-missing-src", message: "geml-code-graph: missing `src=` (nothing to render)", line: openLineNo });
+        }
+        else if (ctx.resolveDoc && ctx.resolveDoc(src) === null) {
+            diags.push({ severity: "warning", code: "code-graph-unresolvable-document", message: `geml-code-graph: cannot resolve document \`${src}\``, line: openLineNo });
+        }
+        if (body.length > 0 && body.some((l) => l.trim() !== "")) {
+            diags.push({ severity: "warning", code: "ignored-diagram-body", message: "geml-code-graph body is ignored; the embed is configured by `src=` alone", line: openLineNo });
+        }
+    }
+    else if (typeof fmt === "string" && !DIAGRAM_RENDERERS.has(fmt) && !ctx.vocab.formats.has(fmt)) {
+        // §7: warn on a diagram format with no registered renderer — unless a
+        // declared vocabulary admits it (§8.6.1). A diagram's format selects a
+        // RENDERER and its body is raw either way, so admitting one cannot move
+        // the document model; `table`/`data` formats choose how the body parses
+        // and are deliberately not admissible.
+        diags.push({ severity: "warning", code: "unknown-diagram-format", message: `no registered renderer for diagram format \`${fmt}\`; body kept raw`, line: openLineNo });
+    }
+}
+/**
+ * What a raw body means to the types that read it in a SECOND stage.
+ *
+ * Every arm shares one shape: the body stayed raw at scan time, and this is where
+ * the type's own engine reads it, or records it for a later pass that can see the
+ * whole document. A type with nothing to add has no arm.
+ */
+function readTypedRawBody(block, type, attrs, body, openLineNo, ctx) {
+    const arm = RAW_BODY_READERS.get(type);
+    if (arm !== undefined)
+        arm(block, attrs, body, openLineNo, ctx);
+}
+/** The second-stage reader for each type that has one. */
+const RAW_BODY_READERS = new Map([
+    ["data", readDataBody],
+    ["code", readCodeBody],
+    ["form-options", readFormOptionsBody],
+    ["table", readTableBody],
+    ["view", readViewBody],
+    ["diagram", readDiagramBody],
+]);
+/**
+ * One fenced block, from its opening fence through its close.
+ *
+ * `next` is where the caller's scan resumes: past the close when there was one,
+ * at end-of-input when the fence was never closed.
+ */
+// GEP-0008: every `form-*` block is meaningful only inside a `form`. A field
+// sits in a form or in a group; a group, an options list and a note sit
+// directly in a form; groups do not nest. Checked only when the document
+// declares the vocabulary that makes the family one — without it they are
+// unknown types with raw bodies, and §8.6 says nothing more about them.
+const FORM_CHILDREN = new Set(["form-field", "form-group", "form-options", "form-note"]);
+function checkFormChild(type, openLineNo, ctx) {
+    const parent = ctx.parentTypes?.at(-1);
+    const ok = type === "form-field" ? parent === "form" || parent === "form-group" : parent === "form";
+    if (ok)
+        return true;
+    const where = parent === undefined ? "lies outside any `form`" : `sits in a \`${parent}\``;
+    const belongs = type === "form-field"
+        ? "a field belongs directly in a `form`, or in a `form-group` inside one"
+        : type === "form-group"
+            ? "a group belongs directly in a `form`, and groups do not nest"
+            : `a \`${type}\` belongs directly in a \`form\``;
+    ctx.diags.push({ severity: "error", code: "form-child-outside-form", message: `\`${type}\` ${where}; ${belongs} (GEP-0008)`, line: openLineNo });
+    return false;
+}
+// GEP-0008: every field carries `name=` — the key its form's handler receives
+// and the step a coordinate addresses it by (`#signup["email"]`) — and no two
+// fields of one form share a name. The name is form-scoped, so the same `email`
+// may recur in every form of the document; an id stays optional.
+function checkFieldName(attrs, openLineNo, ctx) {
+    const name = attrs["name"];
+    if (typeof name !== "string" || name.length === 0) {
+        ctx.diags.push({ severity: "error", code: "form-field-missing-name", message: "a `form-field` needs `name=` — the key its handler receives, unique within the form (GEP-0008)", line: openLineNo });
+        return;
+    }
+    const names = ctx.formNames?.at(-1);
+    if (names === undefined)
+        return;
+    if (names.has(name)) {
+        ctx.diags.push({ severity: "error", code: "form-duplicate-name", message: `two fields of this form are named \`${name}\`; a name is unique within its form (GEP-0008)`, line: openLineNo });
+        return;
+    }
+    names.add(name);
+}
+function readFencedBlock(lines, i, consumed, open, base, ctx, depth) {
+    const openLen = open[1].length;
+    const type = open[2];
+    const attrs = open[3] ? parseAttrs(open[3]) : { classes: [], attrs: {} };
+    const openLineNo = base + i + 1;
+    reportOddNames(attrs, openLineNo, ctx.diags);
+    reportDuplicateNames(attrs, openLineNo, ctx.diags);
+    const id = idOf(attrs);
+    const { body, end, closed } = scanFenceBody(lines, i + consumed, base, openLen, id, type, openLineNo, ctx);
+    const mode = bodyModeFor(type, attrs, openLineNo, ctx);
+    const block = {
+        kind: "block", type, mode, classes: attrs.classes, attrs: attrs.attrs,
+    };
+    // 散文类型：核心 `text`，加上声明了 `prose` 的 profile 类型。标在块上而不是让
+    // 每个消费点各自去查 meta —— 投射、`--to md`、`--to html` 三处共用同一个判断。
+    if (type === "text" || ctx.vocab.prose.has(type))
+        block.prose = true;
+    if (id !== undefined) {
+        block.id = id;
+        registerId(ctx, id, openLineNo);
+    }
+    if (attrs.attrs["hidden"] === true)
+        block.hidden = true; // §4: not rendered, still in model
+    if (type === "embed")
+        recordEmbedSrc(block, attrs, body, openLineNo, ctx);
+    if (FORM_CHILDREN.has(type) && ctx.vocab.types.has("form")) {
+        const placed = checkFormChild(type, openLineNo, ctx);
+        if (placed && type === "form-field")
+            checkFieldName(attrs.attrs, openLineNo, ctx);
+    }
+    if (mode === "prose") {
+        block.children = scanProse(body, base + i + 1, ctx);
+    }
+    else if (mode === "flow") {
+        if (depth >= BLOCK_NESTING) {
+            // Refuse to recurse past the cap: emit a diagnostic and keep the body
+            // as raw so the parser returns cleanly instead of overflowing the
+            // call stack on a pathologically nested document (DoS).
+            ctx.diags.push({ severity: "error", code: "block-nesting-too-deep", message: `block nesting too deep (max ${BLOCK_NESTING}); body kept as raw`, line: openLineNo });
+            block.raw = body;
+        }
+        else {
+            (ctx.parentTypes ??= []).push(type);
+            if (type === "form")
+                (ctx.formNames ??= []).push(new Set());
+            block.children = scanBlocks(body, base + i + 1, ctx, depth + 1);
+            if (type === "form")
+                ctx.formNames.pop();
+            ctx.parentTypes.pop();
+        }
+    }
+    else if (mode === "data") {
+        block.data = parseData(body);
+        // A `key = value` body reads numbers too, and keeps §3.2's exactness rule.
+        body.forEach((raw, k) => {
+            const eq = raw.indexOf("=");
+            if (eq <= 0 || raw.trim() === "")
+                return;
+            const literal = raw.slice(eq + 1).trim();
+            const v = coerce(literal);
+            if (typeof v !== "number")
+                return;
+            const shown = inexactNumber(literal, v);
+            if (shown !== null)
+                ctx.diags.push({ severity: "warning", code: "inexact-number", message: inexactMessage(literal, shown), line: openLineNo + consumed + k });
+        });
+    }
+    else {
+        block.raw = body;
+        readTypedRawBody(block, type, attrs, body, openLineNo, ctx);
+    }
+    return { block, next: closed ? end + 1 : end };
+}
+/**
+ * Markdown 的 ``` 不是 GEML 的构造 —— 没有它，一个写在 ``` 里的示例块会**静默地**
+ * 活过来：拿到 id、进 `geml list`、被 `set` 改写。作者以为在展示语法，实际上在定义东西。
+ * 所以扫描器跳过成对反引号之间的行；区内什么都不变，仍旧是散文（§5.1 的行内代码），
+ * 不是第二种代码块 —— GEML 只有一个 `=== code`。
+ *
+ * **要成对**。照 CommonMark「未闭合就管到文末」，文档里一个落单的 ``` 会吞掉它后面的
+ * 每一个块，`geml list` 突然空掉 —— 比它要修的毛病还坏。未配对因此什么都不遮。
+ *
+ * 按传进来的这一片 `lines` 算，所以每层 flow 体各算各的；原始体（`code`、`data`）由
+ * readFencedBlock 整段吃掉，根本不到这里，两边不会互相干扰。
+ */
+const TICK_FENCE = /^[ ]{0,3}`{3,}/;
+function backtickShield(lines) {
+    const out = new Set();
+    let open = -1;
+    for (let i = 0; i < lines.length; i++) {
+        if (!TICK_FENCE.test(lines[i]))
+            continue;
+        if (open < 0) {
+            open = i;
+            continue;
+        }
+        for (let j = open + 1; j < i; j++)
+            out.add(j);
+        open = -1;
+    }
+    return out;
+}
+const MD_FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+function markdownCodeRuns(lines) {
+    const runs = [];
+    const indent = (l) => {
+        let n = 0;
+        for (const ch of l) {
+            if (ch === " ")
+                n++;
+            else if (ch === "\t")
+                n += 4 - (n % 4);
+            else
+                break;
+        }
+        return n;
+    };
+    const blank = (l) => l === undefined || l.trim() === "";
+    let i = 0;
+    if (/^---[ \t]*$/.test(lines[0] ?? "")) {
+        const close = lines.findIndex((l, k) => k > 0 && /^(---|\.\.\.)[ \t]*$/.test(l));
+        if (close > 0)
+            i = close + 1;
+    }
+    // The nearest line above `k` that sets the context an indented line sits in.
+    const inList = (k) => {
+        for (let j = k - 1; j >= 0; j--) {
+            const l = lines[j];
+            if (blank(l) || indent(l) >= 4)
+                continue;
+            return indent(l) > 0 || LIST_ITEM.test(l);
+        }
+        return false;
+    };
+    while (i < lines.length) {
+        const line = lines[i];
+        const open = MD_FENCE_OPEN.exec(line);
+        if (open && !(open[1][0] === "`" && open[2].includes("`"))) {
+            const ch = open[1][0];
+            const len = open[1].length;
+            let close = -1;
+            for (let j = i + 1; j < lines.length; j++) {
+                const m = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(lines[j]);
+                if (m && m[1][0] === ch && m[1].length >= len) {
+                    close = j;
+                    break;
+                }
+            }
+            if (close > i) {
+                runs.push({ start: i, end: close + 1 });
+                i = close + 1;
+                continue;
+            }
+        }
+        const prev = lines[i - 1];
+        if (!blank(line) && indent(line) >= 4 && (i === 0 || blank(prev) || matchHeading(prev) !== null) && !inList(i)) {
+            let end = i + 1;
+            while (end < lines.length && (blank(lines[end]) || indent(lines[end]) >= 4))
+                end++;
+            while (end > i + 1 && blank(lines[end - 1]))
+                end--;
+            runs.push({ start: i, end });
+            i = end;
+            continue;
+        }
+        i++;
+    }
+    return runs;
+}
+const FOOTNOTE_DEF = /^\[\^([^\]]+)\]:[ \t]?(.*)$/;
+// A line that opens a construct of its own, so it cannot continue a paragraph.
+function opensBlock(l) {
+    return matchHeading(l) !== null || MD_FENCE_OPEN.test(l) || FOOTNOTE_DEF.test(l) || /^={3,}/.test(l)
+        || /^ {0,3}>/.test(l) || LIST_ITEM.test(l) || /^ {0,3}([-*_])([ \t]*\1){2,}[ \t]*$/.test(l)
+        || /^[ \t]*%%/.test(l) || /^ {0,3}</.test(l);
+}
+// Where a Markdown footnote definition opened at `i` ends (exclusive). GFM reads
+// one as a container: it holds the lazy continuation of its first lines and,
+// past a blank line, whatever is indented four columns. Its span is all of that,
+// so `get #n` is the whole note and the prose after it starts after it.
+function footnoteEnd(lines, i) {
+    let end = i + 1;
+    for (let j = i + 1; j < lines.length; j++) {
+        const l = lines[j];
+        if (l.trim() === "")
+            continue;
+        if (/^(?: {4}| {0,3}\t)/.test(l) || (j === end && !opensBlock(l))) {
+            end = j + 1;
+            continue;
+        }
+        break;
+    }
+    return end;
+}
+// The shield a pass uses: GEML's ``` pairs, or — reading Markdown — every line
+// of every Markdown code run. One function so no pass can pick the other rule.
+function shieldFor(lines, markdown) {
+    if (!markdown)
+        return backtickShield(lines);
+    const out = new Set();
+    for (const r of markdownCodeRuns(lines))
+        for (let k = r.start; k < r.end; k++)
+            out.add(k);
+    return out;
+}
+const NO_SETEXT = new Map();
+const MATH_FENCE = /^ {0,3}\$\$[ \t]*$/;
+const HTML_RAW_OPEN = /^ {0,3}<(?:script|pre|style|textarea)(?:[ \t>]|$)/i;
+const HTML_RAW_CLOSE = /<\/(?:script|pre|style|textarea)>/i;
+const HTML_BLOCK_TAG = /^ {0,3}<\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:[ \t]|\/?>|$)/i;
+const HTML_LONE_TAG = /^ {0,3}(?:<[A-Za-z][A-Za-z0-9-]*(?:[ \t]+[A-Za-z_:][\w.:-]*(?:[ \t]*=[ \t]*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*[ \t]*\/?>|<\/[A-Za-z][A-Za-z0-9-]*[ \t]*>)[ \t]*$/;
+const SETEXT_UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/;
+const THEMATIC_BREAK = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+function markdownBlockRuns(lines) {
+    const runs = [];
+    const blank = (l) => l === undefined || l.trim() === "";
+    const until = (from, test) => {
+        for (let j = from; j < lines.length; j++)
+            if (test(lines[j]))
+                return j + 1;
+        return -1;
+    };
+    const toBlank = (from) => {
+        let j = from + 1;
+        while (j < lines.length && !blank(lines[j]))
+            j++;
+        return j;
+    };
+    let i = 0;
+    while (i < lines.length) {
+        const l = lines[i];
+        let end = -1;
+        if (MATH_FENCE.test(l))
+            end = until(i + 1, (x) => MATH_FENCE.test(x));
+        else if (HTML_RAW_OPEN.test(l))
+            end = until(i, (x) => HTML_RAW_CLOSE.test(x));
+        else if (/^ {0,3}<!--/.test(l))
+            end = until(i, (x) => x.includes("-->"));
+        else if (/^ {0,3}<\?/.test(l))
+            end = until(i, (x) => x.includes("?>"));
+        else if (/^ {0,3}<!\[CDATA\[/.test(l))
+            end = until(i, (x) => x.includes("]]>"));
+        else if (/^ {0,3}<![A-Za-z]/.test(l))
+            end = until(i, (x) => x.includes(">"));
+        else if (HTML_BLOCK_TAG.test(l) || (HTML_LONE_TAG.test(l) && blank(lines[i - 1])))
+            end = toBlank(i);
+        // An unclosed raw kind shields nothing: one stray `<!--` emptying the
+        // outline would be worse than the fault it fixes (as with fences).
+        if (end > i) {
+            runs.push({ start: i, end });
+            i = end;
+            continue;
+        }
+        i++;
+    }
+    return runs;
+}
+function structureFor(lines, markdown, known) {
+    if (!markdown)
+        return { shield: backtickShield(lines), setext: NO_SETEXT };
+    const code = shieldFor(lines, true);
+    const shield = new Set(code);
+    for (const r of markdownBlockRuns(lines))
+        for (let k = r.start; k < r.end; k++)
+            if (!code.has(k))
+                shield.add(k);
+    const textual = new Set(); // `=== word` of a type nobody knows: text
+    lines.forEach((l, k) => {
+        if (shield.has(k))
+            return;
+        const open = FENCE_OPEN.exec(l);
+        if (open && !known(open[2])) {
+            shield.add(k);
+            textual.add(k);
+        }
+    });
+    // Setext headings. `start` is the first line of the paragraph open now.
+    const setext = new Map();
+    let start = -1;
+    let lazy = false; // a list item's or a quote's lazy continuation
+    let k = 0;
+    if (/^---[ \t]*$/.test(lines[0] ?? "")) {
+        const close = lines.findIndex((l, j) => j > 0 && /^(---|\.\.\.)[ \t]*$/.test(l));
+        if (close > 0)
+            k = close + 1;
+    }
+    for (; k < lines.length; k++) {
+        const l = lines[k];
+        if (l.trim() === "") {
+            start = -1;
+            lazy = false;
+            continue;
+        }
+        const u = shield.has(k) ? null : SETEXT_UNDERLINE.exec(l);
+        if (u && start >= 0) {
+            const text = lines.slice(start, k).map((x) => x.trim()).join(" ");
+            const match = matchHeading(`${u[1][0] === "=" ? "#" : "##"} ${text}`);
+            if (match)
+                setext.set(start, { match, end: k + 1 });
+            start = -1;
+            continue;
+        }
+        const plain = textual.has(k) || (!shield.has(k) && matchHeading(l) === null && !/^={3,}/.test(l)
+            && !MD_FENCE_OPEN.test(l) && !FOOTNOTE_DEF.test(l) && !/^[ \t]*%%/.test(l) && !THEMATIC_BREAK.test(l));
+        if (!plain) {
+            start = -1;
+            lazy = false;
+            continue;
+        }
+        if (LIST_ITEM.test(l) || /^ {0,3}>/.test(l)) {
+            start = -1;
+            lazy = true;
+            continue;
+        }
+        if (start < 0 && !lazy)
+            start = k;
+    }
+    return { shield, setext };
+}
+// The type test structureFor needs: a type §3 registers or the document's
+// vocabulary admits, exactly what keeps `unknown-block-type` quiet.
+const knownTo = (ctx) => (type) => REGISTRY.has(type) || ctx.vocab.types.has(type);
+/**
+ * A prose body (GEP-0013): paragraphs and inline content, and nothing else.
+ *
+ * The difference from `flow` is the whole point of the mode. A vocabulary may
+ * declare this one and only this one, because §8.6.2 rule 4 promises that
+ * admission does not change the SET OF ADDRESSABLE UNITS — and a body that can
+ * hold a block can hold an id, which would make an address appear or disappear
+ * with the reader's vocabulary list. So no line in here is a construct: a fence
+ * head, a heading, a list marker and a `%%` line are all just text. What a
+ * processor that does not recognize the vocabulary reads as one raw run, a
+ * processor that does reads as paragraphs of the same bytes, and both see
+ * exactly one address: the block's own.
+ */
+function scanProse(lines, base, ctx) {
+    const blocks = [];
+    let para = [];
+    let start = 0;
+    const flush = () => {
+        if (para.length === 0)
+            return;
+        const text = interpolate(para.join("\n"), base + start, ctx);
+        blocks.push({ kind: "paragraph", text, inlines: parseInline(text, base + start, ctx) });
+        para = [];
+    };
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trim() === "") {
+            flush();
+            continue;
+        }
+        if (para.length === 0)
+            start = i;
+        para.push(line);
+    }
+    flush();
+    return blocks;
+}
+function scanBlocks(lines, base, ctx, depth = 0) {
+    const blocks = [];
+    const diags = ctx.diags;
+    const { shield: shielded, setext } = structureFor(lines, ctx.markdown, knownTo(ctx));
+    // Markdown reading: each code run by the line it starts on (markdownCodeRuns).
+    const codeRunAt = new Map();
+    if (ctx.markdown)
+        for (const r of markdownCodeRuns(lines))
+            codeRunAt.set(r.start, r.end);
+    let i = 0;
+    while (i < lines.length) {
+        // C-01 (§4): attribute line continuation via `\`. Shared with every other
+        // scanner — see foldFence for why that sharing is the point.
+        const { line, consumed } = foldFence(lines, i);
+        if (line.trim() === "") {
+            i++;
+            continue;
+        }
+        const runEnd = codeRunAt.get(i);
+        if (runEnd !== undefined) {
+            const text = lines.slice(i, runEnd).join("\n");
+            blocks.push({ kind: "paragraph", text, inlines: [{ type: "code", value: text }] });
+            i = runEnd;
+            continue;
+        }
+        // A `%%` line is hidden: kept in the model (tools can find it), never
+        // rendered, and not inline-parsed (so a scratch note can't break the build).
+        const hid = shielded.has(i) ? null : /^[ \t]*%%[ \t]?(.*)$/.exec(line);
+        if (hid) {
+            blocks.push({ kind: "hidden", text: hid[1] });
+            i += consumed;
+            continue;
+        }
+        // 成对反引号之间：不当栅栏，落到散文去（见 backtickShield）。
+        const open = shielded.has(i) ? null : FENCE_OPEN.exec(line);
+        if (open) {
+            const { block, next } = readFencedBlock(lines, i, consumed, open, base, ctx, depth);
+            blocks.push(block);
+            i = next;
+            continue;
+        }
+        const st = setext.get(i);
+        const h = st?.match ?? (shielded.has(i) ? null : matchHeading(line));
+        if (h) {
+            const lineNo = base + i + 1;
+            const level = h[1].length;
+            const rawText = h[2];
+            const a = parseAttrs(h[3] ?? "");
+            reportOddNames(a, lineNo, diags);
+            reportDuplicateNames(a, lineNo, diags);
+            const text = interpolate(rawText, lineNo, ctx);
+            const id = headingId(a.id, rawText, ctx);
+            if (id !== undefined)
+                registerId(ctx, id, lineNo);
+            // Sibling trap to fence-like-line: an attribute object that does not END
+            // the heading line is not an attribute object at all — matchHeading
+            // requires the `}` to be last (§4) — so `# T {#top}aaa` keeps the DERIVED
+            // id and the explicit one becomes unaddressable, silently. Worse than a
+            // lost id: a heading's section runs to the next heading of its level, so
+            // `geml get`/`set`/`revert` on what is left resolves to the whole rest of
+            // the document, and a one-block revert becomes a whole-document one.
+            if (h[3] === undefined) {
+                const { group, unclosed } = lastAttrObjectLike(rawText);
+                const wrote = (inner) => parseAttrs(`{${inner}}`).id;
+                const lost = (meant) => meant !== undefined
+                    ? ` — the explicit id \`#${meant}\` is lost and the heading keeps its derived id \`#${id}\``
+                    : ` — its attributes are dropped and the object reads as heading text`;
+                if (group !== null && group.close < rawText.length - 1) {
+                    diags.push({
+                        severity: "warning", code: "heading-attrs-trailing-text", line: lineNo,
+                        message: `attribute object \`{${clip(group.inner)}}\` is followed by text on this heading line, so it is NOT parsed as attributes (§4: it has to end the line)`
+                            + lost(wrote(group.inner)),
+                    });
+                }
+                else if (unclosed !== null) {
+                    diags.push({
+                        severity: "warning", code: "heading-attrs-unclosed", line: lineNo,
+                        message: `attribute object \`{${clip(unclosed)}\` is never closed by \`}\` on this heading line, so it is NOT parsed as attributes (§4)`
+                            + lost(wrote(unclosed)),
+                    });
+                }
+            }
+            const block = {
+                kind: "heading", level, text, inlines: parseInline(text, lineNo, ctx), id, classes: a.classes, attrs: a.attrs,
+            };
+            if (a.attrs["hidden"] === true)
+                block.hidden = true;
+            if (ctx.markdown)
+                registerGithubAnchor(ctx, h, block.inlines, lineNo);
+            blocks.push(block);
+            i = st !== undefined ? st.end : i + consumed;
+            continue;
+        }
+        if (!shielded.has(i) && LIST_ITEM.test(line)) {
+            const { block, next } = parseList(lines, i, base, ctx);
+            blocks.push(block);
+            i = next;
+            continue;
+        }
+        // Paragraph: consecutive non-blank lines that start no other construct.
+        const paraStart = base + i + 1;
+        const paraFirst = i; // `lines` index of para[0], for the shield
+        const para = [];
+        while (i < lines.length &&
+            lines[i].trim() !== "" &&
+            // A Markdown code run is handed over whole at the top of the loop, so a
+            // paragraph stops at one (a fence interrupts a paragraph in CommonMark).
+            !codeRunAt.has(i) &&
+            // So does a setext heading, which the top of the loop reads whole.
+            !setext.has(i) &&
+            // 遮蔽区内一律当正文吃下去。漏掉这一条，被遮的栅栏行没有任何构造消费它，
+            // i 不前进 —— 死循环。
+            (shielded.has(i) || (!/^[ \t]*%%/.test(lines[i]) &&
+                !FENCE_OPEN.test(lines[i]) &&
+                matchHeading(lines[i]) === null &&
+                !LIST_ITEM.test(lines[i])))) {
+            para.push(lines[i]);
+            i++;
+        }
+        // A line shaped exactly like a labeled close (`=== #id`) that got this far
+        // closed nothing — when the id's block was already ended by a same-length
+        // bare fence in its body (§3), everything from that fence on silently fell
+        // out of the block. Warn: "ok: no diagnostics" over a truncated document is
+        // the failure mode this diagnostic exists for. The id is used only as a Map
+        // key here — no RegExp is built from it, so reLit() does not apply.
+        // Neither check looks at a SHIELDED line. §3.1 names two ways to keep a
+        // fence-like line literal — the `\` block escape, or a matched ``` pair
+        // around it — and both are the author saying so. The escape was already
+        // quiet; the shield was not, and told the author of a correct example
+        // `=== note {#x}` that "attributes must be braced". Both codes are about a
+        // line that fell through BY ACCIDENT (Appendix A); this one was put there.
+        for (let k = 0; k < para.length; k++) {
+            if (shielded.has(paraFirst + k))
+                continue;
+            const stray = STRAY_LABELED_FENCE.exec(para[k]);
+            if (!stray)
+                continue;
+            const id = stray[1];
+            const lineNo = paraStart + k;
+            const closedAt = ctx.bareClosed?.get(nameKey(id));
+            diags.push({
+                severity: "warning", code: "stray-labeled-fence", line: lineNo,
+                message: closedAt !== undefined
+                    ? `labeled fence for \`#${id}\` at line ${lineNo}, but block \`#${id}\` was already closed by a bare fence at line ${closedAt} — body may be silently truncated`
+                    : `labeled fence for \`#${id}\` closes no block; the line is plain paragraph text`,
+            });
+        }
+        for (let k = 0; k < para.length; k++) {
+            if (shielded.has(paraFirst + k))
+                continue;
+            // Sibling trap to the stray labeled close: a would-be OPEN fence that
+            // missed the production and silently became prose (§3 requires braced
+            // attributes; `=== embed src=#a` is the classic miss).
+            const like = FENCE_LIKE.exec(para[k]);
+            // A registered type name is evidence by itself; an unregistered one
+            // earns the warning only when the rest of the line reads as attributes.
+            if (like && (REGISTERED_TYPES.has(like[1]) || ATTR_EVIDENCE.test(para[k].slice(like[0].length)))) {
+                // One code, four causes — and the cause decides what the author has to
+                // DO, so the message says which one it is. `=== code {` is the common
+                // habit (brace opened, closed on a later line): telling its author that
+                // "attributes must be braced" is telling them to do what they just did.
+                const rest = para[k].slice(like[0].length);
+                const open = rest.lastIndexOf("{");
+                const close = open >= 0 ? rest.indexOf("}", open) : -1;
+                const why = open >= 0 && close < 0
+                    ? "its attribute object is never closed by `}` on this line — close it, or end the line with `\\` to fold the object onto the next line"
+                    : open >= 0 && rest.slice(close + 1).trim() !== ""
+                        ? "text follows its attribute object, which has to be the last thing on the line"
+                        : open < 0 && rest.includes("}")
+                            ? "the `}` on it pairs with no `{`"
+                            : `attributes must be braced (\`=== ${like[1]} {…}\`)`;
+                diags.push({
+                    severity: "warning", code: "fence-like-line", line: paraStart + k,
+                    message: `line looks like an open fence for \`${like[1]}\` but is not one — ${why}; the line reads as plain paragraph text`,
+                });
+            }
+        }
+        const text = interpolate(para.join("\n"), paraStart, ctx);
+        blocks.push({ kind: "paragraph", text, inlines: parseInline(text, paraStart, ctx) });
+    }
+    return blocks;
+}
+// Parse `key = val` lines of a `data`-mode block (e.g. meta), §4 value typing.
+/** What an inexact number reads as, and what to do about it. */
+function inexactMessage(literal, shown) {
+    return `the number \`${literal}\` reads as \`${shown}\`: binary64 holds 15 to 17 significant digits, so a value this long belongs in a string`;
+}
+function parseData(lines) {
+    const out = {};
+    for (const raw of lines) {
+        if (raw.trim() === "")
+            continue;
+        const eq = raw.indexOf("=");
+        if (eq <= 0)
+            continue;
+        out[raw.slice(0, eq).trim()] = coerce(raw.slice(eq + 1));
+    }
+    return out;
+}
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+// Collect the block ids of a (cross-document) source, without validation, for
+// resolving `other.geml#id` references.
+// S5/S6: a transclusion may pull in a document that transcludes further, so a
+// cycle is only visible by walking the graph. Reported at check time — before
+// any rendering — so a build fails on the cycle rather than on a placeholder in
+// the output. Paths compose the way the renderer composes them: a target inside
+// a borrowed document is relative to THAT document.
+// `data=rows.csv` on a chart, desugared: the anonymous table it stands for. Built
+// by handing the loaded lines to the SAME body parser a `=== table {src=…}` uses,
+// with the chart's own `format=`/`header=` carried over, so nothing about how the
+// data is read is specific to charts. Returns null when the source could not be
+// resolved — the diagnostic is already pushed, in the table rules' own words.
+function chartSourceTable(ctx, opts, block, target, line) {
+    const scheme = schemeOf(target);
+    if (scheme === "http" || scheme === "https") {
+        // §9.4: fetched at render time, so there is nothing to chart at build time —
+        // the same state a remote-sourced table leaves behind.
+        return null;
+    }
+    if (!opts.resolveDoc) {
+        ctx.diags.push({ severity: "warning", code: "unchecked-cross-document-reference", message: `geml-chart: data source \`${target}\` not checked (no document resolver)`, line });
+        return null;
+    }
+    if (overBudget(ctx, line, `geml-chart data source \`${target}\``))
+        return null;
+    const text = opts.resolveDoc(target);
+    if (text === null) {
+        ctx.diags.push({ severity: "error", code: "unresolvable-table-source", message: `geml-chart: cannot resolve data source \`${target}\``, line });
+        return null;
+    }
+    const attrs = {
+        format: typeof block.attrs["format-data"] === "string" ? block.attrs["format-data"] : inferDataFormat(target),
+        header: block.attrs["header"] === undefined ? true : block.attrs["header"],
+    };
+    // A chart reading a `;`-delimited export needs the same delimiter override a
+    // table does; the table rules validate it (§6).
+    const delim = block.attrs["delim"];
+    if (delim !== undefined)
+        attrs["delim"] = delim;
+    const { model, diagnostics } = parseTable(normalizeSource(text).split("\n"), attrs, line, ctx);
+    for (const d of diagnostics)
+        ctx.diags.push({ ...d, line });
+    if (!borrow(ctx, model.columns.length * model.rows.length, line, `geml-chart data source \`${target}\``))
+        model.rows = [];
+    model.src = target;
+    return model;
+}
+const inferDataFormat = (target) => (/\.tsv$/i.test(target) ? "tsv" : "csv");
+// §9.2's fixed bounds, for callers that walk a document the way the parser does.
+export { CHAIN_DEPTH, DATA_DEPTH, TABLE_CELLS } from "./bounds.js";
+// §9.3 also lets a processor bound the total work its chains cost, and the depth
+// bound alone does not: K embeds a document, nested, are K^16 expansions. Every
+// expander — the renderer, the Markdown export, the stylesheet loader — stops at
+// this many expansions in one run.
+export const EMBED_TOTAL_CAP = 1000;
+const WHITE_CHAR = /^\p{White_Space}$/u;
+function trimWhiteSpaceEnd(s) {
+    let b = s.length;
+    while (b > 0 && WHITE_CHAR.test(s[b - 1]))
+        b--;
+    return s.slice(0, b);
+}
+const EMBED_PARTS = new Set(["whole", "head", "body", "intro"]);
+// An embed's `part=`, when it is one of the four; any other value is
+// `bad-embed-part` and the whole target stands.
+function partOf(attrs) {
+    const p = attrs["part"];
+    return typeof p === "string" && EMBED_PARTS.has(p) ? { part: p } : {};
+}
+// What a projection may stand for (§5.2): a `text` block, or a prose type, whose
+// body is one non-empty paragraph, `%%` lines aside. The paragraph, or null.
+function soleParagraph(b) {
+    if (b.kind !== "block" || b.prose !== true)
+        return null;
+    const kids = (b.children ?? []).filter((c) => c.kind !== "hidden" && !(c.kind === "paragraph" && c.text.trim() === ""));
+    const only = kids.length === 1 ? kids[0] : undefined;
+    return only !== undefined && only.kind === "paragraph" ? only : null;
+}
+const CHAIN_BUDGET = 10_000;
+function chainSitesIn(blocks, out) {
+    const inl = (nodes) => {
+        for (const n of nodes) {
+            if (n.type === "project")
+                out.push({ ...(n.doc !== undefined ? { doc: n.doc } : {}), anchor: n.anchor, inline: true });
+            else if (n.type === "emph" || n.type === "strong" || n.type === "strike" || n.type === "link")
+                inl(n.children);
+        }
+    };
+    const items = (its) => {
+        for (const it of its) {
+            inl(it.inlines);
+            if (it.children)
+                chainSitesIn(it.children, out);
+        }
+    };
+    for (const b of blocks) {
+        if (b.kind === "paragraph" || b.kind === "heading")
+            inl(b.inlines);
+        else if (b.kind === "list")
+            items(b.items);
+        else if (b.kind === "block") {
+            const src = b.type === "embed" && typeof b.attrs["src"] === "string" ? b.attrs["src"].trim() : "";
+            if (src !== "") {
+                const hash = src.indexOf("#");
+                const doc = hash < 0 ? src : src.slice(0, hash);
+                out.push({ ...(doc !== "" ? { doc } : {}), ...(hash < 0 ? {} : { anchor: src.slice(hash + 1) }), ...partOf(b.attrs), inline: false });
+            }
+            if (b.children)
+                chainSitesIn(b.children, out);
+        }
+    }
+}
+function detectTransclusionCycles(children, ctx, opts) {
+    const root = opts.self ?? "";
+    // Paths are relative to this document's directory — what `resolveDoc` takes.
+    const models = new Map([[root, children]]);
+    const load = (name) => {
+        if (!models.has(name)) {
+            const src = opts.resolveDoc ? opts.resolveDoc(name) : null;
+            // Parsed without a resolver: the chain is walked here, not inside it.
+            models.set(name, src === null ? null : parse(src).children);
+        }
+        return models.get(name);
+    };
+    const found = new Map();
+    let budget = CHAIN_BUDGET;
+    // What a site selects, and the sites inside that, worked out once per
+    // (target, anchor, part): the budget counts steps, and a step that re-selected
+    // and re-walked a whole target cost the budget times the target's size —
+    // three thousand embeds of a 600 KB document took fifteen seconds.
+    const stepMemo = new Map();
+    const stepFrom = (model, target, s) => {
+        const k = `${target}\u0000${s.anchor ?? ""}\u0000${s.part ?? "whole"}\u0000${s.inline ? 1 : 0}`;
+        if (!stepMemo.has(k)) {
+            const sel = selectEmbed(model, s.anchor, s.part ?? "whole");
+            if (sel === null || (s.inline && !(sel.length === 1 && soleParagraph(sel[0]) !== null)))
+                stepMemo.set(k, null);
+            else {
+                const next = [];
+                chainSitesIn(sel, next);
+                stepMemo.set(k, next);
+            }
+        }
+        return stepMemo.get(k);
+    };
+    const visit = (name, sites, docs, path, origin) => {
+        for (const s of sites) {
+            if (budget <= 0)
+                return;
+            let target = name;
+            if (s.doc !== undefined) {
+                if (!/\.geml$/i.test(s.doc))
+                    continue;
+                target = relJoinPath(relDirPath(name), s.doc);
+            }
+            if (s.anchor !== undefined && s.anchor.includes("["))
+                continue;
+            const model = load(target);
+            if (model === null)
+                continue;
+            const next = stepFrom(model, target, s);
+            if (next === null)
+                continue;
+            const key = s.anchor === undefined ? target : `${target}#${nameKey(s.anchor)}`;
+            if (target !== name && docs.includes(target)) {
+                if (!found.has(origin))
+                    found.set(origin, `transclusion cycle: \`${target}\` is already being expanded: ${[...docs, target].join(" → ")}`);
+                continue;
+            }
+            if (path.includes(key)) {
+                const shown = s.anchor === undefined ? target : `${target}#${s.anchor}`;
+                if (!found.has(origin))
+                    found.set(origin, `transclusion cycle: \`${shown}\` is already being expanded`);
+                continue;
+            }
+            if (path.length >= CHAIN_DEPTH)
+                continue;
+            budget--;
+            visit(target, next, target !== name ? [...docs, target] : docs, [...path, key], origin);
+        }
+    };
+    const starts = [
+        ...(ctx.embeds ?? []).map((e) => ({ site: { ...(e.doc !== "" ? { doc: e.doc } : {}), ...(e.anchor !== undefined ? { anchor: e.anchor } : {}), ...(e.part !== undefined ? { part: e.part } : {}), inline: false }, line: e.line })),
+        ...(ctx.projections ?? []).map((p) => ({ site: { ...(p.doc !== undefined ? { doc: p.doc } : {}), anchor: p.anchor, inline: true }, line: p.line })),
+    ];
+    for (const { site, line } of starts)
+        visit(root, [site], [root], [], line);
+    for (const [line, message] of [...found].sort((a, b) => a[0] - b[0])) {
+        ctx.diags.push({ severity: "error", code: "transclusion-cycle", message, line });
+    }
+    if (opts.resolveDoc)
+        reportBorrowedVocabularies(ctx, opts, root, opts.resolveDoc);
+}
+/**
+ * §8.6.2 rule 3, carried across an `embed` edge: a host that borrows from a
+ * document whose vocabulary this processor does not ship renders those blocks
+ * raw, and the reader is looking at the HOST — the degraded document is the one
+ * that appears to be fine.
+ *
+ * Over `ctx.embeds` — the embeds THIS document wrote — and deliberately not over
+ * the transitive walk above. The walk follows every embed in every document it
+ * reaches, which is right for cycle detection (a cycle anywhere is a cycle) and
+ * wrong here, twice over:
+ *
+ *   · it DISCLOSES. `A` embeds one public block of `B`; `B` elsewhere — in a
+ *     block `A` never took — embeds `secret.geml`. Reporting from the walk put
+ *     `secret.geml`'s path and its vocabulary name into A's diagnostics and into
+ *     A's published HTML, about a document A never named and content A never
+ *     received. A diagnostic may name only documents this document names.
+ *   · it LIES. "the blocks it brings in" is false of a document nothing was
+ *     taken from.
+ *
+ * What is left, and recorded rather than hidden: a host learns the vocabulary
+ * name of a document it embeds from even when the slice it took does not use
+ * that vocabulary. The host names that document and is reading it, so this is
+ * metadata of a document the host already depends on — not a third party's.
+ */
+function reportBorrowedVocabularies(ctx, opts, root, resolve) {
+    const seen = new Set();
+    for (const e of ctx.embeds ?? []) {
+        if (!e.doc)
+            continue; // a self-embed borrows nothing from anywhere else
+        const rel = relJoinPath(relDirPath(root), e.doc);
+        const src = seen.has(rel) ? null : resolve(rel);
+        if (src === null) {
+            seen.add(rel);
+            continue;
+        }
+        seen.add(rel);
+        for (const name of unrecognizedVocabularies(collectMeta(normalizeSource(src).split("\n")))) {
+            ctx.diags.push({
+                severity: "warning", code: "unrecognized-vocabulary",
+                message: `\`${rel}\`, embedded here, declares vocabulary \`${name}\`, which this processor does not recognize; blocks it defines arrive as raw`,
+                line: e.line, subject: name,
+            });
+        }
+    }
+}
+// Inline content that a projection may stand for: a `text` block whose body is a
+// single paragraph. Returned so the renderer and this validator agree on one
+// definition. Anything else — a heading (and so a whole section), a table, a
+// diagram, a multi-paragraph body — is block content, and no amount of syntax
+// makes it fit inside a sentence.
+export function projectableInlines(blocks, id) {
+    const key = nameKey(id);
+    const found = (function find(bs) {
+        for (const b of bs) {
+            if ((b.kind === "block" || b.kind === "heading") && b.id !== undefined && nameKey(b.id) === key)
+                return b;
+            if (b.kind === "block" && b.children) {
+                const inner = find(b.children);
+                if (inner)
+                    return inner;
+            }
+        }
+        return undefined;
+    })(blocks);
+    if (found === undefined) {
+        // §5.2: a stretch of prose is not a `text` block, so it is never inline
+        // content, however short — `embed` is the form for it.
+        return [...proseRunTargets(blocks).keys()].some((k) => nameKey(k) === key) ? "not-inline" : null;
+    }
+    const sole = soleParagraph(found);
+    return sole === null ? "not-inline" : { inlines: sole.inlines };
+}
+function docReads(opts) {
+    const texts = new Map();
+    const models = new Map();
+    const text = (doc) => {
+        if (!texts.has(doc))
+            texts.set(doc, opts.resolveDoc ? opts.resolveDoc(doc) : null);
+        return texts.get(doc);
+    };
+    return {
+        text,
+        parsed(doc) {
+            if (!models.has(doc)) {
+                const src = text(doc);
+                models.set(doc, src === null ? null : parse(src).children);
+            }
+            return models.get(doc);
+        },
+        scanned: new Map(),
+    };
+}
+function validateProjections(children, ctx, opts) {
+    const docs = docReads(opts);
+    for (const p of ctx.projections ?? []) {
+        let blocks = null;
+        if (p.doc === undefined)
+            blocks = children;
+        else if (opts.resolveDoc) {
+            blocks = docs.parsed(p.doc);
+            if (blocks === null)
+                continue; // already an unresolvable-document error
+        }
+        if (blocks === null)
+            continue; // unchecked without a resolver, like any cross-doc ref
+        const got = projectableInlines(blocks, p.anchor);
+        if (got === null)
+            continue; // already an unresolved-reference error
+        if (got === "not-inline") {
+            const target = p.doc === undefined ? `#${p.anchor}` : `${p.doc}#${p.anchor}`;
+            ctx.diags.push({
+                severity: "error",
+                code: "inline-transclusion-not-inline",
+                message: `\`![[${target}]]\` projects inline content, but the target is not a single-paragraph \`text\` block; for block content use \`=== embed {src=${target}}\``,
+                line: p.line,
+            });
+        }
+    }
+}
+// Same pure-string path composition the renderer uses (relJoin/relDir there).
+export function relJoinPath(base, target) {
+    if (base === "" || target === "" || target.startsWith("/") || /^[a-z][a-z0-9+.-]*:/i.test(target))
+        return target;
+    // A POSIX-absolute base must stay absolute. The segment loop below drops empty
+    // segments, and the leading "" of "/tmp/x" IS the root — dropping it silently
+    // turned `/tmp/x/part.geml` into the relative `tmp/x/part.geml`, which then
+    // resolved against the wrong directory. Windows never showed it: a `C:\…` base
+    // has no "/", so relDirPath returns "" and the early return above takes over.
+    const rooted = base.startsWith("/");
+    const out = [];
+    for (const s of (base + "/" + target).split("/")) {
+        if (s === "" || s === ".")
+            continue;
+        if (s === ".." && out.length > 0 && out[out.length - 1] !== "..")
+            out.pop();
+        else
+            out.push(s);
+    }
+    return (rooted ? "/" : "") + out.join("/");
+}
+export function relDirPath(p) {
+    const i = p.lastIndexOf("/");
+    return i < 0 ? "" : p.slice(0, i);
+}
+export function gatherEmbeds(source) {
+    const ctx = { diags: [], ids: new Map(), refs: [], meta: new Map(), vocab: vocabularyOf(source), embeds: [] };
+    scanBlocks(normalizeSource(source).split("\n"), 0, ctx);
+    return (ctx.embeds ?? []).map((e) => (e.anchor === undefined ? { doc: e.doc } : { doc: e.doc, anchor: e.anchor }));
+}
+// One rule for "where this data comes from", shared by a table's `src=`
+// and a chart's `data=`. Three target forms: a data file, `#id` naming a table
+// block in this document, or `doc.geml#id` naming one in another document. An
+// unresolvable target is an error — a table whose source silently produced no
+// rows used to render as an empty table with no diagnostic at all.
+function tableFromDocument(source, id) {
+    const ctx = { diags: [], ids: new Map(), refs: [], meta: new Map(), vocab: vocabularyOf(source) };
+    const blocks = scanBlocks(normalizeSource(source).split("\n"), 0, ctx);
+    const found = ctx.tables?.get(nameKey(id));
+    if (found !== undefined)
+        return found;
+    // GEP-0005: a remote `data` block is the other chart-source form; its value
+    // is projected by the CALLER (recordsToTable needs the chart's attributes).
+    const dv = ctx.dataValues?.get(nameKey(id));
+    if (dv !== undefined)
+        return { records: dv };
+    const anyBlock = (function find(bs) {
+        for (const b of bs) {
+            if ((b.kind === "block" || b.kind === "heading") && b.id !== undefined && nameKey(b.id) === nameKey(id))
+                return b;
+            if (b.kind === "block" && b.children) {
+                const inner = find(b.children);
+                if (inner)
+                    return inner;
+            }
+        }
+        return undefined;
+    })(blocks);
+    return anyBlock === undefined ? null : "not-a-table";
+}
+// GEP 0011 reserves `#meta` for the MERGED meta namespace — the view §4
+// already defines, where a later definition of a key is a warning and the first
+// one is kept. With one `meta` block an author's own `{#meta}` names that same
+// thing, so the two readings agree and nothing is wrong. With two or more the
+// id would mean "this block" while `#meta` means "all of them, merged", and an
+// address that means two things is the one thing §2 cannot have.
+function checkReservedMetaId(children, ctx) {
+    // §4 says "a BLOCK may declare `{#meta}`", not "a meta block": the collision
+    // is between the id and the merged view, so it happens whatever type carries
+    // the id — a `note`, a heading, or a `meta` block naming itself. Only meta
+    // blocks used to be looked at, so `=== note {#meta}` beside two `meta`
+    // blocks passed with no diagnostic at all.
+    let metas = 0;
+    const claimed = [];
+    const walk = (blocks) => {
+        for (const b of blocks) {
+            if (b.kind === "block" || b.kind === "heading") {
+                if (b.kind === "block" && b.type === "meta")
+                    metas++;
+                if (b.id !== undefined && nameKey(b.id) === nameKey("meta"))
+                    claimed.push(b);
+            }
+            if (b.kind === "block" && b.children)
+                walk(b.children);
+        }
+    };
+    walk(children);
+    if (metas < 2)
+        return;
+    for (const b of claimed) {
+        if (b.id !== undefined) {
+            ctx.diags.push({
+                severity: "error",
+                code: "reserved-id",
+                message: "`#meta` is reserved for this document's merged meta namespace, and this document has more than one `meta` block — give the block another id",
+                line: ctx.ids.get(nameKey(b.id))?.line ?? 1,
+            });
+        }
+    }
+}
+// §9.2: a relation read from anywhere but the document's own text spends from
+// one budget per document. `borrow` books `cells` and says whether they fit; a
+// relation that does not keeps no rows, and once the budget is spent every later
+// one is refused before its source is read or copied (`overBudget`).
+function borrow(ctx, cells, line, what) {
+    ctx.borrowed = (ctx.borrowed ?? 0) + cells;
+    if (ctx.borrowed <= BORROWED_CELLS)
+        return true;
+    ctx.diags.push({ severity: "error", code: "table-too-large", message: `${what} takes this document past ${BORROWED_CELLS} cells read from elsewhere (§9.2); it keeps no rows`, line });
+    return false;
+}
+function overBudget(ctx, line, what) {
+    return (ctx.borrowed ?? 0) >= BORROWED_CELLS && !borrow(ctx, 0, line, what);
+}
+function resolveTableSources(ctx, opts) {
+    const pending = ctx.tableSources ?? [];
+    if (pending.length === 0)
+        return;
+    const err = (line, code, message) => void ctx.diags.push({ severity: "error", code, message, line });
+    // Data files first: a `#id` target may point at a table whose OWN rows come
+    // from a file, and this way that table is already populated when it is read.
+    for (const { block, line, target } of pending) {
+        if (target.includes("#"))
+            continue;
+        // §9.4: a remote source is fetched by the RENDERER, not the parser. Leaving
+        // `model.src` set with no columns is the state resolveCharts already handles,
+        // so a chart over it defers too. Passing it to resolveDoc treated a URL as a
+        // filesystem path and failed a spec-conformant document.
+        const scheme = schemeOf(target);
+        if (scheme === "http" || scheme === "https") {
+            deferBlock(block, ctx);
+            continue;
+        }
+        if (scheme !== null) {
+            err(line, "unresolvable-table-source", `table source \`${target}\` names a disallowed URL scheme`);
+            continue;
+        }
+        if (!opts.resolveDoc) {
+            ctx.diags.push({ severity: "warning", code: "unchecked-cross-document-reference", message: `table source \`${target}\` not checked (no document resolver)`, line });
+            continue;
+        }
+        if (overBudget(ctx, line, `table source \`${target}\``))
+            continue;
+        const text = opts.resolveDoc(target);
+        if (text === null) {
+            err(line, "unresolvable-table-source", `cannot resolve table source \`${target}\``);
+            continue;
+        }
+        // Reuse the body parser: with `src` dropped, the file's lines are just
+        // this table's body, so format/header/compute/summary all behave identically.
+        const attrs = { ...block.attrs };
+        delete attrs["src"];
+        const { model, diagnostics } = parseTable(normalizeSource(text).split("\n"), attrs, line, ctx);
+        model.src = target;
+        // Those row lines index the DATA FILE, not this document. Keeping them
+        // would offer a coordinate write a line number in another file, which is
+        // exactly the case GEP 0011's second write refusal exists for.
+        delete model.rowLines;
+        if (!borrow(ctx, model.columns.length * model.rows.length, line, `table source \`${target}\``))
+            model.rows = [];
+        block.table = model;
+        for (const d of diagnostics)
+            ctx.diags.push({ ...d, line });
+        if (block.id !== undefined)
+            (ctx.tables ??= new Map()).set(nameKey(block.id), model);
+    }
+}
+// A view publishes copied tuples, never source cells.  In particular, its
+// source's report row stays behind: `summary=` belongs to a report, not to the
+// relation another view consumes.
+function copyRelation(source, target, caption) {
+    const model = {
+        header: source.header,
+        columns: [...source.columns],
+        align: [...source.align],
+        rows: source.rows.map((row) => row.map((cell) => ({ ...cell, inlines: [...cell.inlines] }))),
+        src: target,
+    };
+    if (caption !== undefined)
+        model.caption = caption;
+    return model;
+}
+// §3.3: a block whose data is remote has no model at build time — not an empty
+// one — and a view, a chart or a coordinate reading it defers with it. The id
+// joins dataSrcPending, which is how a chart over it already learns to defer.
+function deferBlock(block, ctx) {
+    if (block.id !== undefined) {
+        const key = nameKey(block.id);
+        if (ctx.tables?.get(key) === block.table)
+            ctx.tables.delete(key);
+        (ctx.dataSrcPending ??= new Set()).add(block.id);
+    }
+    delete block.table;
+}
+// Whether a block defers (§3.3). A table and a view always carry a model from the
+// scan, so one with none is one deferBlock emptied; a `data` block defers when
+// its `src=` is remote.
+function defers(block) {
+    if (block.kind !== "block")
+        return false;
+    if (block.type === "table" || block.type === "view")
+        return block.table === undefined;
+    if (block.type !== "data")
+        return false;
+    const src = block.attrs["src"];
+    const scheme = typeof src === "string" ? schemeOf(src.trim()) : null;
+    return scheme === "http" || scheme === "https";
+}
+function relationBlock(blocks, id) {
+    for (const block of blocks) {
+        if (block.kind === "block" && block.id !== undefined && nameKey(block.id) === nameKey(id)) {
+            return block.type === "table" || block.type === "view" ? block : null;
+        }
+        if (block.kind === "block" && block.children) {
+            const nested = relationBlock(block.children, id);
+            if (nested)
+                return nested;
+        }
+    }
+    return null;
+}
+function remoteRelation(source, id, opts, path, canonical) {
+    // Parse rather than merely scan: a remote view may itself consume a table or
+    // another view, and the relation it publishes is the post-view relation.
+    // Parsed ONCE per document: a fan-out of F views over an N-document chain
+    // re-parsed the same files F^N times (twelve files of seven lines took 8 s).
+    const cache = (opts._docCache ??= new Map());
+    let document = cache.get(canonical);
+    if (document === undefined) {
+        // The remote document's own `src=` paths mean ITS directory, not the host's:
+        // a borrowed `src=data.csv` read the host's data.csv, so a same-named file
+        // beside the host silently replaced the data the borrowed author pointed at.
+        // Rebased one hop here; the wrapper composes as the chain descends, and the
+        // caller's `resolveDoc` still applies its own confinement to what comes out.
+        const dir = relDirPath(path);
+        const rebase = (d) => relJoinPath(dir, d);
+        const nested = {
+            ...opts,
+            self: canonical,
+            resolveDoc: (d) => opts.resolveDoc(rebase(d)),
+            _viewStack: [...(opts._viewStack ?? [opts.self ?? ""]), canonical],
+            _docCache: cache,
+        };
+        if (opts.docExists)
+            nested.docExists = (d) => opts.docExists(rebase(d));
+        document = parse(source, nested);
+        cache.set(canonical, document);
+    }
+    const block = relationBlock(document.children, id);
+    if (block === null) {
+        const exists = findBlockSite(document.children, id) !== undefined;
+        return exists ? "not-a-relation" : null;
+    }
+    // A view the remote document could NOT resolve does not carry `undefined`; it
+    // carries the scan's empty model. Handed back as a relation, that made the
+    // consumer a silently empty table — and the reason (a cycle caught one hop
+    // down, a source that document lacked, the depth bound) sat in the remote
+    // document's diagnostics, which this parse discards. Carry the reason up.
+    // §3.3: a relation that defers there defers here too.
+    if (block.table === undefined)
+        return "defer";
+    if (block.type === "view" && block.table.columns.length === 0) {
+        const why = document.diagnostics.find((d) => d.severity === "error" && /^(view-source-|unresolved-cross-document-reference$|unresolvable-document$|unresolved-reference$)/.test(d.code));
+        return { unresolved: why?.message ?? `\`#${id}\` did not resolve in that document`, ...(why ? { code: why.code } : {}) };
+    }
+    return block.table ?? null;
+}
+function resolveViewSources(ctx, opts) {
+    const pending = ctx.viewSources ?? [];
+    if (pending.length === 0)
+        return;
+    const unresolved = new Set(pending);
+    const pendingBlocks = new Map(pending.map((entry) => [entry.block, entry]));
+    const error = (line, code, message) => {
+        ctx.diags.push({ severity: "error", code, message, line });
+    };
+    // `{ wait }`: the source is a view of this document not resolved yet.
+    const sourceOf = (target, line) => {
+        const hash = target.indexOf("#");
+        if (hash >= 0) {
+            const path = target.slice(0, hash);
+            const id = target.slice(hash + 1);
+            if (path === "") {
+                const source = ctx.relations?.get(nameKey(id));
+                if (source === undefined) {
+                    error(line, ctx.ids.has(nameKey(id)) ? "view-source-not-a-relation" : "unresolved-reference", ctx.ids.has(nameKey(id)) ? `view source \`#${id}\` is not a table or view` : `unresolved reference \`#${id}\``);
+                    return null;
+                }
+                // A pending source is not ready yet. The loop below takes this view up
+                // again once it is, or reports the remaining closed chain.
+                const waiting = pendingBlocks.get(source);
+                if (waiting !== undefined && unresolved.has(waiting))
+                    return { wait: source };
+                // §3.3: a source that defers takes its consumer with it.
+                return source.table ?? "defer";
+            }
+            if (!opts.resolveDoc) {
+                ctx.diags.push({ severity: "warning", code: "unchecked-cross-document-reference", message: `view source \`${target}\` not checked (no document resolver)`, line });
+                return null;
+            }
+            // Refused BEFORE the remote document is parsed, because parsing is where
+            // the recursion lives. The stack is in root-relative coordinates, the same
+            // ones `self` uses, so `A → B → A` is caught on the way back into A, and a
+            // chain of distinct documents stops at the bound an embed's does.
+            const stack = opts._viewStack ?? [opts.self ?? ""];
+            const canonical = relJoinPath(relDirPath(opts.self ?? ""), path);
+            if (stack.includes(canonical)) {
+                error(line, "view-source-cycle", `view source \`${target}\` returns to a document already being resolved: ${[...stack, canonical].map((d) => (d === "" ? "(this document)" : d)).join(" → ")}`);
+                return null;
+            }
+            if (stack.length > CHAIN_DEPTH) {
+                error(line, "view-source-too-deep", `view source \`${target}\` is ${stack.length} documents deep; the bound is ${CHAIN_DEPTH} (§9.3)`);
+                return null;
+            }
+            const text = opts.resolveDoc(path);
+            if (text === null) {
+                error(line, "unresolvable-document", `cannot resolve document \`${path}\``);
+                return null;
+            }
+            const remote = remoteRelation(text, id, opts, path, canonical);
+            if (remote === null) {
+                error(line, "unresolved-cross-document-reference", `unresolved reference \`${target}\``);
+                return null;
+            }
+            if (typeof remote === "object" && "unresolved" in remote) {
+                const code = remote.code === "view-source-cycle" || remote.code === "view-source-too-deep" ? remote.code : "unresolved-cross-document-reference";
+                error(line, code, `view source \`${target}\` did not resolve in \`${path}\`: ${remote.unresolved}`);
+                return null;
+            }
+            if (remote === "not-a-relation") {
+                error(line, "view-source-not-a-relation", `view source \`${target}\` is not a table or view`);
+                return null;
+            }
+            return remote;
+        }
+        const scheme = schemeOf(target);
+        // A remote source is fetched where it is drawn, exactly as a table's is, so
+        // there is nothing to build here. It says so with `null` — SETTLED, nothing
+        // to do — and not with `undefined`, which the loop below reads as `not ready
+        // yet`: an entry that never becomes ready never leaves `unresolved`, and the
+        // closing sweep then reports the view as a cycle it was never part of.
+        if (scheme === "http" || scheme === "https")
+            return "defer";
+        if (scheme !== null) {
+            error(line, "unresolvable-table-source", `view source \`${target}\` names a disallowed URL scheme`);
+            return null;
+        }
+        if (!opts.resolveDoc) {
+            ctx.diags.push({ severity: "warning", code: "unchecked-cross-document-reference", message: `view source \`${target}\` not checked (no document resolver)`, line });
+            return null;
+        }
+        if (overBudget(ctx, line, `view source \`${target}\``))
+            return null;
+        const text = opts.resolveDoc(target);
+        if (text === null) {
+            error(line, "unresolvable-table-source", `cannot resolve view source \`${target}\``);
+            return null;
+        }
+        const attrs = { format: /\.tsv$/i.test(target) ? "tsv" : "csv", header: 1 };
+        const parsed = parseTable(normalizeSource(text).split("\n"), attrs, line, ctx);
+        for (const diag of parsed.diagnostics)
+            ctx.diags.push({ ...diag, line });
+        delete parsed.model.rowLines;
+        return parsed.model;
+    };
+    // GEP-0012 bounds a chain's depth "exactly as a nested `embed`'s is (§9.3)",
+    // and the depth is carried along the chain rather than counted in passes: a
+    // pass resolves everything whose source is ready, and when a document happens
+    // to declare its views in dependency order a chain of any length collapses
+    // into ONE pass — so pass-counting measured nothing. A source is always
+    // resolved before the view that consumes it, so its depth is known by then.
+    //
+    // Each view is taken up once, and again only when the source it waits on is
+    // settled: sweeping every pending view until nothing changed resolved one link
+    // per sweep of a chain written consumer-first, and eight thousand views of
+    // 270 KB ran for minutes.
+    const depthOf = new Map();
+    const waiters = new Map();
+    const queue = [...pending];
+    for (let q = 0; q < queue.length; q++) {
+        const entry = queue[q];
+        if (!unresolved.has(entry))
+            continue;
+        const source = sourceOf(entry.target, entry.line);
+        if (source !== null && typeof source === "object" && "wait" in source) {
+            const list = waiters.get(source.wait);
+            if (list)
+                list.push(entry);
+            else
+                waiters.set(source.wait, [entry]);
+            continue;
+        }
+        unresolved.delete(entry);
+        const released = waiters.get(entry.block);
+        if (released) {
+            waiters.delete(entry.block);
+            queue.push(...released);
+        }
+        if (source === null)
+            continue;
+        if (source === "defer") {
+            deferBlock(entry.block, ctx);
+            continue;
+        }
+        // A local `#id` source may itself be a view; anything else — a data file,
+        // or a block in another document — is depth zero here, exactly as an
+        // embed's cap counts the hops of THIS render.
+        const local = /^#([^#]+)$/.exec(entry.target.trim());
+        const depth = (local ? depthOf.get(nameKey(local[1])) ?? 0 : 0) + 1;
+        // Recorded even when it is refused, or the chain would RESTART at every
+        // ninth link: a consumer that inherited no depth counted itself as the
+        // first, so a chain of any length cost one diagnostic and then carried on
+        // publishing rows. Past the bound, every view says so and none resolves.
+        if (entry.block.id !== undefined)
+            depthOf.set(nameKey(entry.block.id), depth);
+        if (depth > CHAIN_DEPTH) {
+            error(entry.line, "view-source-too-deep", `view source chain is ${depth} deep; the bound is ${CHAIN_DEPTH} (§9.3)`);
+            continue;
+        }
+        // Booked before the copy, so a refused view never holds its source's rows.
+        if (!borrow(ctx, source.columns.length * source.rows.length, entry.line, `view source \`${entry.target}\``)) {
+            const model = copyRelation({ ...source, rows: [] }, entry.target, blockCaption(entry.block));
+            entry.block.table = model;
+            if (entry.block.id !== undefined)
+                (ctx.tables ??= new Map()).set(nameKey(entry.block.id), model);
+            continue;
+        }
+        const model = copyRelation(source, entry.target, blockCaption(entry.block));
+        const diagnostics = [];
+        deriveView(model, entry.block.attrs, entry.line, ctx, diagnostics);
+        entry.block.table = model;
+        for (const diag of diagnostics)
+            ctx.diags.push({ ...diag, line: entry.line });
+        if (entry.block.id !== undefined)
+            (ctx.tables ??= new Map()).set(nameKey(entry.block.id), model);
+    }
+    for (const entry of unresolved) {
+        error(entry.line, "view-source-cycle", `view source chain closes a cycle at \`${entry.target}\``);
+    }
+}
+function blockCaption(block) {
+    const caption = block.attrs["caption"];
+    return typeof caption === "string" ? caption : undefined;
+}
+// The other document is read as its own `=== meta` says (§3): its vocabulary
+// decides which of its bodies are flow, so an id inside a container a profile
+// defines (a `form-field` in a `form`) is in view exactly as one inside a
+// `note` is. The naming document's vocabulary does not reach into it.
+function gatherIds(source) {
+    const ctx = { diags: [], ids: new Map(), refs: [], meta: new Map(), vocab: vocabularyOf(source) };
+    const blocks = scanBlocks(normalizeSource(source).split("\n"), 0, ctx);
+    // Already NFD keys — compare with nameKey(). Prose-run addresses join them, so
+    // a cross-document `src=other.geml#a-before-b` resolves exactly as an in-document
+    // one does; they are additions to the lookup, never declarations.
+    const out = new Set(ctx.ids.keys());
+    for (const addr of proseRunTargets(blocks).keys())
+        out.add(nameKey(addr));
+    return out;
+}
+// Pre-scan for `=== meta` blocks and merge their `key=val` lines, so `{{key}}`
+// interpolation can resolve forward references.
+//
+// The walk descends exactly as scanBlocks/collectSpans do — into FLOW bodies
+// only, because a raw or data body is opaque (§3). This used to be a flat regex
+// sweep over every line, which read a `=== meta` shown as an EXAMPLE inside a
+// longer-fenced `==== code` as a real definition: its keys supplied live
+// `{{key}}` values (`geml check` clean, so nothing said so), and a key the
+// document also defined at top level warned `duplicate-meta-key` against a
+// definition that does not exist. Closing is fenceClose's job too now, so a
+// `=== meta {#m}` may close on its labeled fence `=== #m` like any other block.
+/**
+ * The vocabulary a document's own `=== meta` declares. For a caller that is
+ * about to parse a SLICE of that document and must not lose the declaration
+ * across the cut (ParseOptions.vocab).
+ */
+export function vocabularyOf(source) {
+    return vocabularyFor(collectMeta(normalizeSource(source).split("\n")));
+}
+/**
+ * A document's own `=== meta`, for a host that has to ask it something the
+ * merged `Vocabulary` does not carry — which vocabularies it DECLARED, above
+ * all, since that is what decides whose checks run (§8.6.2 rule 2: a processor
+ * may act on the declaration and on nothing else).
+ */
+export function metaOf(source) {
+    return collectMeta(normalizeSource(source).split("\n"));
+}
+function collectMeta(lines, diags, definedAt, markdown) {
+    const meta = new Map();
+    // key → 1-based line of the defining fence. `definedAt` lets a caller keep it:
+    // a diagnostic about a key's VALUE (§8.6's `profile`) has to point at the line
+    // the key was written on, and only this walk knows it.
+    const firstLine = definedAt ?? new Map();
+    const walk = (ls, base, depth) => {
+        // The same shield `scanBlocks` uses. Without it the two passes disagree
+        // about what a block is: a ``` pair makes `=== meta` an EXAMPLE to the
+        // scanner and a DEFINITION to this walk, so a document that merely shows
+        // the syntax silently acquired its keys. This specification's own §8.6
+        // example set `profile` on the whole specification that way.
+        // Under Markdown reading the structure shield (structureFor); the types are
+        // the registry's, since the vocabulary is what this walk is finding out.
+        const shielded = structureFor(ls, markdown, (t) => REGISTRY.has(t)).shield;
+        for (let i = 0; i < ls.length; i++) {
+            if (shielded.has(i))
+                continue;
+            const { line, consumed } = foldFence(ls, i);
+            const open = FENCE_OPEN.exec(line);
+            if (!open)
+                continue;
+            const type = open[2];
+            const { end, closed } = fenceClose(ls, i, open, consumed);
+            const body = ls.slice(i + consumed, closed ? end - 1 : end);
+            if (type === "meta") {
+                const line = base + i + 1; // 1-based, in the original stream
+                for (const [k, v] of Object.entries(parseData(body))) {
+                    if (meta.has(k)) {
+                        diags?.push({ severity: "warning", code: "duplicate-meta-key",
+                            message: `meta key \`${k}\` already defined at line ${firstLine.get(k)}; later definition at line ${line} is ignored`,
+                            line });
+                    }
+                    else {
+                        meta.set(k, String(v));
+                        firstLine.set(k, line);
+                    }
+                }
+            }
+            else if ((REGISTRY.get(type) ?? "raw") === "flow" && depth < BLOCK_NESTING) {
+                walk(body, base + i + 1, depth + 1);
+            }
+            i = end - 1; // the loop's ++ lands on `end`
+        }
+    };
+    walk(lines, 0, 0);
+    return meta;
+}
+// §8: resolve every discovered reference. Internal/autoref/footnote anchors
+// must exist in this document; cross-document anchors must resolve in the
+// target file when a `resolveDoc` hook is supplied (else reported as unchecked).
+// One block of another document, by id, from a SCAN rather than a parse: the
+// scan already builds the table models and value trees a coordinate projects
+// against, and a fresh context with no `resolveDoc` is what keeps two documents
+// that reference each other from resolving in circles (§9.3).
+function blockFromDocument(source, id, scanned) {
+    // One scan per document per check: a coordinate per line into a large target,
+    // or a document naming itself, rescanned the whole target for every reference.
+    let hit = scanned?.get(source);
+    if (hit === undefined) {
+        hit = scanForCoordinates(source);
+        scanned?.set(source, hit);
+    }
+    const { blocks, ctx } = hit;
+    // `#meta` is the reserved id for the merged namespace (§4), not a block that
+    // carries it — and GEP 0011 makes it addressable across documents in the same
+    // breath as within one (`A.geml#meta["version"]`). Resolving it only in the
+    // same-document branch left the cross-document spelling the GEP documents
+    // failing as an unresolved reference.
+    if (nameKey(id) === nameKey("meta") && !ctx.ids.has(nameKey("meta"))) {
+        const view = metaView(blocks);
+        if (view.blocks.length === 0)
+            return null;
+        return { kind: "block", type: "meta", mode: "data", classes: [], attrs: {}, data: view.value };
+    }
+    const find = (bs) => {
+        for (const b of bs) {
+            if ((b.kind === "block" || b.kind === "heading") && b.id !== undefined && nameKey(b.id) === nameKey(id))
+                return b;
+            if (b.kind === "block" && b.children) {
+                const inner = find(b.children);
+                if (inner)
+                    return inner;
+            }
+        }
+        return undefined;
+    };
+    return find(blocks) ?? null;
+}
+// A borrowed document as a coordinate reads it. A scan leaves every `src=` block
+// empty: the rows and value trees a coordinate projects against are filled by the
+// resolve passes, not by the scanner. Without them a `view` in the borrowed
+// document carries zero columns and every coordinate on it fails — the SAME
+// document that checks clean when it is parsed on its own. These run with no
+// `resolveDoc` on purpose: a same-document `src=#id` is what a coordinate needs,
+// and refusing to descend again is what keeps two documents that reference each
+// other from resolving in circles (§9.3). Their diagnostics die with this
+// throwaway context — the borrowed document reports its own when it is checked.
+function scanForCoordinates(source) {
+    const ctx = { diags: [], ids: new Map(), refs: [], meta: new Map(), vocab: vocabularyOf(source) };
+    const blocks = scanBlocks(normalizeSource(source).split("\n"), 0, ctx);
+    const inner = {};
+    resolveTableSources(ctx, inner);
+    resolveViewSources(ctx, inner);
+    resolveDataSources(ctx, inner);
+    return { blocks, ctx };
+}
+// GEP 0011: a reference may carry a coordinate — `[[#fy[2]["Q1"]]]`, or the
+// same across documents. The base resolves like any id; the PATH is then
+// checked against the block it names, so a cell that is not there is a build
+// error rather than a reference into nothing. Returns true when it has taken
+// responsibility for this reference (resolved or reported), false when the
+// anchor is not a coordinate and the ordinary id checks should run.
+function validateCoordRef(ref, children, ctx, opts, docs) {
+    const anchor = ref.anchor;
+    if (anchor === undefined)
+        return false;
+    const at = anchor.indexOf("[");
+    if (at <= 0)
+        return false;
+    const path = parseCoordPath(anchor.slice(at));
+    if (path === null)
+        return false; // not a coordinate: the id check names it
+    const base = anchor.slice(0, at);
+    const written = ref.doc !== undefined ? `${ref.doc}#${anchor}` : `#${anchor}`;
+    const err = (code, message) => {
+        ctx.diags.push({ severity: "error", code, message, line: ref.line });
+        return true;
+    };
+    let block = null;
+    if (ref.doc !== undefined) {
+        if (!opts.resolveDoc) {
+            ctx.diags.push({ severity: "warning", code: "unchecked-cross-document-reference", message: `\`${written}\` not checked (no document resolver)`, line: ref.line });
+            return true;
+        }
+        const text = docs.text(ref.doc);
+        if (text === null)
+            return err("unresolvable-document", `cannot resolve document \`${ref.doc}\``);
+        block = blockFromDocument(text, base, docs.scanned);
+        if (!block)
+            return err("unresolved-cross-document-reference", `unresolved reference \`${ref.doc}#${base}\``);
+    }
+    else if (nameKey(base) === nameKey("meta") && !ctx.ids.has(nameKey("meta"))) {
+        // The reserved id (§4): the merged view, not a block.
+        const view = metaView(children);
+        if (view.blocks.length === 0)
+            return err("unresolved-reference", `unresolved reference \`#meta\` — this document has no \`meta\` block`);
+        block = { kind: "block", type: "meta", mode: "data", classes: [], attrs: {}, data: view.value };
+    }
+    else {
+        if (!ctx.ids.has(nameKey(base)))
+            return err("unresolved-reference", `unresolved reference \`#${base}\``);
+        const site = findBlockSite(children, base);
+        block = site ? site.siblings[site.index] : null;
+        if (!block)
+            return err("unresolved-reference", `unresolved reference \`#${base}\``);
+    }
+    // An embed found in ANOTHER document wrote its `src=` relative to that
+    // document; the address this one would write is rebased onto it.
+    const doc = ref.doc;
+    const rebase = doc === undefined ? undefined
+        : (src) => (src.startsWith("#") ? `${doc}${src}` : relJoinPath(relDirPath(doc), src));
+    // §3.3: a coordinate on a block whose data is remote defers with it.
+    if (defers(block))
+        return true;
+    const hit = projectCoord(block, path, rebase);
+    if (!hit.ok)
+        return err("unresolved-reference", `\`${written}\`: ${hit.why}`);
+    // §5.2: a projection — inline or an embed's `src=` — may stand for one value
+    // or one row, never a whole column or a value-tree node holding more nodes.
+    const projected = ref.node?.type === "project";
+    // A reference says what an inline projection of the same coordinate says —
+    // one rule for both. A whole column or a value-tree node that holds more
+    // nodes has no inline text: projected it is an error, referenced it still
+    // resolves, says nothing of its own and links to the block that holds it.
+    const inline = inlineProjection(hit, written);
+    let shown;
+    if (projected) {
+        if (!inline.ok)
+            return err("inline-transclusion-not-inline", `\`![[${written}]]\` projects inline content, but ${inline.why}`);
+        shown = inline.text;
+    }
+    else if (ref.embed && !inline.ok) {
+        return err("embed-target-not-projectable", `\`=== embed {src=${written}}\` cannot stand for that target: ${inline.why}`);
+    }
+    else if (inline.ok) {
+        shown = inline.text;
+    }
+    else if (hit.shown !== undefined) {
+        // A unit with no inline projection may still have something a reference
+        // SAYS — a form field's label (GEP-0008).
+        shown = hit.shown;
+    }
+    // The answer lands on the node: a coordinate has no anchor of its own, so a
+    // renderer that had to work this out would need the document model — and
+    // there are four renderers. What the reference SAYS is the projected text;
+    // where a link may point is the block that holds it.
+    if (ref.node) {
+        if (shown !== undefined)
+            ref.node.value = shown;
+        // `#meta` is the merged view rather than a block, so it has no anchor a
+        // link could point at: leaving `base` unset is what tells a renderer to
+        // put the value in as text.
+        if (block.kind === "block" && block.id !== undefined)
+            ref.node.base = base;
+        else if (nameKey(base) !== nameKey("meta"))
+            ref.node.base = base;
+    }
+    return true;
+}
+// Obsidian's block markers: a `^id` ending a line (`Some text. ^abc123`),
+// outside code. What `[[#^abc123]]` points at.
+function blockMarkersOf(lines) {
+    const out = new Set();
+    const shielded = shieldFor(lines, true);
+    lines.forEach((l, k) => {
+        const m = shielded.has(k) ? null : /(?:^|\s)\^([A-Za-z0-9-]+)[ \t]*$/.exec(l);
+        if (m)
+            out.add(m[1]);
+    });
+    return out;
+}
+// HTML anchors (Markdown reading): the `id` of an `<a>` element, or its legacy
+// `name`, and the `id` of a `<span>`. GitHub keeps all three, so
+// `[Why now](#why-now)` beside `<a id="why-now"></a>` is a link that works there,
+// and so is MinerU's page footnote — `[\[1\]](#note-one)` pointing at
+// `<span id="note-one">`. Those two elements and no others, on purpose: every
+// element GitHub keeps an `id` on would be a wider rule than the documents that
+// need one, and each element added is a case to get right. Reading the element
+// as the text GEML keeps it as made `check` call every such link broken, this
+// repo's own README first. They are link TARGETS and nothing more: not blocks,
+// not ids `get` can address, and the raw HTML still renders and converts as
+// the text it always was. An element inside code (a fence, an indented block,
+// a code span) or an HTML comment is not an anchor, as it is not on GitHub.
+// A line with no `<` outside a comment holds neither a tag nor a comment's
+// start, so ordinary prose is never scanned; the tag and attribute scans stop
+// at the next `<` or `>`, and the code-span match is the inline parser's own.
+function htmlAnchorsOf(lines) {
+    const out = new Set();
+    const shielded = shieldFor(lines, true);
+    let inComment = false;
+    lines.forEach((l, k) => {
+        if (shielded.has(k) || (!inComment && !l.includes("<")))
+            return;
+        const line = outsideCodeSpans(l);
+        let s = "";
+        for (let i = 0; i < line.length;) {
+            const at = line.indexOf(inComment ? "-->" : "<!--", i);
+            if (!inComment)
+                s += line.slice(i, at < 0 ? line.length : at);
+            if (at < 0)
+                break;
+            i = at + (inComment ? 3 : 4);
+            inComment = !inComment;
+        }
+        for (const tag of s.matchAll(/<(a|span)(?=[\s/>])[^<>]*>/gi)) {
+            const isA = tag[1].length === 1;
+            for (const [name, value] of htmlAttributes(tag[0], tag[1].length + 1)) {
+                if ((name === "id" || (isA && name === "name")) && value !== "")
+                    out.add(nameKey(value));
+            }
+        }
+    });
+    return out;
+}
+// A line with its code spans blanked, read by the rule the inline parser uses
+// (§5.3(1)): a run of N backticks opens, the next run of N closes, `\` escapes
+// the character after it, and a run with no closer is literal text.
+function outsideCodeSpans(line) {
+    let out = "";
+    let i = 0;
+    while (i < line.length) {
+        const c = line[i];
+        if (c === "\\") {
+            out += line.slice(i, i + 2);
+            i += 2;
+            continue;
+        }
+        if (c !== "`") {
+            out += c;
+            i++;
+            continue;
+        }
+        const n = backtickRun(line, i);
+        const close = findCodeSpanClose(line, i, n); // §5.3(1)
+        if (close < 0) {
+            out += line.slice(i, i + n);
+            i += n;
+            continue;
+        }
+        out += " ".repeat(close + n - i);
+        i = close + n;
+    }
+    return out;
+}
+// The attributes of one start tag (`<a …>`, `<span …>`), read from `from` — the
+// index just past the tag name — with names lowercased as HTML reads
+// them: `name="v"`, `name='v'`, `name=v`, or a bare `name`. Read left to right
+// one attribute at a time, so `data-id="x"` is not an `id` and `title="id=x"`
+// is a title.
+function htmlAttributes(tag, from) {
+    const out = [];
+    const attr = /\s+([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/y;
+    attr.lastIndex = from; // past `<a` or `<span`
+    let m;
+    while ((m = attr.exec(tag)) !== null)
+        out.push([m[1].toLowerCase(), m[2] ?? m[3] ?? m[4] ?? ""]);
+    return out;
+}
+// A wikilink (Markdown reading). Within the document it is GEML's own promise —
+// every anchor resolves — read the way Obsidian writes it: `[[#Heading Text]]`
+// names the heading by its text, so its slug counts, and `[[#^id]]` names a
+// block marker. To another note, the note has to exist; its fragment is left to
+// the format, as for any non-GEML target. A missing note is a WARNING, not an
+// error: in a vault `[[Not Yet Written]]` is how a note is planned, and
+// Obsidian creates it on the first click.
+function validateWikilink(ref, ctx, opts) {
+    if (ref.doc === undefined) {
+        // The scanner records a same-page wikilink only with a fragment to check.
+        const a = ref.anchor;
+        const found = a.startsWith("^")
+            ? ctx.blockMarkers?.has(a.slice(1)) === true
+            : ctx.ids.has(nameKey(a)) || ctx.ids.has(nameKey(slug(a))) || ctx.runIds?.has(nameKey(a)) === true;
+        if (!found)
+            ctx.diags.push({ severity: "error", code: "unresolved-reference", message: `unresolved reference \`#${a}\``, line: ref.line });
+        return;
+    }
+    if (opts.findNote !== undefined && !opts.findNote(ref.doc)) {
+        ctx.diags.push({
+            severity: "warning", code: "markdown-unresolved-wikilink", line: ref.line,
+            message: `wikilink \`[[${ref.doc}]]\` names no note under the resolution root — in a vault that is a note not yet written`,
+        });
+    }
+}
+function validateRefs(ctx, opts, children) {
+    const docIds = new Map(); // memoized cross-doc id sets
+    const docs = docReads(opts);
+    for (const ref of ctx.refs) {
+        if (ref.kind === "wikilink") {
+            validateWikilink(ref, ctx, opts);
+            continue;
+        }
+        if (validateCoordRef(ref, children, ctx, opts, docs))
+            continue;
+        if (ref.kind === "cross") {
+            if (!ref.doc)
+                continue;
+            // WHAT `#frag` MEANS IS THE TARGET FORMAT'S BUSINESS, and GEML only
+            // defines it for GEML. In `page.html#sec` the fragment is an element id;
+            // in `notes.md#sec` it is a forge's heading slug or an `<a id>`. Reading
+            // either with GEML's own rules got both directions wrong: it accepted
+            // `{#brace}` that no forge resolves, refused `<a id="x">` and slug
+            // anchors that every forge does, and — this is the part that makes the
+            // check untrustworthy rather than merely strict — passed by ACCIDENT
+            // whenever the name happened to appear anywhere in the target, which is
+            // how this repo's own `../GEML-spec.md#appendix-a-diagnostic-catalogue`
+            // was green: that string is in a LINK there, not a definition.
+            //
+            // So the document must still resolve — a link to a file that is not
+            // there is broken whatever its format — and the fragment is left to the
+            // format that owns it. Same lesson as directories: do not judge another
+            // convention by GEML's rules; a check that guesses teaches people to
+            // ignore it.
+            const gemlTarget = /\.geml$/i.test(ref.doc);
+            if (!gemlTarget && ref.anchor !== undefined && opts.resolveDoc) {
+                // The document still has to be there — a link to a missing file is
+                // broken whatever its format — but nothing here reads its fragment.
+                if (docs.text(ref.doc) === null && !opts.docExists?.(ref.doc)) {
+                    ctx.diags.push({ severity: "error", code: "unresolvable-document", message: `cannot resolve document \`${ref.doc}\``, line: ref.line });
+                }
+                continue;
+            }
+            if (!opts.resolveDoc) {
+                ctx.diags.push({ severity: "warning", code: "unchecked-cross-document-reference", message: `cross-document reference \`${ref.doc}${ref.anchor ? "#" + ref.anchor : ""}\` not checked (no document resolver)`, line: ref.line });
+                continue;
+            }
+            let ids = docIds.get(ref.doc);
+            if (ids === undefined) {
+                const src = docs.text(ref.doc);
+                if (src === null) {
+                    // A LINK may point at something that exists but has no text to read —
+                    // a directory, above all: `[the extension](integrations/vscode/)` is
+                    // an ordinary link that a forge renders as a listing, and calling it
+                    // broken would fail every real project's README. It carries no ids,
+                    // so an anchor into it is still an error, and a target that is simply
+                    // absent still is too. Content routes (`src=`, `data=`, `embed`) do
+                    // not come through here: they need bytes, and a directory has none.
+                    if (opts.docExists?.(ref.doc)) {
+                        docIds.set(ref.doc, new Set());
+                        if (ref.anchor !== undefined) {
+                            ctx.diags.push({ severity: "error", code: "unresolved-cross-document-reference", message: `unresolved reference \`${ref.doc}#${ref.anchor}\` (\`${ref.doc}\` has no addressable content)`, line: ref.line });
+                        }
+                        continue;
+                    }
+                    ctx.diags.push({ severity: "error", code: "unresolvable-document", message: `cannot resolve document \`${ref.doc}\``, line: ref.line });
+                    docIds.set(ref.doc, new Set());
+                    continue;
+                }
+                ids = gatherIds(src);
+                docIds.set(ref.doc, ids);
+            }
+            if (ref.anchor !== undefined && !ids.has(nameKey(ref.anchor))) {
+                ctx.diags.push({ severity: "error", code: "unresolved-cross-document-reference", message: `unresolved reference \`${ref.doc}#${ref.anchor}\``, line: ref.line });
+            }
+            continue;
+        }
+        // Markdown reading: a footnote is GFM's, and GFM has no broken one. With a
+        // `[^label]:` definition `[^label]` is a footnote; with none it was never
+        // one — GitHub prints it as the text it is, which is why `[^0-9]` in a
+        // sentence about a regex is not a reference at all. Neither is an error, so
+        // nothing here needs to know which it was.
+        if (ctx.markdown && ref.kind === "footnote")
+            continue;
+        // internal, autoref, footnote — anchor must be a known id in this document,
+        // or (Markdown reading) a fragment a forge resolves: an `<a id>` / `<a name>` /
+        // `<span id>` anchor, or GitHub's anchor for a heading.
+        if (ref.anchor !== undefined && !ctx.ids.has(nameKey(ref.anchor)) && ctx.runIds?.has(nameKey(ref.anchor)) !== true
+            && ctx.markdownTargets?.has(nameKey(ref.anchor)) !== true) {
+            const footnote = ref.kind === "footnote";
+            const what = footnote ? `footnote \`[^${ref.anchor}]\`` : `reference \`#${ref.anchor}\``;
+            const code = footnote ? "unresolved-footnote" : "unresolved-reference";
+            ctx.diags.push({ severity: "error", code, message: `unresolved ${what}`, line: ref.line });
+        }
+    }
+}
+// `src=` on a `code` block: the route to the code the block shows,
+// `<path>[#L<start>[-<end>]]` (1-based, inclusive). The code-graph runtime has
+// always fetched and sliced this at render time; resolving it here is what
+// turns a range that no longer exists — the source moved or shrank — from a
+// silently empty panel into a build error. There is no extension gate (code is
+// any language); the safety rule is the resolver's confinement to the document
+// tree, widened only by `--root`.
+const SOURCE_RANGE = /^L(\d+)(?:-(\d+))?$/;
+// One route syntax for the two types whose `src=` fragment position is free —
+// `code` and `data`. (A table's is already taken: `src=doc.geml#id` names a
+// block.) `<path>[#L<start>[-<end>]]`, 1-based and inclusive; `to === 0` means
+// "through end of file". Returns null after reporting, so callers just skip.
+function parseSourceRoute(target, kind, line, ctx) {
+    const hash = target.indexOf("#");
+    const path = hash < 0 ? target : target.slice(0, hash);
+    const frag = hash < 0 ? "" : target.slice(hash + 1);
+    if (frag === "")
+        return { path, from: 1, to: 0 };
+    const m = SOURCE_RANGE.exec(frag);
+    if (!m) {
+        ctx.diags.push({ severity: "error", code: "bad-source-range", message: `${kind} source \`${target}\`: unrecognised fragment (expected \`#L<start>\` or \`#L<start>-<end>\`)`, line });
+        return null;
+    }
+    const from = Number(m[1]);
+    const to = m[2] === undefined ? from : Number(m[2]);
+    if (from < 1 || to < from) {
+        ctx.diags.push({ severity: "error", code: "bad-source-range", message: `${kind} source \`${target}\`: line range is empty or starts before line 1`, line });
+        return null;
+    }
+    return { path, from, to };
+}
+// Slice a resolved file to a route's range, or report that the range no longer
+// exists — the signal a stale reference exists at all.
+function sliceSourceRange(text, route, target, kind, line, ctx) {
+    const all = normalizeSource(text).split("\n");
+    // A trailing newline yields a final empty element; it is not a line.
+    if (all.length > 0 && all[all.length - 1] === "")
+        all.pop();
+    if (route.to > all.length) {
+        ctx.diags.push({ severity: "error", code: "bad-source-range", message: `${kind} source \`${target}\`: the file has ${all.length} line(s), so lines ${route.from}-${route.to} no longer exist — the range is stale`, line });
+        return null;
+    }
+    return all.slice(route.from - 1, route.to === 0 ? all.length : route.to);
+}
+function resolveCodeSources(ctx, opts) {
+    for (const { block, line, target } of ctx.codeSources ?? []) {
+        const scheme = schemeOf(target);
+        // A remote source is fetched by the RENDERER (§9.4), as for a table.
+        if (scheme === "http" || scheme === "https")
+            continue;
+        if (scheme !== null) {
+            ctx.diags.push({ severity: "error", code: "bad-code-source", message: `code source \`${target}\` names a disallowed URL scheme`, line });
+            continue;
+        }
+        const route = parseSourceRoute(target, "code", line, ctx);
+        if (route === null)
+            continue;
+        const { path, from, to } = route;
+        if (!opts.resolveDoc) {
+            ctx.diags.push({ severity: "warning", code: "unchecked-cross-document-reference", message: `code source \`${target}\` not checked (no document resolver)`, line });
+            continue;
+        }
+        const text = opts.resolveDoc(path);
+        if (text === null) {
+            // A WARNING, not an error, and the code/value model split is the reason:
+            // a value that cannot be loaded is a promise the document failed to keep
+            // (an error — see `unresolvable-data-source`), while a code region that
+            // cannot be reached right now is still a code region at a location. A
+            // generated code graph read away from its sources — published on its own,
+            // or describing another checkout — must stay valid, exactly as the
+            // render-time runtime degrades to showing the path.
+            ctx.diags.push({ severity: "warning", code: "unresolvable-code-source", message: `cannot resolve code source \`${path}\` — not checked`, line });
+            continue;
+        }
+        const slice = sliceSourceRange(text, { from, to }, target, "code", line, ctx);
+        if (slice === null)
+            continue;
+        const hasBody = (block.raw ?? []).some((l) => l.trim() !== "");
+        if (hasBody) {
+            // A code block must not carry both src= and an inline body (§3.3).
+            ctx.diags.push({ severity: "error", code: "code-src-and-body",
+                message: `code: carries both \`src=\` and an inline body; exactly one is permitted`,
+                line });
+        }
+        else {
+            block.raw = slice;
+        }
+    }
+}
+// GEP-0005: `src=` on a `data` block names external content — the same
+// external-source discipline tables have (§6, §9.4): an http(s) source is
+// fetched by the RENDERER, never the parser (the block defers, and so does a
+// chart over it); any other scheme is refused; the file must look like data
+// (`.json`/`.jsonl`/`.yaml`); a missing resolver leaves it unchecked with a warning.
+function resolveDataSources(ctx, opts) {
+    for (const { block, line, target } of ctx.dataSources ?? []) {
+        const defer = () => { if (block.id !== undefined)
+            (ctx.dataSrcPending ??= new Set()).add(block.id); };
+        const scheme = schemeOf(target);
+        if (scheme === "http" || scheme === "https") {
+            defer();
+            continue;
+        }
+        if (scheme !== null) {
+            ctx.diags.push({ severity: "error", code: "unresolvable-data-source", message: `data source \`${target}\` names a disallowed URL scheme`, line });
+            continue;
+        }
+        // The route shares `code`'s syntax (§3.2): a line range MAY narrow the file.
+        const route = parseSourceRoute(target, "data", line, ctx);
+        if (route === null)
+            continue;
+        const { path } = route;
+        // A data source is data — the same shape rule table sources enforce, so
+        // the loader cannot be pointed at a `.env` or a private key.
+        if (!/\.(json|jsonl|yaml|yml)$/i.test(path)) {
+            ctx.diags.push({ severity: "error", code: "bad-data-source", message: `data source \`${path}\` is not a \`.json\`/\`.jsonl\`/\`.yaml\` data file`, line });
+            continue;
+        }
+        // Explicit format= wins; otherwise the (already-gated) extension names it.
+        // `.yaml`/`.yml` is admitted because a config file on disk is the shape
+        // most yaml has, and `src=` exists precisely so the file stays the source
+        // of truth. A processor with no yaml engine reaches the same
+        // `data-format-no-engine` warning it would for an inline body.
+        const fmtAttr = block.attrs["format"];
+        const fmt = typeof fmtAttr === "string"
+            ? fmtAttr
+            : /\.jsonl$/i.test(path) ? "jsonl" : /\.(yaml|yml)$/i.test(path) ? "yaml" : "json";
+        // A range narrows the file to lines; what those lines mean is then the
+        // format's business, unchanged. Slicing a `jsonl` log is the obvious use;
+        // slicing a `json` file works whenever the slice is itself a value, and
+        // when it is not, the ordinary data-parse error already names the line.
+        // No extra rule.
+        if (!opts.resolveDoc) {
+            ctx.diags.push({ severity: "warning", code: "unchecked-cross-document-reference", message: `data source \`${target}\` not checked (no document resolver)`, line });
+            defer();
+            continue;
+        }
+        const text = opts.resolveDoc(path);
+        if (text === null) {
+            ctx.diags.push({ severity: "error", code: "unresolvable-data-source", message: `cannot resolve data source \`${path}\``, line });
+            continue;
+        }
+        const lines = sliceSourceRange(text, route, target, "data", line, ctx);
+        if (lines === null)
+            continue;
+        // What the FILE fails on is reported on the block that names it: a line
+        // number counted from the block would point into this document at
+        // whatever follows it.
+        const parsed = parseDataBody(fmt, lines, line);
+        for (const d of parsed.diags)
+            ctx.diags.push({ ...d, line });
+        if (parsed.value !== undefined) {
+            block.value = parsed.value;
+            if (block.id !== undefined && !ctx.dataValues?.has(nameKey(block.id))) {
+                (ctx.dataValues ??= new Map()).set(nameKey(block.id), parsed.value);
+            }
+        }
+    }
+}
+// GEP-0005: a chart's `data=` may target a `data` block whose value is a
+// RECORD ARRAY — a non-empty array of objects. Keys project to columns in
+// first-seen order; every column the chart actually references (x/y/size/
+// series) must be present with a SCALAR value in every record, and a
+// violation is an error naming the first offending record. Columns the chart
+// does not reference may hold anything (nested values project as compact
+// JSON text). The projection feeds the unchanged table machinery.
+function recordsToTable(value, attrs, line, ctx) {
+    const fail = (msg) => {
+        ctx.diags.push({ severity: "error", code: "chart-data-not-records", message: `geml-chart: ${msg}`, line });
+        return null;
+    };
+    if (!Array.isArray(value) || value.length === 0)
+        return fail("data target is not a non-empty record array");
+    const columns = [];
+    for (let i = 0; i < value.length; i++) {
+        const r = value[i];
+        if (r === null || typeof r !== "object" || Array.isArray(r))
+            return fail(`record ${i + 1} is not an object`);
+        for (const k of Object.keys(r))
+            if (!columns.includes(k))
+                columns.push(k);
+    }
+    // Only the channels this chart TYPE reads are "referenced" (§7.1): a stray
+    // size= on a bar chart is buildChart's chart-unused-channel WARNING, and the
+    // projection must not turn it into an error a table source would not raise.
+    // An unknown/missing type validates x/y only; buildChart reports the type.
+    const typeAttr = String(attrs["type"] ?? "");
+    const uses = USES[typeAttr] ?? new Set(["x", "y"]);
+    const channels = [];
+    for (const c of ["x", "y", "size", "series"]) {
+        if (!uses.has(c))
+            continue;
+        const v = attrs[c];
+        if (typeof v === "string")
+            for (const name of v.split(",").map((s) => s.trim()).filter(Boolean))
+                channels.push(name);
+    }
+    for (const col of channels) {
+        for (let i = 0; i < value.length; i++) {
+            const v = value[i][col];
+            if (v === undefined || v === null || typeof v === "object") {
+                return fail(`column \`${col}\` is missing or non-scalar in record ${i + 1}`);
+            }
+        }
+    }
+    const rows = value.map((r) => columns.map((c) => {
+        const v = r[c];
+        const text = v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+        // Data, not prose: cells carry plain-text inlines, never inline-parsed —
+        // the same treatment `format=csv` cells get (a `*` in a value is a `*`).
+        const cell = { text, inlines: text === "" ? [] : [{ type: "text", value: text }] };
+        if (typeof v === "number" && Number.isFinite(v))
+            cell.value = v;
+        return cell;
+    }));
+    return { header: true, columns, align: columns.map(() => undefined), rows };
+}
+// §7: resolve every geml-chart against its referenced table. Runs after the
+// scan so that `data=#id` may point at a table defined anywhere in the doc.
+function resolveCharts(ctx, opts) {
+    for (const { block, line } of ctx.charts ?? []) {
+        const ref = typeof block.attrs["data"] === "string" ? block.attrs["data"].trim() : "";
+        if (ref === "" || ref === "#") {
+            ctx.diags.push({ severity: "error", code: "chart-missing-data", message: "geml-chart: missing `data=#id`", line });
+            continue;
+        }
+        // `data=` resolves by the same rule as a table's source: `#id` (or a bare id)
+        // names a table in THIS document, `doc.geml#id` one in another. Splitting on
+        // the LAST `#` is what the old code got wrong — it stripped the leading one
+        // and reported `#other.geml#fy25`, a target that never existed.
+        const hash = ref.indexOf("#");
+        const docPath = hash <= 0 ? "" : ref.slice(0, hash);
+        const id = hash < 0 ? ref : ref.slice(hash + 1);
+        let table;
+        if (docPath === "") {
+            table = ctx.tables?.get(nameKey(id));
+            if (!table && ctx.dataValues?.has(nameKey(id))) {
+                // GEP-0005: the target is a `data` block. A RECORD ARRAY projects to
+                // the table model (keys -> columns) and feeds the unchanged chart
+                // machinery, so column checks and rendering stay single-sourced.
+                const projected = recordsToTable(ctx.dataValues.get(nameKey(id)), block.attrs, line, ctx);
+                if (projected === null)
+                    continue; // reported by the projection
+                table = projected;
+            }
+            if (!table && ctx.dataSrcPending?.has(id)) {
+                // GEP-0005: the target is a `data` block whose `src=` is render-time
+                // (http, or no resolver) — defer exactly like a src table with no
+                // columns; the renderer checks it when the data actually arrives.
+                continue;
+            }
+            if (!table) {
+                // A chart is a view of a table, and a data file is one of the three ways
+                // §6 lets a table name its content. So `data=rows.csv` desugars: it is an
+                // anonymous table with that source, feeding this chart. Nothing new is
+                // invented — the resolution, the §9.4 remote rule and `format=` all come
+                // from the table rules, which is what makes the one source rule hold for
+                // charts too instead of charts being its exception.
+                if (hash < 0 && /\.(json|jsonl)$/i.test(id) && schemeOf(id) === null) {
+                    // GEP-0005 sugar, the json/jsonl twin of the csv path: an anonymous
+                    // LOCAL data source projected through the record-array rules. A
+                    // remote URL needs a NAMED `data` block with `src=` — its fetch is
+                    // render-time, and an anonymous source has no block to defer on.
+                    if (!opts.resolveDoc) {
+                        ctx.diags.push({ severity: "warning", code: "unchecked-cross-document-reference", message: `geml-chart: data source \`${id}\` not checked (no document resolver)`, line });
+                        continue;
+                    }
+                    const text = opts.resolveDoc(id);
+                    if (text === null) {
+                        ctx.diags.push({ severity: "error", code: "unresolvable-data-source", message: `geml-chart: cannot resolve data source \`${id}\``, line });
+                        continue;
+                    }
+                    const parsed = parseDataBody(/\.jsonl$/i.test(id) ? "jsonl" : "json", normalizeSource(text).split("\n"), line);
+                    for (const d of parsed.diags)
+                        ctx.diags.push({ ...d, line });
+                    if (parsed.value === undefined)
+                        continue;
+                    const projected = recordsToTable(parsed.value, block.attrs, line, ctx);
+                    if (projected === null)
+                        continue; // reported by the projection
+                    table = projected;
+                }
+                else if (hash < 0 && /\.(json|jsonl)$/i.test(id)) {
+                    ctx.diags.push({ severity: "error", code: "bad-data-source", message: `geml-chart: \`data=${id}\`: a remote json/jsonl source needs a named \`data\` block with \`src=\``, line });
+                    continue;
+                }
+                else if (hash < 0 && /\.[a-z0-9]+$/i.test(id)) {
+                    // Any other file is a delimited table (§7.1): `tsv` by its suffix,
+                    // `csv` otherwise — no suffix gate, exactly as for a table's `src=`.
+                    const sugar = chartSourceTable(ctx, opts, block, id, line);
+                    if (sugar === null)
+                        continue; // already reported by the table rules
+                    table = sugar;
+                }
+                else {
+                    const known = ctx.ids.has(nameKey(id));
+                    const what = known ? `data target \`#${id}\` is not a table` : `unresolved reference \`#${id}\``;
+                    const code = known ? "chart-data-not-a-table" : "unresolved-reference";
+                    ctx.diags.push({ severity: "error", code, message: `geml-chart: ${what}`, line });
+                    continue;
+                }
+            }
+        }
+        else {
+            if (!opts.resolveDoc) {
+                ctx.diags.push({ severity: "warning", code: "unchecked-cross-document-reference", message: `geml-chart: data target \`${ref}\` not checked (no document resolver)`, line });
+                continue;
+            }
+            const text = opts.resolveDoc(docPath);
+            if (text === null) {
+                ctx.diags.push({ severity: "error", code: "unresolvable-document", message: `geml-chart: cannot resolve document \`${docPath}\``, line });
+                continue;
+            }
+            const remote = tableFromDocument(text, id);
+            if (remote === null) {
+                ctx.diags.push({ severity: "error", code: "unresolved-cross-document-reference", message: `geml-chart: unresolved reference \`${ref}\``, line });
+                continue;
+            }
+            if (remote === "not-a-table") {
+                ctx.diags.push({ severity: "error", code: "chart-data-not-a-table", message: `geml-chart: data target \`${ref}\` is neither a table nor a data block`, line });
+                continue;
+            }
+            if ("records" in remote) {
+                const projected = recordsToTable(remote.records, block.attrs, line, ctx);
+                if (projected === null)
+                    continue; // reported by the projection
+                table = projected;
+            }
+            else {
+                table = remote;
+            }
+        }
+        if (table.src !== undefined && table.columns.length === 0) {
+            // §6: the table names a source whose data did not arrive at build time — a
+            // remote URL, or any source with no document resolver supplied. The chart is
+            // therefore resolved at render time, and its column names are checked there.
+            // The test is whether the data is actually here, not what the source looks
+            // like: skipping every `src` table unconditionally is what left a chart
+            // unbuilt with no diagnostic while the page said to go and read one.
+            continue;
+        }
+        const { model, diagnostics } = buildChart(block.attrs, table);
+        if (model)
+            block.chart = model;
+        for (const d of diagnostics)
+            ctx.diags.push({ ...d, line });
+    }
+}
+export function parse(source, opts = {}) {
+    const lines = normalizeSource(source).split("\n");
+    const diags = [];
+    const definedAt = new Map();
+    const meta = collectMeta(lines, diags, definedAt, opts.markdown);
+    // §8.6.2 rule 3: a declared vocabulary this processor does not ship is
+    // REPORTED, not passed over in silence — that report is what lets rule 4 grant
+    // a vocabulary its own body modes. Only when this parse computed the
+    // vocabulary itself: with `opts.vocab` the caller is handing down a
+    // declaration it already read, and already reported, one document up.
+    if (opts.vocab === undefined) {
+        for (const name of unrecognizedVocabularies(meta)) {
+            diags.push({
+                severity: "warning", code: "unrecognized-vocabulary",
+                message: `vocabulary \`${name}\` is not one this processor recognizes; it admits nothing and the types it would have admitted are read as raw`,
+                line: definedAt.get("profile") ?? 1, subject: name,
+            });
+        }
+    }
+    const ctx = { diags, ids: new Map(), refs: [], meta, vocab: opts.vocab ?? vocabularyFor(meta), resolveDoc: opts.resolveDoc, markdown: opts.markdown === true };
+    // §4 never checked a `=== meta` key, so a typo in one was silent — and with
+    // GEP-0013 a vocabulary's keys became part of what it owns. The check is
+    // OPT-IN per document, exactly as the attribute check is opt-in per type: it
+    // runs only when some declared vocabulary said what its keys are. A document
+    // that declares none, or only vocabularies that declared none, keeps the open
+    // meta namespace it always had.
+    if (opts.vocab === undefined) {
+        const declaredNames = declaredVocabularies(meta);
+        for (const [k] of meta) {
+            const owner = misnamespacedMetaKey(k, declaredNames);
+            if (owner === null)
+                continue;
+            diags.push({
+                severity: "warning", code: "unknown-meta-key",
+                message: `meta key \`${k}\` is in \`${owner}\`'s namespace but that vocabulary does not define it`,
+                line: definedAt.get(k) ?? 1, subject: k,
+            });
+        }
+    }
+    const children = scanBlocks(lines, 0, ctx);
+    // Before validateRefs: a reference may name a prose run (GEP 0010), and §8.2(5)
+    // would otherwise make it an error in this processor and not in another.
+    ctx.runIds = new Set([...proseRunTargets(children).keys()].map(nameKey));
+    // Table sources first: a chart reads the build-time model of the table it
+    // charts, so that model has to be filled before charts are resolved.
+    resolveTableSources(ctx, opts);
+    resolveViewSources(ctx, opts);
+    resolveDataSources(ctx, opts);
+    resolveCodeSources(ctx, opts);
+    resolveCharts(ctx, opts);
+    checkReservedMetaId(children, ctx);
+    if (ctx.markdown) {
+        ctx.blockMarkers = blockMarkersOf(lines);
+        const targets = (ctx.markdownTargets ??= new Set());
+        for (const a of htmlAnchorsOf(lines))
+            targets.add(a);
+    }
+    validateRefs(ctx, opts, children);
+    detectTransclusionCycles(children, ctx, opts);
+    validateProjections(children, ctx, opts);
+    for (const m of ctx.mediaDocTargets ?? []) {
+        ctx.diags.push({
+            severity: "error",
+            code: "media-target-is-document",
+            // `!` projects, so a GEML target here is a near-miss an author will reach for
+            // once that reading is established. Name both forms it could have meant.
+            message: `\`![](${m.src})\` projects a GEML document, which is not media: for block content use \`=== embed {src=${m.src}}\`, for a phrase use \`![[${m.src}]]\``,
+            line: m.line,
+        });
+    }
+    return { kind: "document", children, ids: [...ctx.ids.values()].map((v) => v.as), diagnostics: ctx.diags };
+}
+// The id that a fence/heading line defines, matching how scanBlocks derives it
+// (parseAttrs for the attribute object; heading text slug when no explicit id).
+// The slug MUST come from the RAW text, before interpolation, so that changing
+// a meta variable does not silently change the block's addressable id.
+// `ctx` is passed just in case future features need context.
+function idOfHeading(braces, text, line, ctx) {
+    return headingId(braces ? parseAttrs(braces).id : undefined, text, ctx);
+}
+// The matching close of the fence opened at lines[i] (equal-length run, or the
+// labeled `=== #id` close when the block carries an id): the index just past
+// the close line, and whether one was found — an unterminated block runs to
+// the end of the scope.
+/**
+ * C-01 (§4): a `===` or `#` line ending in `\` folds the line(s) below it into
+ * ONE logical line — backslash and newline become a single space. Returns the
+ * folded text plus how many PHYSICAL lines it ate, so every caller keeps
+ * counting in physical lines and spans stay byte-exact.
+ *
+ * It is one function because it has to hold for every scanner at once. It used
+ * to be inline in `parse` alone, so `parse` folded and `collectSpans` did not:
+ * the parser saw `=== table {#fy25 …}` — the spec's own §6 example — while
+ * `geml get '#fy25'` saw prose. `check` was clean and the block was
+ * unaddressable, which is the two halves of the format disagreeing about what
+ * the document contains.
+ */
+function foldFence(lines, i) {
+    const first = lines[i];
+    if (!((first.startsWith("===") || first.startsWith("#")) && first.endsWith("\\"))) {
+        return { line: first, consumed: 1 };
+    }
+    // A `===` line folds into an open fence only when the folded line ends in the
+    // `}` of an attribute object, or holds nothing after the type at all. When
+    // neither can hold, the line is no fence, and the fold is not built: every
+    // scanner asks at every line, and folding a run of 40,000 `=== x\` lines from
+    // each of them took half a minute. Nothing but the fence test reads the folded
+    // text of a `===` line, and `first` fails that test as surely (its `\`).
+    if (first.startsWith("===")) {
+        const { reach, tail } = continuations(lines);
+        const k = i + 1 < lines.length ? reach[i + 1] : i;
+        const rest = i + 1 < lines.length ? tail[i + 1] : "";
+        const head = trimWhiteSpaceEnd(first.slice(0, -1));
+        const last = rest !== "" ? rest : head.slice(-1);
+        if (last !== "}" && !(rest === "" && /^={3,}[ \t]*[A-Za-z][A-Za-z0-9_-]*$/.test(head))) {
+            return { line: first, consumed: k - i + 1 };
+        }
+    }
+    // §4: the backslash, the newline and the White_Space on either side of them
+    // become one space, so a continued line's indentation never reaches a value.
+    let folded = trimWhiteSpaceEnd(first.slice(0, -1));
+    let consumed = 1;
+    while (i + consumed < lines.length) {
+        const next = trimWhiteSpace(lines[i + consumed]);
+        consumed++;
+        if (next.endsWith("\\")) {
+            folded += " " + trimWhiteSpaceEnd(next.slice(0, -1));
+            continue;
+        }
+        folded += " " + next;
+        break;
+    }
+    return { line: folded, consumed };
+}
+// For every line of an array, as a continuation line of a fold that reached it:
+// `reach`, the last line the fold takes in from there, and `tail`, the last
+// non-whitespace character the fold gets from those lines ("" if none). Built
+// once per array, right to left, with foldFence's own segmenting.
+const CONTINUATIONS = new WeakMap();
+function continuations(lines) {
+    let c = CONTINUATIONS.get(lines);
+    if (c === undefined) {
+        const reach = new Int32Array(lines.length);
+        const tail = new Array(lines.length);
+        for (let j = lines.length - 1; j >= 0; j--) {
+            const t = trimWhiteSpace(lines[j]);
+            const goesOn = t.endsWith("\\");
+            const seg = goesOn ? trimWhiteSpaceEnd(t.slice(0, -1)) : t;
+            const after = goesOn && j + 1 < lines.length ? tail[j + 1] : "";
+            reach[j] = goesOn && j + 1 < lines.length ? reach[j + 1] : j;
+            tail[j] = after !== "" ? after : seg.slice(-1);
+        }
+        c = { reach, tail };
+        CONTINUATIONS.set(lines, c);
+    }
+    return c;
+}
+/** `consumed` is how many physical lines the OPENING fence occupied (C-01): the
+ *  body — and therefore the search for the close — starts after all of them. */
+function fenceClose(lines, i, open, consumed = 1) {
+    const openLen = open[1].length;
+    const id = idOf(open[3] ? parseAttrs(open[3]) : undefined);
+    const labeled = id !== undefined ? labeledClose(id) : null;
+    for (let j = i + consumed; j < lines.length; j++) {
+        if (isCloseFence(lines[j], openLen) || (labeled && labeled.test(lines[j])))
+            return { end: j + 1, closed: true };
+    }
+    return { end: lines.length, closed: false };
+}
+// A heading's span covers its whole SECTION: the heading line through the line
+// just before the next heading of same-or-higher level (fewer-or-equal `#`) in
+// the current scope, or end-of-scope. Fenced blocks are skipped whole — a `#`
+// line inside a `=== code` body is content, never a boundary. So is a line the
+// backtick shield covers: scanBlocks never reads a heading or a fence there, so
+// a `# comment` inside a ``` example must not end the section around it.
+function sectionEnd(lines, i, level, consumed, shielded, setext = NO_SETEXT) {
+    let j = i + consumed;
+    while (j < lines.length) {
+        // Folded here too: a continued fence must be SKIPPED WHOLE, and a continued
+        // heading must still be recognised as the boundary it is.
+        const { line, consumed: c } = foldFence(lines, j);
+        const st = setext.get(j);
+        if (st !== undefined) {
+            if (st.match[1].length <= level)
+                return j;
+            j = st.end;
+            continue;
+        }
+        const open = shielded.has(j) ? null : FENCE_OPEN.exec(line);
+        if (open) {
+            j = fenceClose(lines, j, open, c).end;
+            continue;
+        }
+        const h = shielded.has(j) ? null : matchHeading(line);
+        if (h && h[1].length <= level)
+            return j;
+        j += c;
+    }
+    return lines.length;
+}
+// Walk `lines` exactly as scanBlocks does — same fence close rules (equal-length
+// or labeled `=== #id`), same flow-only recursion via REGISTRY — recording the
+// source span of every addressable id (typed block, heading).
+// First definition wins, mirroring ctx.ids (a duplicate id is a build error, so
+// `get`/`set` operate on the one the parser actually registered). `base` is the
+// absolute line offset of this slice within the whole document.
+// The classes and attributes a unit carries, for a selector's `{.warn lang=py}`
+// filter. Added only when present, so a unit with none looks as it always did.
+function keysOf(a) {
+    if (a === undefined)
+        return {};
+    return {
+        ...(a.classes.length > 0 ? { classes: a.classes } : {}),
+        ...(Object.keys(a.attrs).length > 0 ? { attrs: a.attrs } : {}),
+    };
+}
+function collectSpans(lines, base, out, ctx, depth = 0, 
+// Optional second index: every addressable unit in document order — typed
+// blocks (id-bearing or not, so a block the author never named is still
+// addressable), headings, footnote definitions. A second SINK on the one
+// walk, not a second walk: the selector design's "one definition, one
+// implementation" applies to the scan as much as to the syntax.
+units) {
+    const add = (id, start, end) => {
+        if (!out.has(id))
+            out.set(id, { start, end });
+    };
+    // 同一道遮蔽。这一趟的契约就是"exactly as scanBlocks does"——漏掉它，模型里没有的块
+    // 在 list/get/set 里还寻得到址，比不改更糟。
+    const { shield: shielded, setext } = structureFor(lines, ctx.markdown, knownTo(ctx));
+    let i = 0;
+    while (i < lines.length) {
+        // Fold FIRST, exactly as `parse` does: a fence whose attribute object is
+        // split over lines must be one block here too, or it is unaddressable.
+        const { line, consumed } = foldFence(lines, i);
+        if (line.trim() === "") {
+            i++;
+            continue;
+        }
+        // `[^label]: …` is a definition only under Markdown reading (the register on
+        // ParseOptions.markdown); in a .geml it is prose, as the parser reads it.
+        const fndef = !ctx.markdown || shielded.has(i) ? null : FOOTNOTE_DEF.exec(line);
+        if (fndef) {
+            const end = footnoteEnd(lines, i);
+            add(fndef[1].trim(), base + i, base + end);
+            units?.push({ span: { start: base + i, end: base + end }, kind: "footnote", id: fndef[1].trim() });
+            i = end;
+            continue;
+        }
+        if (/^[ \t]*%%/.test(line)) {
+            i++;
+            continue;
+        } // hidden line: no id
+        const open = shielded.has(i) ? null : FENCE_OPEN.exec(line);
+        if (open) {
+            const type = open[2];
+            const a = open[3] ? parseAttrs(open[3]) : undefined;
+            const id = idOf(a);
+            const { end, closed } = fenceClose(lines, i, open, consumed);
+            if (id !== undefined)
+                add(id, base + i, base + end);
+            // Only a flow body is scanned for nested blocks (raw/data bodies are
+            // opaque), so an id inside a `code` body is *not* addressable — exactly
+            // the parser's contract.
+            const flow = (REGISTRY.get(type) ?? ctx.vocab.bodies.get(type) ?? "raw") === "flow";
+            const body = { start: base + i + consumed, end: base + (closed ? end - 1 : end) };
+            units?.push({ span: { start: base + i, end: base + end }, kind: "block", type, ...(id !== undefined ? { id } : {}), ...keysOf(a), ...(flow ? { body } : {}) });
+            if (flow && depth < BLOCK_NESTING) {
+                collectSpans(lines.slice(i + consumed, closed ? end - 1 : end), base + i + consumed, out, ctx, depth + 1, units);
+            }
+            i = end;
+            continue;
+        }
+        const st = setext.get(i);
+        const h = st?.match ?? (shielded.has(i) ? null : matchHeading(line));
+        if (h) {
+            // Section span (heading through its prose and nested blocks). The walk
+            // still advances one line at a time so every nested id inside the
+            // section registers its own span — spans intentionally OVERLAP: #sec
+            // contains #code, and each remains addressable on its own.
+            const used = st !== undefined ? st.end - i : consumed;
+            const hid = idOfHeading(h[3], h[2], base + i + 1, ctx);
+            const hend = base + sectionEnd(lines, i, h[1].length, used, shielded, setext);
+            if (hid !== undefined)
+                add(hid, base + i, hend);
+            units?.push({ span: { start: base + i, end: hend }, kind: "heading", ...(hid !== undefined ? { id: hid } : {}), level: h[1].length, text: h[2], ...keysOf(h[3] ? parseAttrs(h[3]) : undefined), ...(used > 1 && st !== undefined ? { head: used } : {}) });
+            i += used;
+            continue;
+        }
+        i++;
+    }
+}
+// Map every addressable id in `source` to its source span. Line indices align
+// with the physical lines produced by splitLines(source).
+export function stripEol(line) {
+    return line.replace(/(\r\n|\r|\n)$/, "");
+}
+// Drop trailing spaces and tabs, in LINEAR time. `/[ \t]+$/` is polynomial: on
+// a line whose run of tabs does not reach the end, the engine starts the run
+// again at every index inside it — 40k tabs took 750 ms here, and the cost
+// grows with the SQUARE, so a document is a denial-of-service payload rather
+// than a slow parse. `trimEnd()` is not the substitute: it also strips \v, \f,
+// NBSP and the Unicode spaces, which would silently widen what counts as a
+// closing fence. This strips exactly the two bytes the callers mean.
+export function trimSpaceTabEnd(s) {
+    let i = s.length;
+    while (i > 0) {
+        const c = s.charCodeAt(i - 1);
+        if (c !== 0x20 && c !== 0x09)
+            break;
+        i--;
+    }
+    return i === s.length ? s : s.slice(0, i);
+}
+export function blockSpans(source, o = {}) {
+    const out = new Map();
+    const lines = normalizeSource(source).split("\n");
+    // Inert context: heading auto-ids slug the raw text, but parseDoc still
+    // requires a valid context to parse the document.
+    const spanMeta = collectMeta(lines, undefined, undefined, o.markdown);
+    const ctx = { diags: [], ids: new Map(), refs: [], meta: spanMeta, vocab: vocabularyFor(spanMeta), markdown: o.markdown === true };
+    collectSpans(lines, 0, out, ctx);
+    return out;
+}
+// Every addressable unit, in document order, each decorated with its content
+// address (§3.2). Ids are OPTIONAL in GEML (§1: a block MAY carry one), so
+// `meta`, a callout `note`, a `table` — anything the author had no reason to
+// name — has no id to address it by; this index is what makes those addressable
+// anyway, by type (`=== meta`) or by content (`@<hex>`). No block type is
+// special-cased; meta is merely the one that is usually unique.
+//
+// The ONE index selector matching and the listing both work from, so `get`,
+// `set` and the listing can never disagree about what exists.
+// The same scan WITHOUT the content addresses. `addressedUnits` hashes every
+// unit to give the id-less ones an `@<hex>` address, and that hash runs on
+// node's Buffer — so calling it in a browser bundle throws. A caller that only
+// needs to know where the blocks are (which block holds this line, how many
+// bytes it is) does not need the hashes, and this is the honest way to say so
+// rather than making the browser pay for an address it will not use.
+export function unitSpans(source, o = {}) {
+    const lines = normalizeSource(source).split("\n");
+    const spanMeta = collectMeta(lines, undefined, undefined, o.markdown);
+    const ctx = { diags: [], ids: new Map(), refs: [], meta: spanMeta, vocab: vocabularyFor(spanMeta), markdown: o.markdown === true };
+    const units = [];
+    collectSpans(lines, 0, new Map(), ctx, 0, units);
+    return units;
+}
+export function selectEmbed(children, anchor, part = "whole") {
+    const picked = anchor === undefined
+        ? children.filter((b) => !(b.kind === "block" && b.type === "meta"))
+        : findEmbedTarget(children, anchor);
+    return picked === null ? null : narrowEmbed(picked, part);
+}
+// `part=` narrows a heading's section the way the CLI has always been able to:
+// `head` is the heading LINE, `body` is everything under it, and `intro` is the
+// lead-in up to the first subheading. head + body partition the whole, which is
+// what makes this a rule rather than a special case; intro is the third selection
+// `geml get --intro` already draws, so a document address and a CLI selector say
+// the same thing rather than each having its own vocabulary.
+//
+// A selection that does not START with a heading has no such halves; `part=` on
+// one is reported by the caller and the whole selection stands, because dropping
+// content on a misunderstanding is the worse failure.
+export function narrowEmbed(picked, part) {
+    const head = picked[0];
+    if (part === "whole" || head === undefined || head.kind !== "heading")
+        return picked;
+    if (part === "head")
+        return [head];
+    const body = picked.slice(1);
+    if (part === "body")
+        return body;
+    // `intro`: the lead-in, up to the first SUBHEADING. findEmbedTarget already
+    // stopped at the next heading of this level or shallower, so any heading left
+    // in the body is a subheading of it.
+    const sub = body.findIndex((b) => b.kind === "heading");
+    return sub < 0 ? body : body.slice(0, sub);
+}
+// §5.2: an embed whose `src=` is a coordinate stands for what the coordinate
+// names — a row as a one-row table under the table's own header, a single value
+// as a paragraph. A whole column or a value-tree node holding more nodes is not
+// a projection target; `check` reports it, and here it selects nothing.
+function embedCoordinate(blocks, base, rest) {
+    const path = parseCoordPath(rest);
+    const block = path === null ? undefined : findDeclaredTarget(blocks, base)?.[0];
+    if (path === null || block === undefined)
+        return null;
+    const hit = projectCoord(block, path);
+    if (!hit.ok)
+        return null;
+    if (hit.shape === "row") {
+        const table = rowTable(block, path);
+        if (table === null || block.kind !== "block")
+            return null;
+        return [{ kind: "block", type: "table", mode: block.mode, classes: [], attrs: {}, table }];
+    }
+    if (hit.shape === "leaf")
+        return [{ kind: "paragraph", text: hit.text, inlines: [{ type: "text", value: hit.text }] }];
+    return null;
+}
+function findEmbedTarget(blocks, id) {
+    // `[` never occurs in a name (§4), so an anchor holding one is a coordinate.
+    const at = id.indexOf("[");
+    if (at > 0)
+        return embedCoordinate(blocks, id.slice(0, at), id.slice(at));
+    const declared = findDeclaredTarget(blocks, id);
+    if (declared !== null)
+        return declared;
+    // GEP 0010: no block carries that id, so it may name a PROSE RUN. Consulted
+    // only after the declared ids, which is what makes an explicit `{#id}` shadow
+    // a synthesised name rather than compete with it.
+    for (const [addr, run] of proseRunTargets(blocks)) {
+        if (nameKey(addr) === nameKey(id))
+            return run;
+    }
+    return null;
+}
+function findDeclaredTarget(blocks, id) {
+    for (let i = 0; i < blocks.length; i++) {
+        const b = blocks[i];
+        if (b.kind === "heading" && b.id !== undefined && nameKey(b.id) === nameKey(id)) {
+            const out = [b];
+            for (let j = i + 1; j < blocks.length; j++) {
+                const next = blocks[j];
+                if (next.kind === "heading" && next.level <= b.level)
+                    break;
+                out.push(next);
+            }
+            return out;
+        }
+        if (b.kind === "block" && b.id !== undefined && nameKey(b.id) === nameKey(id))
+            return [b];
+        if (b.kind === "block" && b.children) {
+            const inner = findDeclaredTarget(b.children, id);
+            if (inner !== null)
+                return inner;
+        }
+    }
+    return null;
+}
+// GEP 0010, model side. The span layer (proseRuns below) names runs for the CLI;
+// an `=== embed {src=doc.geml#a-before-b}` has to resolve the SAME name over the
+// parsed model. Both call runAddress(), so the rule has one definition — the two
+// layers can disagree about spans, never about what a run is called.
+//
+// A run is a maximal stretch of non-anchor blocks; anchors are `heading` and
+// `block`. `paragraph`, `list` and `hidden` are content and fall inside a run.
+// A typed block with a flow body is a container too (§4): its children are
+// walked with the block as the container their headings nest inside.
+export function proseRunTargets(blocks) {
+    const out = new Map();
+    // §4 rule 1: an id-less `meta` block anchors as `meta` when it is the
+    // document's only one — `#meta` then names it.
+    const metaSolo = metaView(blocks).blocks.length === 1;
+    collectRunTargets(blocks, null, out, metaSolo);
+    return out;
+}
+function collectRunTargets(blocks, root, out, metaSolo) {
+    const stack = [];
+    let prev = null; // last anchor INSIDE the current container
+    let run = [];
+    const isAnchor = (b) => b.kind === "heading" || b.kind === "block";
+    const anchorId = (b) => b.id ?? (b.kind === "block" && b.type === "meta" && metaSolo ? "meta" : undefined);
+    const flush = (next) => {
+        // §4: a `%%` line is not content, so a run of nothing else is not prose.
+        if (run.some((b) => b.kind !== "hidden")) {
+            const container = stack.length > 0 ? stack[stack.length - 1] : root;
+            const id = runAddress(container === null ? null : { id: container.id }, prev === null ? null : { id: anchorId(prev) }, next === null ? null : { id: anchorId(next) });
+            // First definition wins, matching how ids resolve everywhere else.
+            if (id !== undefined && !out.has(id))
+                out.set(id, run);
+        }
+        run = [];
+    };
+    for (const b of blocks) {
+        if (!isAnchor(b)) {
+            run.push(b);
+            continue;
+        }
+        if (b.kind === "heading") {
+            // A heading of this level or shallower CLOSES the open ones, so the run
+            // before it is the tail of its container and has no following sibling.
+            const closes = stack.length > 0 && b.level <= stack[stack.length - 1].level;
+            flush(closes ? null : b);
+            while (stack.length > 0 && b.level <= stack[stack.length - 1].level)
+                stack.pop();
+            stack.push(b);
+            prev = null; // the container's own heading is not a sibling
+            continue;
+        }
+        flush(b);
+        prev = b;
+        if (b.kind === "block" && b.mode === "flow" && b.children)
+            collectRunTargets(b.children, { id: b.id }, out, metaSolo);
+    }
+    flush(null);
+}
+// GEP 0010 — the prose runs between addressable units, each given the address
+// the proposal settles on: two names with a relation word between them, where the
+// word is DETERMINED by structure rather than chosen. For a run whose nearest
+// preceding sibling is P and following is N, inside innermost container C:
+//
+//   both present -> #P-between-N      P absent -> #C-before-N
+//   N absent     -> #C-after-P        both absent -> the run IS #C
+//
+// Total, disjoint, one spelling per run — no convention has to be agreed on top.
+// And every shape names BOTH boundaries of its run, which is why three words earn
+// their keep over one: insert a block between #cmd and #verify and
+// #cmd-between-verify no longer names contiguous prose, so it fails to resolve
+// instead of quietly naming a shorter run and dropping the tail.
+//
+// An anchor without an id cannot be named, and neither can a run directly in the
+// document body (the root has no id). Those keep the content address `@<hex>` they
+// already had — the proposal's own fallback for anonymous neighbours.
+function proseRuns(units, lines) {
+    const lineCount = lines.length;
+    // §4 rule 1: an id-less `meta` block is the anchor `meta` when it is the only one.
+    const metaSolo = units.filter((u) => u.type === "meta").length === 1;
+    const anchor = (u) => u === null ? null : { ...(u.id !== undefined ? { id: u.id } : u.type === "meta" && metaSolo ? { id: "meta" } : {}) };
+    // Containers are HEADINGS and typed blocks with a FLOW body (§4). A heading's
+    // region runs to the next heading of its own level or shallower, and a block's
+    // is its body, so a stack over document order nests them correctly — a
+    // heading inside a note is the innermost container of the prose under it.
+    // The document body is always a container, even with no unit in it: a document
+    // of prose alone is one run, kept by its content address like any run in the
+    // body (the body has no id to name it by).
+    const children = new Map([[null, []]]);
+    const stack = [];
+    for (const u of units) {
+        while (stack.length > 0 && u.span.start >= stack[stack.length - 1].span.end)
+            stack.pop();
+        const parent = stack.length > 0 ? stack[stack.length - 1] : null;
+        (children.get(parent) ?? children.set(parent, []).get(parent)).push(u);
+        if (u.kind === "heading" || u.body !== undefined)
+            stack.push(u);
+    }
+    const runs = [];
+    for (const [container, kids] of children) {
+        // A heading's body starts the line AFTER its own line and a block's after
+        // its opening fence; the document's starts at the top. It ends at the
+        // heading's region end, the block's closing fence, or the last line.
+        const bodyStart = container === null ? 0 : container.body?.start ?? container.span.start + (container.head ?? 1);
+        const bodyEnd = container === null ? lineCount : container.body?.end ?? container.span.end;
+        // Every unit nested inside a sibling belongs to that sibling's container —
+        // a heading, or a block with a flow body; nothing else holds units — so the
+        // children listed here are exactly the siblings.
+        const siblings = kids;
+        const gaps = [];
+        let at = bodyStart;
+        for (const k of siblings) {
+            gaps.push({ from: at, to: k.span.start, prev: gaps.length === 0 ? null : siblings[gaps.length - 1] ?? null, next: k });
+            at = k.span.end;
+        }
+        gaps.push({ from: at, to: bodyEnd, prev: siblings.length > 0 ? siblings[siblings.length - 1] : null, next: null });
+        for (const g of gaps) {
+            if (g.to <= g.from)
+                continue;
+            // §4: `%%` lines are not content — a gap holding nothing else is no run.
+            if (lines.slice(g.from, g.to).every((l) => l.trim() === "" || /^[ \t]*%%/.test(l)))
+                continue;
+            const id = runAddress(container, anchor(g.prev), anchor(g.next));
+            runs.push({ span: { start: g.from, end: g.to }, kind: "prose", ...(id !== undefined ? { id } : {}) });
+        }
+    }
+    return runs;
+}
+// The naming table above. Undefined when an anchor it needs has no id — an
+// unnameable run is still addressable, by content, which is what it had before.
+function runAddress(container, prev, next) {
+    if (prev !== null && next !== null) {
+        return prev.id !== undefined && next.id !== undefined ? `${prev.id}-between-${next.id}` : undefined;
+    }
+    if (container?.id === undefined)
+        return undefined;
+    if (next !== null)
+        return next.id !== undefined ? `${container.id}-before-${next.id}` : undefined;
+    if (prev !== null)
+        return prev.id !== undefined ? `${container.id}-after-${prev.id}` : undefined;
+    // Neither: the container holds nothing but this run, so the run IS the
+    // container — it needs no address of its own.
+    return undefined;
+}
+export function addressedUnits(source, o = {}) {
+    const lines = normalizeSource(source).split("\n");
+    const spanMeta = collectMeta(lines, undefined, undefined, o.markdown);
+    const ctx = { diags: [], ids: new Map(), refs: [], meta: spanMeta, vocab: vocabularyFor(spanMeta), markdown: o.markdown === true };
+    const units = [];
+    collectSpans(lines, 0, new Map(), ctx, 0, units);
+    // GEP 0010: prose runs join the index. Their spans are trimmed to the prose
+    // itself so `get` prints the run and not the blank lines framing it, and a gap
+    // that is only blank lines is not a run at all. Merged in document order, so
+    // the listing reads down the page.
+    const declared = new Set(units.map((u) => u.id).filter((id) => id !== undefined).map(nameKey));
+    for (const run of proseRuns(units, lines)) {
+        let { start, end } = run.span;
+        while (start < end && lines[start].trim() === "")
+            start++;
+        while (end > start && lines[end - 1].trim() === "")
+            end--;
+        if (end <= start)
+            continue;
+        // An explicit id always wins: a real block called `#intro-before-setup`
+        // shadows the run that would otherwise carry that name.
+        const id = run.id !== undefined && !declared.has(nameKey(run.id)) ? run.id : undefined;
+        units.push({ span: { start, end }, kind: "prose", ...(id !== undefined ? { id } : {}) });
+    }
+    units.sort((a, b) => a.span.start - b.span.start || a.span.end - b.span.end);
+    // The address hashes the block's own source text — the exact bytes `get`
+    // would print for it — so an address can be recomputed from `get` output.
+    return addressUnits(units, (u) => lines.slice(u.span.start, u.span.end).join("\n"));
+}
+// Split into physical lines while *keeping* each line's terminator, so
+// join("") is byte-exact and slicing by span never rewrites line endings.
+// A line ends at `\n` or at a LONE `\r` (old-Mac style) — the same boundaries
+// the span scan's `\r\n?` -> `\n` normalization sees, so span indices always
+// address the same lines the parser counted.
+export function splitLines(source) {
+    return source.split(/(?<=\n|\r(?!\n))/);
+}
+// Newline handling lives HERE, in one place, because it is easy to get subtly
+// wrong in each caller. Content reaching a mutation is often LF even when the
+// document is not: a history revision is stored newline-normalized, `--in` may
+// come from either kind of file, stdin from anywhere. So: detect the DOCUMENT's
+// style, compare on the normalized (LF) form, and convert back on the way in —
+// which is what keeps a CRLF document from ending up half CRLF, half LF.
+export function newlineOf(text) {
+    return /\r\n/.test(text) ? "\r\n" : "\n";
+}
+export function toLf(text) {
+    return text.replace(/\r\n?/g, "\n");
+}
+export function toNewline(text, nl) {
+    const lf = toLf(text);
+    return nl === "\n" ? lf : lf.replace(/\n/g, nl);
+}
+// `--head`: narrow any id's span to its HEAD line — the single declaring line
+// (a heading's `# … {#id}` line, or a typed block's opening fence). The head is
+// by construction the FIRST line of the span, so
+// the narrowing is parse-free and needs no type check. Main use: `set --head`
+// edits a block's attributes (caption/compute/lang/…) without re-sending its
+// body, or renames a heading without rewriting its section.
+export function narrowToHead(span, source, o = {}) {
+    return { start: span.start, end: span.start + headLines(source, span.start, o) };
+}
+// How many lines the head at `start` takes: one, save a Markdown setext heading,
+// which is its paragraph and its underline (structureFor). Remembered for the
+// last document asked about, since a listing narrows every unit of one source.
+let lastHeads = null;
+function headLines(source, start, o) {
+    if (source === undefined || o.markdown !== true)
+        return 1;
+    if (lastHeads?.source !== source) {
+        lastHeads = { source, setext: structureFor(normalizeSource(source).split("\n"), true, (t) => REGISTRY.has(t)).setext };
+    }
+    const st = lastHeads.setext.get(start);
+    return st === undefined ? 1 : st.end - start;
+}
+// The unit's CLOSING fence line, or null when it has none — a heading section,
+// or a fence left unclosed at EOF. Extracted so `get --body` and `set --body`
+// decide it in ONE place: the selector design's §4 defines HEAD/BODY by the
+// round-trip invariant `get X --body | set X --body` leaving the file
+// byte-identical, and two copies of this judgement is exactly how that breaks.
+export function closeFenceLine(lines, span) {
+    const open = FENCE_OPEN.exec(stripEol(lines[span.start] ?? ""));
+    if (!open)
+        return null;
+    const lastText = trimSpaceTabEnd(stripEol(lines[span.end - 1] ?? ""));
+    const bid = idOf(open[3] ? parseAttrs(open[3]) : undefined);
+    const labeled = bid !== undefined && labeledClose(bid).test(lastText);
+    return isCloseFence(lastText, open[1].length) || labeled ? lines[span.end - 1] ?? "" : null;
+}
+// BODY span: a fenced block's lines BETWEEN the fences; a heading's lines after
+// the heading through the section boundary — trailing blank lines included,
+// because that is the span `set --body` replaces (§4's table).
+function narrowToBody(lines, span, source, o = {}) {
+    return { start: span.start + headLines(source, span.start, o), end: closeFenceLine(lines, span) !== null ? span.end - 1 : span.end };
+}
+// The INTRO sub-range of a heading's section: what the heading says before it
+// says anything under a subheading. Bounded by the next heading of ANY level,
+// which is the same line either way — a deeper heading opens a subsection, a
+// same-or-higher one ends this section. Empty when a heading follows
+// immediately; the whole body when the section has no further heading.
+//
+// The bound comes from the parsed units, never from scanning for `#`: a `#`
+// inside a fenced block is body text, and a line scan would cut the section in
+// half there.
+export function narrowToIntro(source, span, o = {}) {
+    const body = narrowToBody(splitLines(source), span, source, o);
+    let end = body.end;
+    for (const a of addressedUnits(source, o)) {
+        const u = a.unit;
+        if (u.kind !== "heading")
+            continue;
+        if (u.span.start > span.start && u.span.start < body.end) {
+            end = u.span.start;
+            break;
+        }
+    }
+    return { start: body.start, end: Math.max(body.start, end) };
+}
+// Slice one unit's output bytes, honouring --head / --body / --intro.
+export function sliceUnit(source, span, part = "whole", o = {}) {
+    const lines = splitLines(source);
+    const s = part === "head" ? narrowToHead(span, source, o)
+        : part === "body" ? narrowToBody(lines, span, source, o)
+            : part === "intro" ? narrowToIntro(source, span, o)
+                : span;
+    return lines.slice(s.start, s.end).join("");
+}
+// Depth-first search for the document-model node carrying `id`, descending into
+// flow-block children (and list-item children) so a nested id is found too.
+// Returns the containing sibling array and index, not just the node: the model
+// is FLAT — a heading does not own its section; the section's prose and blocks
+// are its FOLLOWING SIBLINGS — so a section consumer needs the array.
+export function findBlockSite(blocks, id) {
+    const key = nameKey(id);
+    for (let i = 0; i < blocks.length; i++) {
+        const b = blocks[i];
+        if ((b.kind === "heading" || b.kind === "block") && b.id !== undefined && nameKey(b.id) === key)
+            return { siblings: blocks, index: i };
+        if (b.kind === "block" && b.children) {
+            const hit = findBlockSite(b.children, id);
+            if (hit)
+                return hit;
+        }
+        if (b.kind === "list") {
+            for (const it of b.items) {
+                if (it.children) {
+                    const hit = findBlockSite(it.children, id);
+                    if (hit)
+                        return hit;
+                }
+            }
+        }
+    }
+    return undefined;
+}
+// Model-side section boundary: within one sibling array, the section opened by
+// the heading at index k runs to the next sibling heading of same-or-higher
+// level, or the array end. This is the SAME rule sectionEnd() applies to raw
+// source lines (where skipping fenced bodies makes "next heading" well-defined)
+// — the two sides must stay in lockstep; the get-set suite pins their parity
+// (ids covered by the raw slice == ids covered by the --json envelope).
+export function sectionEndIndex(siblings, k) {
+    const level = siblings[k].level;
+    for (let m = k + 1; m < siblings.length; m++) {
+        const b = siblings[m];
+        if (b.kind === "heading" && b.level <= level)
+            return m;
+    }
+    return siblings.length;
+}
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+export function historyPathFor(geml) {
+    return geml.replace(/\.geml$/, "") + ".gemlhistory";
+}
+// (A `YYYYMMDDTHHMMSSZ` parser lived here for `history commit --at`. That flag
+// left the CLI with design §9-Q4 — the library API takes a real Date — so the parser
+// went with it rather than staying as an uncalled branch.)
+export const VERSION = "1.0"; // GEML spec version this CLI targets
+// The published version, read from package.json rather than restated here.
+// "Keep in sync with package.json" was a comment, and comments do not run: this
+// literal said 1.4.3 while the MCP server's own copy still said 0.1.0.
+// Resolved from this module's location — `dist/geml.js` -> `../package.json`,
+// and npm always ships package.json whatever `files` says. In a browser bundle
+// `import.meta.url` degenerates to "" (see the `entry` note below), so every
+// lookup fails and we fall back rather than throw at import time.
+export const PARSER_VERSION = (() => {
+    let dir;
+    try {
+        dir = dirname(fileURLToPath(import.meta.url));
+    }
+    catch {
+        return "0.0.0";
+    }
+    for (let i = 0; i < 3 && dir; i++) {
+        try {
+            const v = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).version;
+            if (typeof v === "string" && v)
+                return v;
+        }
+        catch { /* not here — walk up */ }
+        dir = dirname(dir);
+    }
+    return "0.0.0";
+})();
+// Is this process being run as the `geml` command? npm's unix bin shim is a
+// symlink named plain `geml`, so the test resolves argv[1] rather than
+// comparing spellings. In a browser bundle argv is [] and this is false, which
+// is what keeps the CLI hand-off below out of a page.
+function isCliInvocation() {
+    const argv1 = process.argv[1];
+    if (!argv1)
+        return false;
+    // THIS file, run as the script — not "a file whose name ends in geml.js".
+    // Someone's own `geml.js` that imports the library would otherwise trip the
+    // hand-off below and have the CLI exit their process. It also keeps
+    // `dist/cli.js` from coming back through here: cli.js imports this module,
+    // so re-importing it would be a cycle.
+    //
+    // Both sides go through realpathSync, because the shim this has to recognise
+    // IS a symlink: `path.resolve` only absolutises the spelling it is handed, so
+    // `/tmp/x/geml -> …/dist/geml.js` compared unequal, the hand-off never ran,
+    // and `geml --version` through npm's bin exited 0 having printed nothing.
+    // Canonicalising this file too covers a dist/ reached through a symlinked
+    // directory, and the macOS /tmp -> /private/tmp case the test walks into.
+    try {
+        return realOf(argv1) === realOf(fileURLToPath(import.meta.url));
+    }
+    catch {
+        return false; // no URL support (a bundle) — never the CLI
+    }
+}
+// Canonical path, falling back to the absolute spelling when the target cannot
+// be realpath'd (it may not exist — that is not an error here, just a miss).
+function realOf(p) {
+    try {
+        return realpathSync(p);
+    }
+    catch {
+        return resolvePath(p);
+    }
+}
+// Backwards compatibility: the CLI moved to cli.ts, but `node …/dist/geml.js`
+// is what this repo's hooks, the codemap recipes and older instructions all
+// invoke. Hand those off — a dynamic, non-literal specifier, so a bundler
+// leaves it alone and the browser never resolves it (argv is [] there, so the
+// guard is false and this line never runs).
+if (isCliInvocation()) {
+    void import(new URL("./cli.js", import.meta.url).href);
+}
