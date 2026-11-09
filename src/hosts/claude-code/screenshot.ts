@@ -37,7 +37,7 @@ export function pasteKey(platform: string | undefined): string {
 
 /** What the band says while the pointer is on the button, in the line's place. */
 export function captureHint(platform: string | undefined, t: T = ZH): string {
-  const hint = t("截一块给 Claude 看：框选要截的地方，截好后在输入框按 {0}", pasteKey(platform));
+  const hint = t("框选要截的地方，截好后在输入框按 {0}", pasteKey(platform));
   return platform === "darwin" ? `${hint}${t("（第一次会问屏幕录制权限）")}` : hint;
 }
 

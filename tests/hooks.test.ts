@@ -876,6 +876,24 @@ test('an approval edge that holds: the band offers the approval, the inbox lists
   await pane.unmount()
 })
 
+test('a line with options whose words do not fit beside them: the words on a row of their own, the options, the screenshot and the board on a row under them', async ($, on) => {
+  const w = world(on)
+  w.approval = true
+  w.platform = 'win32'
+  on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: 'ok', stderr: '', interrupted: false }, text: 'ok' }))
+  const clock = await start($, on)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'b1', command: 'npm test' })
+  await clock.settle()
+  const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 26 } })
+  const drawn = (await band.drawn()) as unknown as Drawn
+  const find = (el: Drawn | string, key: string): Drawn | undefined => typeof el === 'string' ? undefined : keyOf(el) === key ? el : (el.children ?? []).map((c) => find(c, key)).find((x) => x !== undefined)
+  expect(shown(find(drawn, 'band-q-0') as Drawn), 'the words, whole, on their row').toEqual(['[　　]', '验收 feat/x'])
+  const below = find(drawn, 'band-q-actions') as Drawn
+  for (const key of ['approve-done', 'capture', 'board']) expect(holds(below, key), key).toBe(true)
+  expect(await band.find({ type: 'Button', key: 'title' }), 'no title squeezed beside the options').toBeUndefined()
+  await band.unmount()
+})
+
 test('a model stuck on one fenced key: the inbox says so, "allow once" lets the next such call through with the fence told, then the fence holds again', async ($, on) => {
   const w = world(on)
   on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: 'ok', stderr: '', interrupted: false }, text: 'ok' }))
@@ -2725,7 +2743,8 @@ test('the band\'s screenshot button, on the desktop app only: its hover says whi
   // A drawn element carries its hover beside its props.
   const card = (el: Drawn | string): Drawn | undefined => typeof el === 'string' ? undefined : el.props?.display === 'none' && (el as { hover?: { display?: string } }).hover?.display === 'flex' ? el : (el.children ?? []).map(card).find((x) => x !== undefined)
   const hidden = card(icon as Drawn)
-  expect(hidden && JSON.stringify(hidden), 'a card inside it, shown under the pointer').toContain('截一块给 Claude 看：框选要截的地方，截好后在输入框按 Ctrl+V')
+  expect(hidden && JSON.stringify(hidden), 'a card inside it, shown under the pointer').toContain('框选要截的地方，截好后在输入框按 Ctrl+V')
+  expect(hidden?.children?.[0], 'wrapped, not cut: the paste key is at its end, and the desktop\'s bubble is narrower than the line').toMatchObject({ type: 'Text', props: { wrap: 'wrap' } })
   const toasts = w.toasts.length
   await desktop.press({ key: 'capture' })
   await clock.settle()

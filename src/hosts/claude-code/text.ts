@@ -105,7 +105,7 @@ export const WORDS: Readonly<Record<string, Entry>> = {
   "我在做": { en: "Working on", ja: "作業中" },
   "还有 {0} 件": { en: "{0} more", ja: "ほか {0} 件" },
   "截图": { en: "Screenshot", ja: "スクリーンショット" },
-  "截一块给 Claude 看：框选要截的地方，截好后在输入框按 {0}": { en: "Show Claude part of the screen: select it, then press {0} in the prompt", ja: "画面の一部を Claude に見せる：範囲を選び、撮れたら入力欄で {0} を押す" },
+  "框选要截的地方，截好后在输入框按 {0}": { en: "Select the part to capture, then press {0} in the prompt", ja: "撮る範囲を選び、撮れたら入力欄で {0} を押す" },
   "（第一次会问屏幕录制权限）": { en: " (the first time, macOS asks for screen recording permission)", ja: "（初回は画面収録の許可を求められます）" },
   "没找到截图工具：装 flameshot 或 gnome-screenshot 后再点": { en: "No screenshot tool found: install flameshot or gnome-screenshot, then press again", ja: "スクリーンショットのツールがありません：flameshot か gnome-screenshot を入れてからもう一度押す" },
   "截图没有启动：{0}": { en: "The screenshot did not start: {0}", ja: "スクリーンショットを開始できません：{0}" },

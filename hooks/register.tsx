@@ -2726,6 +2726,8 @@ async function shareStatus($: EngineInterface, t: T): Promise<string> {
 
 /** A question takes the rows it needs on the band: shown whole (past the engine's rows, the band scrolls). */
 const QUESTION_ROWS = Number.POSITIVE_INFINITY
+/** The fewest cells the band's one thing keeps on its row before what grew (新学到, 提议) gives way. */
+const ROOM_MIN = 16
 
 /** How long a part of the board may take to read before it says so: a read that never answers costs a part, never the pane. */
 const BOARD_READ_MS = 4_000
@@ -3355,14 +3357,28 @@ export const register: Register = (on) => {
       : undefined
     const reserve = [...options, ...tail].reduce((w, b) => w + (b.key === 'board' && Svg !== undefined ? 4 : cellWidth(b.label) + 5), 0) + (at !== '' ? cellWidth(at) + 1 : 0) + (capture !== undefined ? 4 : 0)
     const lead = 2 + (view.verb !== '' ? cellWidth(view.verb) + 1 : 0)
-    const room = Math.max(8, columns - reserve - lead)
-    const noteRoom = view.note !== '' ? Math.min(cellWidth(view.note) + 3, Math.floor(room / 3)) : 0
-    const title = truncate(view.title, Math.max(6, room - noteRoom))
-    const note = view.note !== '' ? truncate(`${SEP}${view.note}`, noteRoom) : ''
+    // What grew (新学到, 提议) counts in the line's width too.
+    const sides = (learned !== undefined ? cellWidth(learned.label) + 1 : 0) + (aside !== '' ? cellWidth(aside) + 1 : 0)
+    const roomAll = columns - reserve - lead - sides
+    // Words that do not fit beside their options go on rows of their own, the options on a row under them: a question
+    // always did, and so does a line with options (等你 and its 好了 / 没好), never squeezed to a character a row.
+    const lineWords = question ?? `${view.title}${view.note !== '' ? `${SEP}${view.note}` : ''}`
+    const rows = question !== undefined ? cellWidth(question) > roomAll : options.length > 0 && cellWidth(lineWords) > roomAll
+    // What grew goes where it does not fit (the flow tab lists both): on the options' row, or beside the one thing
+    // where that would leave it fewer than ROOM_MIN cells.
+    if (rows ? reserve + sides > columns - 2 : roomAll < ROOM_MIN) { learned = undefined; aside = '' }
+    const room = Math.max(8, columns - reserve - lead - (learned !== undefined || aside !== '' ? sides : 0))
+    // Whole where the room holds it; otherwise the note gets at most a third of it.
+    const whole = view.note !== '' ? `${SEP}${view.note}` : ''
+    const fits = cellWidth(view.title) + cellWidth(whole) <= room
+    const noteRoom = fits ? cellWidth(whole) : view.note !== '' ? Math.min(cellWidth(view.note) + 3, Math.floor(room / 3)) : 0
+    const title = fits ? view.title : truncate(view.title, Math.max(6, room - noteRoom))
+    const note = fits ? whole : view.note !== '' ? truncate(whole, noteRoom) : ''
     /** The whole of something, drawn over the line while the pointer is on what it belongs to. */
-    const card = (text: string, anchor: { left: number } | { right: number }, width: number) => text === '' ? null : (
+    // `whole`: wrapped rather than cut (the desktop draws a card as a bubble narrower than the line).
+    const card = (text: string, anchor: { left: number } | { right: number }, width: number, whole = false) => text === '' ? null : (
       <Box position="absolute" top={0} {...anchor} width={Math.max(10, width)} display="none" hover={{ display: 'flex' }} backgroundColor="inverseText">
-        <Text wrap="truncate-end">{text}</Text>
+        <Text wrap={whole ? 'wrap' : 'truncate-end'}>{text}</Text>
       </Box>
     )
     // Where the surface draws pictures, a native button as the design has it (a hotkey there draws a number badge);
@@ -3374,9 +3390,15 @@ export const register: Register = (on) => {
       : <Button key={b.key} plain hotkey={String(i + 1)} label={b.label} {...(b.primary ? { variant: 'primary' } : {})} onPress={press($, b.action)} />
     const board = tail.find((b) => b.key === 'board')
     // Under the pointer the line says how it goes, the paste key for this system with it; the icon's own tip is off.
-    const shot = capture !== undefined && iconButton($, els, capture, 'capture', { from: 'right', size: 15, tip: false, card: card(captureHint(platform, t), { right: 0 }, columns - 4) })
-    if (question !== undefined && cellWidth(question) > room) {
-      const lines = wrapCells(question, Math.max(20, columns - lead - 1), QUESTION_ROWS)
+    const shot = capture !== undefined && iconButton($, els, capture, 'capture', { from: 'right', size: 15, tip: false, card: card(captureHint(platform, t), { right: 0 }, columns - 4, true) })
+    const grew = (learned !== undefined || aside !== '') && (
+      <Box key="band-grew" flexShrink={0} gap={1} alignItems="center">
+        {learned !== undefined && <Button key={learned.key} plain label={learned.label} onPress={press($, learned.action)}><Text {...toneProps('warning')}>{learned.label}</Text></Button>}
+        {aside !== '' && <Text key="band-aside" {...toneProps('warning')}>{aside}</Text>}
+      </Box>
+    )
+    if (rows) {
+      const lines = wrapCells(question ?? `${view.verb !== '' ? `${view.verb} ` : ''}${lineWords}`, Math.max(20, columns - 3), QUESTION_ROWS)
       return stack(
         <Box flexDirection="column" flexGrow={1}>
           {lines.map((l, n) => (
@@ -3392,7 +3414,7 @@ export const register: Register = (on) => {
                     </Box>
                   )
                   : <Button key="band-mark-open" plain label={t('看板')} onPress={press($, { op: 'open-board', tab: 'items' })}><Text {...toneProps(MARK.tone)}>{MARK.text}</Text></Button>)
-                : <Text>{' '.repeat(lead - 1)}</Text>}
+                : <Text>{' '}</Text>}
               <Text {...(Svg !== undefined ? { color: 'suggestion' } : {})} wrap="truncate-end">{l}</Text>
             </Box>
           ))}
@@ -3400,6 +3422,7 @@ export const register: Register = (on) => {
             <Box flexGrow={1} />
             {options.map(pressable)}
             {at !== '' && <Text dimColor>{at}</Text>}
+            {grew}
             {shot}
             {board !== undefined && pressable(board, options.length + tail.indexOf(board))}
           </Box>
@@ -3419,15 +3442,16 @@ export const register: Register = (on) => {
             </Box>
           )
           : <Button key="band-mark-open" plain label={t('看板')} onPress={press($, { op: 'open-board', tab: 'items' })}><Text {...toneProps(MARK.tone)}>{MARK.text}</Text></Button>}
-        {view.verb !== '' && <Text dimColor>{view.verb}</Text>}
+        {/* Only the one thing gives way: everything else keeps its width, and the one thing is cut to the room left. */}
+        {view.verb !== '' && <Box key="band-verb" flexShrink={0}><Text dimColor>{view.verb}</Text></Box>}
         {Svg !== undefined
           ? (
             <Box key="band-title" flexShrink={1} minWidth={0}>
               <Box flexShrink={1} minWidth={0} overflow="hidden">
-                <Text wrap="truncate-end"><Text {...(view.tone === 'normal' ? { color: 'suggestion' } : toneProps(view.tone))} underline={workflow && view.tone === 'normal'}>{view.title}</Text>{view.note !== '' && <Text dimColor>{`${SEP}${view.note}`}</Text>}</Text>
+                <Text wrap="truncate-end"><Text {...(view.tone === 'normal' ? { color: 'suggestion' } : toneProps(view.tone))} underline={workflow && view.tone === 'normal'}>{title}</Text>{note !== '' && <Text dimColor>{note}</Text>}</Text>
                 {workflow && (
                   <Box position="absolute" top={0} left={0} right={0} bottom={0}>
-                    <Button key="title" plain label={blankOf(cellWidth(view.title))} onPress={press($, { op: 'open-board', tab: 'items' })} />
+                    <Button key="title" plain label={blankOf(cellWidth(title))} onPress={press($, { op: 'open-board', tab: 'items' })} />
                   </Box>
                 )}
               </Box>
@@ -3450,11 +3474,10 @@ export const register: Register = (on) => {
           </Box>
         )}
         {tail.map((b, i) => b.key === 'more'
-          ? <Box key="band-more">{pressable(b, options.length + i)}{card(view.more.detail, { right: 0 }, columns - 4)}</Box>
+          ? <Box key="band-more" flexShrink={0}>{pressable(b, options.length + i)}{card(view.more.detail, { right: 0 }, columns - 4)}</Box>
           : null)}
         {board !== undefined && <Box key="band-push" flexGrow={1} />}
-        {learned !== undefined && <Button key={learned.key} plain label={learned.label} onPress={press($, learned.action)}><Text {...toneProps('warning')}>{learned.label}</Text></Button>}
-        {aside !== '' && <Text key="band-aside" {...toneProps('warning')}>{aside}</Text>}
+        {grew}
         {shot}
         {board !== undefined && pressable(board, options.length + tail.indexOf(board))}
       </Box>
