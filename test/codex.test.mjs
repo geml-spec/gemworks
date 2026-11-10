@@ -88,8 +88,10 @@ test("the plugin's Codex files: the manifest keeps the package's version and poi
   assert.deepEqual(mcp.mcpServers.gemworks, { command: "node", args: ["./dist/gemworks.mjs", "mcp", "--host", "codex"], cwd: "." });
   for (const f of [".codex-plugin/plugin.json", "codex", ".codexignore"]) assert.ok(pkg.files.includes(f), `${f} ships`);
   assert.doesNotMatch(readFileSync(new URL("../.codexignore", here), "utf8"), /^dist\/?$/m, "the bundle is what the install runs");
+  // Codex installs the published package, which carries dist/; the repository's own tree does not (dist/ is not in git).
   const market = JSON.parse(readFileSync(new URL("../.agents/plugins/marketplace.json", here), "utf8"));
-  assert.deepEqual(market.plugins.find((p) => p.name === "gemworks").source, { source: "local", path: "./" });
+  assert.equal(market.interface.displayName, "Gemworks");
+  assert.deepEqual(market.plugins.find((p) => p.name === "gemworks").source, { source: "npm", package: pkg.name });
 });
 
 test("gemworks codex, in event order: the stage at the start, a refused command, a wrapped test run whose status moves the stage, the new stage reaching the model once", () => {

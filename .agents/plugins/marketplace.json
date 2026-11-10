@@ -1,14 +1,14 @@
 {
   "name": "gemworks",
   "interface": {
-    "displayName": "GEML"
+    "displayName": "Gemworks"
   },
   "plugins": [
     {
       "name": "gemworks",
       "source": {
-        "source": "local",
-        "path": "./"
+        "source": "npm",
+        "package": "@geml/gemworks"
       },
       "policy": {
         "installation": "AVAILABLE",
