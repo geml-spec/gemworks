@@ -1,11 +1,12 @@
-// Publish this package twice, the same build under two names in the geml organization: `@geml/gemworks`; and
-// `@geml/gemwork`, so that the name typed without its last letter installs it too. Either name brings the commands
-// `gemworks` and `gwx`. The name is changed in package.json for the later publish and always put back.
+// Publish this package four times, the same build under four names: in the geml organization `@geml/gemworks`, and
+// `@geml/gemwork` so that the name typed without its last letter installs it too; and the earlier names `gemworks` and
+// `gemwork`, so that what was installed by them keeps getting the new versions. Every name brings the commands
+// `gemworks` and `gwx`. The name is changed in package.json for each later publish and always put back.
 // Usage: node scripts/publish.mjs [npm publish options…]   (e.g. --dry-run, --tag beta, --otp 123456)
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
-const NAMES = ["@geml/gemworks", "@geml/gemwork"];
+const NAMES = ["@geml/gemworks", "@geml/gemwork", "gemworks", "gemwork"];
 const file = new URL("../package.json", import.meta.url);
 const original = readFileSync(file, "utf8");
 const pkg = JSON.parse(original);

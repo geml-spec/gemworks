@@ -97,11 +97,12 @@ test("the bundle patch contributes the runtime row alongside the MCP server and 
   assert.ok(!lines.some((l) => l.startsWith("statechart:")), "the workflow is resolved from the project, not pinned to one path");
 });
 
-test("one build, two names on npm in the geml organization: @geml/gemworks; @geml/gemwork, so that the name typed without its last letter installs it too", () => {
+test("one build, four names on npm: @geml/gemworks, and @geml/gemwork for the name typed without its last letter; gemworks and gemwork, so that what they installed keeps getting new versions", () => {
   const script = readFileSync(new URL("../scripts/publish.mjs", here), "utf8");
-  assert.match(script, /const NAMES = \["@geml\/gemworks", "@geml\/gemwork"\];/);
+  assert.match(script, /const NAMES = \["@geml\/gemworks", "@geml\/gemwork", "gemworks", "gemwork"\];/);
   const workflow = readFileSync(new URL("../.github/workflows/publish.yml", here), "utf8");
-  assert.match(workflow, /for name in @geml\/gemworks @geml\/gemwork; do/, "the Publish workflow publishes the same names");
+  assert.match(workflow, /for name in @geml\/gemworks @geml\/gemwork gemworks gemwork; do/, "the Publish workflow publishes the same names");
+  assert.match(workflow, /for name in @geml\/gemwork gemworks gemwork; do\s+npm pkg set name="\$name"/, "and packs each of them");
   assert.match(workflow, /pack\/geml-gemworks-\$VERSION\.tgz/, "the plugin branch unpacks the tarball npm names after the scope");
   assert.match(script, /finally \{\s*writeFileSync\(file, original\);/, "the name is always put back");
   assert.equal(pkg.name, "@geml/gemworks");
