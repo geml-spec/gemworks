@@ -71,6 +71,26 @@ export function readSessions(root) {
     }
     return out;
 }
+/** Every session log's events, one list a session: what a sign-off sheet reads an item's turns and commits from. */
+export function readSessionLogs(root) {
+    const dir = sessionsDirOf(root);
+    let names;
+    try {
+        const all = readdirSync(dir);
+        names = all.filter((n) => isLogName(n, all));
+    }
+    catch {
+        return [];
+    }
+    const out = [];
+    for (const n of names) {
+        try {
+            out.push(parseLog(readFileSync(join(dir, n), "utf8")));
+        }
+        catch { /* a log being written */ }
+    }
+    return out;
+}
 /** Two directories as the file system tells them apart (Windows ignores case). */
 function samePath(a, b) {
     const x = resolve(a), y = resolve(b);

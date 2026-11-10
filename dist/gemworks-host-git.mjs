@@ -19,7 +19,7 @@ import {
   uncommittedBump,
   unkeptOf,
   worktreesOf
-} from "./gemworks-chunk-SXXU2DVO.mjs";
+} from "./gemworks-chunk-4A7KYSFU.mjs";
 export {
   beginGitRequest,
   branchesAhead,

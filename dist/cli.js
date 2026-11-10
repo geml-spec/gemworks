@@ -45,7 +45,7 @@ const USAGE = [
     "  hook                                    the Claude Code bridge: one JSON request on stdin, one answer on stdout",
     "  codex                                   the Codex hook: one event on stdin, its answer on stdout (exit 0 always)",
     "  antigravity <Event> | install           the Antigravity editor's hook (one event on stdin), or put its hooks and MCP server in place",
-    "  mcp [--host h] [--root dir]             the three model tools over stdio MCP (host default: mcp)",
+    "  mcp [--host h] [--root dir]             the model's tools over stdio MCP (host default: mcp)",
     "  corrections [--baseline a..b] [--trial a..b] [--since day] [--by work] [--json]",
     "                                          how often you corrected the agent, per 100 prompts, by kind and by week",
     "  corrections guide | pending [--limit n] | label [file] [--import]",
@@ -489,7 +489,7 @@ function main(argv) {
             const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "");
             const moved = migrateLayout(process.cwd(), join(homedir(), ".gemworks", "trash", `${stamp}-layout`));
             if (moved.length === 0) {
-                console.log("nothing to move: no workflow directory or .geml/gemflow.geml here");
+                console.log("nothing to move: no workflow directory here");
                 return 0;
             }
             for (const m of moved)

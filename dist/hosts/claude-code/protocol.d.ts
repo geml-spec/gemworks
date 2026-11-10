@@ -189,6 +189,12 @@ export type BridgeOp =
     own?: boolean;
     transcripts?: string;
 }
+/** The sign-off sheets of these work items, written again from the record; a done one's goes among its artifacts. */
+ | {
+    op: "signoff";
+    ids: string[];
+    lang?: string;
+}
 /** The prompt rows the host's transcript of `session` still holds, by uuid: what the sessions tab and the record keep after turns were removed or split away. */
  | {
     op: "turn-ids";

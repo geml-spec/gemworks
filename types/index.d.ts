@@ -13,6 +13,8 @@ declare module 'claude-code' {
       problem: string | null
       node: string | null
       root: string | null
+      /** The commands this session ran and how each ended, newest last: what a fact step's evidence is checked against. */
+      runs: GemworksJson
       delivered: string | null
       /** Whether this conversation was told about the other sessions and the ask tool through a prompt's context (again after a /clear or a compaction). */
       told: boolean
@@ -160,7 +162,7 @@ declare module 'claude-code' {
       exportedFor: string | null
       /** The share dialog's text, shown where it cannot be copied (the desktop). */
       sharedText: string | null
-      /** The coach's light flows (coach.ts CoachFlow[]), read once: the project's own, else the bundled ones. */
+      /** The coach's light flows (coach.ts CoachFlow[]) and the plugin version that read them, as { version, flows }: the project's own, else the bundled ones; read again after a reload as another version. */
       coachFlows: GemworksJson
       /** The work item whose arrow was pressed: { flow, id }, its flow first on the flow tab. */
       coachFocus: GemworksJson

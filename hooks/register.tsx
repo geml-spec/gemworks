@@ -39,7 +39,7 @@ import type { AttentionFacts, AttentionMemory } from '../dist/hosts/claude-code/
 import { envParts, remoteInPlay } from '../dist/hosts/claude-code/env.js'
 import { captureHint, offersCapture } from '../dist/hosts/claude-code/screenshot.js'
 import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, isStatusLine, legacyLogName, logName, nextTurn, NOTE_TOOL, parseLog, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
-import type { SessionEvent, SessionSummary } from '../dist/core/session-log.js'
+import type { SeenRun, SessionEvent, SessionSummary } from '../dist/core/session-log.js'
 import { flowRequest, labelRequest, linkKey, promptId, readFlowDraft, readLabels, readThemes, themeRequest, typedWords } from '../dist/core/corrections.js'
 import type { LabelledPrompt } from '../dist/core/corrections.js'
 import { ARTIFACT_TOOL, isMadeForPeople, publishedLink } from '../dist/core/artifact-tool.js'
@@ -93,6 +93,9 @@ const shellAtom = atom({ plugin: 'gemworks', key: 'shell' } as const, null as Ge
 const problemAtom = atom({ plugin: 'gemworks', key: 'problem' } as const, null as string | null)
 const nodeAtom = atom({ plugin: 'gemworks', key: 'node' } as const, null as string | null)
 const rootAtom = atom({ plugin: 'gemworks', key: 'root' } as const, null as string | null)
+/** The commands this session ran and how each ended, the newest RUNS_KEPT: what a fact step's evidence is checked against. */
+const runsAtom = atom({ plugin: 'gemworks', key: 'runs' } as const, [] as GemworksJson)
+const RUNS_KEPT = 30
 const deliveredAtom = atom({ plugin: 'gemworks', key: 'delivered' } as const, null as string | null)
 /** Whether this conversation was told about the other sessions and the ask tool through a prompt's context: once, then again after a /clear or a compaction. */
 const toldAtom = atom({ plugin: 'gemworks', key: 'told' } as const, false as boolean)
@@ -217,7 +220,7 @@ const expandedTurnAtom = atom({ plugin: 'gemworks', key: 'expandedTurn' } as con
 const exportedAtom = atom({ plugin: 'gemworks', key: 'exported' } as const, null as string | null)
 /** The session the last export on the sessions tab was of (`own` or its id), where its file is linked. */
 const exportedForAtom = atom({ plugin: 'gemworks', key: 'exportedFor' } as const, null as string | null)
-/** The coach's light flows, read once (coachFlows); the work item whose arrow was pressed. */
+/** The coach's light flows with the version that read them (coachFlows, keptFlows); the work item whose arrow was pressed. */
 const coachFlowsAtom = atom({ plugin: 'gemworks', key: 'coachFlows' } as const, null as GemworksJson)
 const coachFocusAtom = atom({ plugin: 'gemworks', key: 'coachFocus' } as const, null as GemworksJson)
 /** The work items tab's groups listed whole (coach.ts WorkGroup). */
@@ -262,7 +265,7 @@ const REFUSAL_NOTIFY_MS = 3 * 60_000
 /** The prompts kept for the sessions tab. */
 const PROMPTS_KEPT = 300
 const STORE_SETTINGS = 'settings'
-const REGISTRY = 'https://registry.npmjs.org/gemworks/latest'
+const REGISTRY = 'https://registry.npmjs.org/@geml/gemworks/latest'
 /** This project's repository and license, as package.json names them (the smoke test holds them to it). */
 const REPO = 'https://github.com/geml-spec/gemworks'
 const LICENSE = 'AGPL-3.0-only'
@@ -778,9 +781,10 @@ async function noteDecisions($: EngineInterface, event: unknown): Promise<ToolCa
  * ships; read once a session. A flow neither has, or one that does not read, is left out.
  */
 async function coachFlows($: EngineInterface): Promise<CoachFlow[]> {
-  const kept = (await read($, coachFlowsAtom)) as unknown as CoachFlow[] | null
-  // Flows kept by an earlier version (a session the plugin reloaded in) say no judge on their steps: read again.
-  if (kept !== null && kept.length > 0 && kept.every((f) => f.states.every((st) => typeof st.judge === 'string'))) return kept
+  const version = (await read($, versionAtom)) ?? ''
+  const kept = keptFlows(await read($, coachFlowsAtom))
+  // The session's state outlives a reload of the plugin: flows another version read may not be the ones it ships now.
+  if (kept.version === version && kept.flows.length > 0) return kept.flows
   const dir = await read($, sessionsDirAtom)
   const own = dir !== null ? dir.replace(/[\\/]sessions[\\/]?$/, '/coach') : undefined
   const flows: CoachFlow[] = []
@@ -806,13 +810,21 @@ async function coachFlows($: EngineInterface): Promise<CoachFlow[]> {
       if (flow !== undefined) flows.push(flow)
     }
   }
-  if (flows.length > 0) await update($, coachFlowsAtom, () => flows as unknown as GemworksJson)
+  if (flows.length > 0) await update($, coachFlowsAtom, () => ({ version, flows }) as unknown as GemworksJson)
   return flows
+}
+
+/** The flows kept and the version of the plugin that read them; a version before 0.3.2 kept them bare, with none. */
+function keptFlows(kept: GemworksJson): { version: string | null; flows: CoachFlow[] } {
+  if (Array.isArray(kept)) return { version: null, flows: kept as unknown as CoachFlow[] }
+  if (kept === null || typeof kept !== 'object') return { version: null, flows: [] }
+  const { version, flows } = kept as { readonly [key: string]: GemworksJson }
+  return { version: typeof version === 'string' ? version : null, flows: Array.isArray(flows) ? (flows as unknown as CoachFlow[]) : [] }
 }
 
 /** The flows as read so far: what a drawing uses, since a drawing writes nothing (coachFlows reads them). */
 async function coachFlowsKept($: EngineInterface): Promise<CoachFlow[]> {
-  return ((await read($, coachFlowsAtom)) as unknown as CoachFlow[] | null) ?? []
+  return keptFlows(await read($, coachFlowsAtom)).flows
 }
 
 /**
@@ -939,7 +951,7 @@ async function writeOwnFlow($: EngineInterface, flow: CoachFlow): Promise<void> 
   const geml = await gemlDir($)
   if (geml === null) return
   await $.fs.write(`${geml}/coach/${flow.name}.geml`, flowText(flow))
-  await update($, coachFlowsAtom, () => [] as unknown as GemworksJson)
+  await update($, coachFlowsAtom, () => null)
   await coachFlows($)
 }
 
@@ -1167,8 +1179,9 @@ async function recordWork($: EngineInterface, event: unknown): Promise<ToolCallR
   const stamp = Date.parse(at).toString(36).slice(-6)
   let errors: string[] = []
   let made: SessionEvent[] = []
+  const runs = ((await read($, runsAtom)) as unknown as SeenRun[] | null) ?? []
   await appendOwn($, (so) => {
-    const r = workEvents(toolArgs(event as Record<string, unknown>), flows, items, at, currentTurn(so), (n) => `${stamp}${n}`)
+    const r = workEvents(toolArgs(event as Record<string, unknown>), flows, items, at, currentTurn(so), (n) => `${stamp}${n}`, runs)
     errors = r.errors
     made = r.events
     return r.events
@@ -1177,8 +1190,20 @@ async function recordWork($: EngineInterface, event: unknown): Promise<ToolCallR
   turnReported = true
   // The board reads the sessions it was drawn from: their new record draws it again.
   await loadProjectSessions($)
+  signoffAfter($, made.flatMap((e) => (e.t === 'item' ? [e.id] : [])))
   const said = made.map((e) => (e.t === 'item' ? `#${e.id} «${e.title}» (${e.flow}: ${e.state}${e.status !== 'open' ? `, ${e.status}` : ''})` : '')).join('; ')
   return { result: `Recorded ${said}.${errors.length > 0 ? ` Left out: ${errors.join('; ')}.` : ''}` }
+}
+
+/** The sign-off sheets of these work items written again (signoff.ts), in the person's language; nothing waits on it. */
+export function signoffAfter($: EngineInterface, ids: readonly string[]): void {
+  if (ids.length === 0) return
+  $.clock.after(0, () => {
+    void (async () => {
+      const [s, shell, locale] = await Promise.all([readSettings($), readShell($), read($, localeAtom)])
+      await bridge($, { op: 'signoff', ids: [...ids], lang: langOf(s.language, shell?.locale ?? locale ?? undefined) }, SLOW_TIMEOUT_MS)
+    })().catch(() => undefined)
+  })
 }
 
 /**
@@ -3052,6 +3077,15 @@ export const register: Register = (on) => {
       })
     }
     const exitCode = CLAUDE_CODE_TOOLS.run.includes(tool) ? bashExitCode(ran) : undefined
+    if (command !== undefined && typeof exitCode === 'number') {
+      const run = { command: command.slice(0, 400), exit: exitCode }
+      $.clock.after(0, () => {
+        void (async () => {
+          const at = await nowIso($)
+          await update($, runsAtom, (was) => [...(((was as unknown) as SeenRun[] | null) ?? []), { ...run, at }].slice(-RUNS_KEPT) as unknown as GemworksJson)
+        })().catch(() => undefined)
+      })
+    }
     const outcome = {
       isError: ran.isError === true,
       gitOperation: hasGitOperation(ran),

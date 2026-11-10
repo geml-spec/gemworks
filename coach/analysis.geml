@@ -1,0 +1,26 @@
+=== meta
+title   = "数据分析"
+profile = "geml-statechart/v1"
+===
+
+=== diagram {#flow format=geml-statechart caption="数据分析"}
+{
+  "initial": "question",
+  "states": {
+    "question":  { "title": "问清口径", "description": "问题、指标口径、时间范围，你认可", "judge": "you", "prevents": "口径没对齐，算出来的数没人认", "answers": ["认可", "再聊"] },
+    "explore":   { "title": "看数据", "description": "数据从哪来、缺失和异常都看过", "judge": "model", "prevents": "脏数据直接进了结果" },
+    "query":     { "title": "写查询", "description": "查询写成文件，能重跑", "judge": "model", "prevents": "结果只存在于某次手动操作里，没法复现" },
+    "reconcile": { "title": "对数", "description": "和一个已知的数对上了", "judge": "model", "prevents": "没对过数就交出去，错了也没人发现" },
+    "confirm":   { "title": "你确认", "description": "你看过说对", "judge": "you", "prevents": "数是对的，回答的却不是你要问的", "answers": ["对", "不对"] },
+    "done":      { "title": "完成", "final": true }
+  },
+  "transitions": [
+    { "from": "question",  "to": "explore" },
+    { "from": "explore",   "to": "query" },
+    { "from": "query",     "to": "reconcile" },
+    { "from": "reconcile", "to": "confirm" },
+    { "from": "confirm",   "to": "done", "approval": true },
+    { "from": "confirm",   "to": "question", "guard": "你说不对" }
+  ]
+}
+===

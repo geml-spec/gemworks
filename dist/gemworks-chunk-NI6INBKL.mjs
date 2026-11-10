@@ -1,4 +1,8 @@
 import {
+  langOf,
+  wordsFor
+} from "./gemworks-chunk-FHQ77CQL.mjs";
+import {
   TOOLS_FILE,
   blockText,
   canonical,
@@ -34,7 +38,7 @@ import {
   workflowAt,
   workflowNameOf,
   writeWorkflow
-} from "./gemworks-chunk-LNMCAWME.mjs";
+} from "./gemworks-chunk-RYILVWZA.mjs";
 import {
   changesDirectory,
   commandDirs,
@@ -75,13 +79,13 @@ import {
   withLock,
   worktreesOf,
   writeAtomic
-} from "./gemworks-chunk-SXXU2DVO.mjs";
+} from "./gemworks-chunk-4A7KYSFU.mjs";
 
 // src/bridge.ts
 import { createHash as createHash2 } from "node:crypto";
-import { cpSync, mkdirSync as mkdirSync5, readdirSync as readdirSync4 } from "node:fs";
+import { cpSync, mkdirSync as mkdirSync8, readdirSync as readdirSync5 } from "node:fs";
 import { homedir as homedir3, hostname, userInfo } from "node:os";
-import { basename as basename6, dirname as dirname5, extname, isAbsolute as isAbsolute3, join as join9, relative as relative4, resolve as resolve4, sep as sep4 } from "node:path";
+import { basename as basename7, dirname as dirname8, extname, isAbsolute as isAbsolute4, join as join12, relative as relative4, resolve as resolve4, sep as sep4 } from "node:path";
 
 // src/attribution.ts
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -275,7 +279,7 @@ var Attribution = class {
    */
   after(call, start) {
     const targets = [];
-    const target = (ws) => {
+    const target2 = (ws) => {
       let t = targets.find((x) => x.ws === ws);
       if (t === void 0) {
         t = { ws, whole: false, commands: [] };
@@ -285,7 +289,7 @@ var Attribution = class {
     };
     const written = this.written(call.tool, call.input, start);
     const whole = this.current(this.placeOf(call.tool, call.input, start), written);
-    if (whole !== void 0) target(whole).whole = true;
+    if (whole !== void 0) target2(whole).whole = true;
     const command = commandOf(call.input);
     if (this.tools.run.includes(call.tool) && command !== void 0 && typeof call.exitCode === "number") {
       const heads = signalHeads(command) ?? [];
@@ -295,7 +299,7 @@ var Attribution = class {
         const current = dir === void 0 ? void 0 : this.current(this.places.of(dir));
         if (current === void 0 || dir === void 0 || head === void 0 || !current.commandSpeaks(head)) return;
         const ws = this.itemFor(current, commands[i] ?? "", dir);
-        if (ws !== void 0) target(ws).commands.push(i);
+        if (ws !== void 0) target2(ws).commands.push(i);
       });
     }
     let own = { entered: [] };
@@ -407,15 +411,15 @@ function readBacklog(source) {
   return l ? { key: l.key, items: l.items, diagnostics: l.diagnostics } : { key: "branch", items: [], diagnostics: ["no table block #backlog"] };
 }
 var esc = (s) => escapeCellPipes(s.replace(/\r\n|[\r\n]/g, " "));
-function bindItem(items, id, target) {
+function bindItem(items, id, target2) {
   if (id === "") return { ok: false, reason: "an empty id names no backlog item" };
-  if (target === "") return { ok: false, reason: "a work item to bind is needed" };
+  if (target2 === "") return { ok: false, reason: "a work item to bind is needed" };
   const matches = items.filter((i) => i.id === id);
   const found = matches[0];
   if (!found) return { ok: false, reason: `no backlog item ${id}` };
   if (matches.length > 1) return { ok: false, reason: `backlog id ${id} is not unique` };
-  if (found.target && found.target !== target) return { ok: false, reason: `${id} is already bound to ${found.target}` };
-  return { ok: true, items: items.map((i) => i.id === id ? { ...i, target } : i) };
+  if (found.target && found.target !== target2) return { ok: false, reason: `${id} is already bound to ${found.target}` };
+  return { ok: true, items: items.map((i) => i.id === id ? { ...i, target: target2 } : i) };
 }
 var BLANK = new RegExp("^\\p{White_Space}$", "u");
 function withCell(line, ci, value) {
@@ -444,13 +448,13 @@ function withCell(line, ci, value) {
   if (te > ts) return line.slice(0, ts) + value + line.slice(te);
   return line.slice(0, s) + (e - s >= 1 ? line[s] : " ") + value + (e - s >= 2 ? line.slice(s + 1, e) : " ") + line.slice(e);
 }
-function bindInDocument(source, id, target) {
+function bindInDocument(source, id, target2) {
   const before = load(source);
   if (!before) return { ok: false, reason: "no table block #backlog" };
-  const bound = bindItem(before.items, id, target);
+  const bound = bindItem(before.items, id, target2);
   if (!bound.ok) return bound;
   const row = before.items.findIndex((i) => i.id === id);
-  if (before.items[row].target === target) return { ok: true, text: source };
+  if (before.items[row].target === target2) return { ok: true, text: source };
   const { tb, key } = before;
   const col = before.cols.indexOf(key);
   const unwritable = (why) => ({ ok: false, reason: `#backlog ${why}` });
@@ -464,11 +468,11 @@ function bindInDocument(source, id, target) {
   const old = at === void 0 ? void 0 : lines[at];
   if (at === void 0 || old === void 0) return unwritable("row could not be found in the text");
   const eol = /(?:\r\n|\r|\n)$/.exec(old)?.[0] ?? "";
-  lines[at] = withCell(old.slice(0, old.length - eol.length), col, esc(target)) + eol;
+  lines[at] = withCell(old.slice(0, old.length - eol.length), col, esc(target2)) + eol;
   const text = lines.join("");
   const after = load(text);
-  const same2 = after !== void 0 && after.key === key && after.items.length === before.items.length && after.diagnostics.join("\n") === before.diagnostics.join("\n") && after.items.every((item, i) => i === row ? item.id === id && item.title === before.items[i].title && item.target === target : JSON.stringify(item) === JSON.stringify(before.items[i]));
-  return same2 ? { ok: true, text } : unwritable(`row ${row + 1}: ${JSON.stringify(target)} cannot be written into its cell and read back as itself`);
+  const same2 = after !== void 0 && after.key === key && after.items.length === before.items.length && after.diagnostics.join("\n") === before.diagnostics.join("\n") && after.items.every((item, i) => i === row ? item.id === id && item.title === before.items[i].title && item.target === target2 : JSON.stringify(item) === JSON.stringify(before.items[i]));
+  return same2 ? { ok: true, text } : unwritable(`row ${row + 1}: ${JSON.stringify(target2)} cannot be written into its cell and read back as itself`);
 }
 
 // src/core/host-tools.ts
@@ -482,7 +486,7 @@ var HOST_TOOLS = Object.freeze({ claude: CLAUDE_CODE_TOOLS, pi: PI_TOOLS, dsh: D
 // src/bridge.ts
 import { PARSER_VERSION } from "./vendor/geml/geml.js";
 import { guardText } from "./vendor/geml/statechart.js";
-import { readFileSync as readFileSync5 } from "node:fs";
+import { readFileSync as readFileSync8 } from "node:fs";
 
 // src/outline-store.ts
 import { join as join2, relative as relative2, sep as sep2 } from "node:path";
@@ -531,9 +535,9 @@ function fileRow(item, final, state) {
 }
 function readOutline(source) {
   const tb = parse2(source).children.find((b) => b.kind === "block" && b.type === "table" && b.id === ITEMS_TABLE);
-  const table = tb?.table;
-  if (table === void 0 || !table.header) return [];
-  const cols = table.columns.map((c) => c.trim().toLowerCase());
+  const table2 = tb?.table;
+  if (table2 === void 0 || !table2.header) return [];
+  const cols = table2.columns.map((c) => c.trim().toLowerCase());
   if (!cols.includes("item") || !cols.includes("state")) return [];
   const cell = (row, name) => {
     const c = row[cols.indexOf(name)];
@@ -541,7 +545,7 @@ function readOutline(source) {
     const only = c.inlines.length === 1 ? c.inlines[0] : void 0;
     return (only?.type === "code" ? only.value : c.text).trim();
   };
-  return table.rows.flatMap((row) => {
+  return table2.rows.flatMap((row) => {
     const item = cell(row, "item");
     const state = cell(row, "state");
     if (item === "" || !END_STATES.includes(state)) return [];
@@ -568,14 +572,14 @@ function renderOutline(rows) {
   return [`=== table {#${ITEMS_TABLE}}`, fmt(OUTLINE_COLUMNS), `|${widths.map((w) => "-".repeat(w + 2)).join("|")}|`, ...lines.map(fmt), "==="].join("\n");
 }
 function withOutline(source, rows) {
-  const table = renderOutline(rows);
-  if (source === null) return ["=== meta", 'title = "Gemworks"', "===", "", table, ""].join("\n");
+  const table2 = renderOutline(rows);
+  if (source === null) return ["=== meta", 'title = "Gemworks"', "===", "", table2, ""].join("\n");
   const src = source.replace(/\r\n?/g, "\n");
   const unit = unitSpans2(src).find((u) => u.kind === "block" && u.id === ITEMS_TABLE);
-  if (unit === void 0) return `${src.replace(/\n*$/, "\n\n")}${table}
+  if (unit === void 0) return `${src.replace(/\n*$/, "\n\n")}${table2}
 `;
   const lines = src.split("\n");
-  return [...lines.slice(0, unit.span.start), ...table.split("\n"), ...lines.slice(unit.span.end)].join("\n");
+  return [...lines.slice(0, unit.span.start), ...table2.split("\n"), ...lines.slice(unit.span.end)].join("\n");
 }
 var byLast = (a, b) => b.last.localeCompare(a.last) || a.item.localeCompare(b.item);
 
@@ -675,9 +679,9 @@ function copyName(sha256, path) {
 }
 function readArtifacts(source) {
   const tb = parse3(source).children.find((b) => b.kind === "block" && b.type === "table" && b.id === ARTIFACTS_TABLE);
-  const table = tb?.table;
-  if (table === void 0 || !table.header) return [];
-  const cols = table.columns.map((c) => c.trim().toLowerCase());
+  const table2 = tb?.table;
+  if (table2 === void 0 || !table2.header) return [];
+  const cols = table2.columns.map((c) => c.trim().toLowerCase());
   if (!cols.includes("item") || !cols.includes("kind") || !cols.includes("name")) return [];
   const cell = (row, name) => {
     const c = row[cols.indexOf(name)];
@@ -685,7 +689,7 @@ function readArtifacts(source) {
     const only = c.inlines.length === 1 ? c.inlines[0] : void 0;
     return (only?.type === "code" ? only.value : c.text).trim();
   };
-  return table.rows.flatMap((row) => {
+  return table2.rows.flatMap((row) => {
     const item = cell(row, "item");
     const kind = cell(row, "kind");
     const name = cell(row, "name");
@@ -702,14 +706,14 @@ function renderArtifacts(rows) {
   return [`=== table {#${ARTIFACTS_TABLE}}`, fmt(ARTIFACT_COLUMNS), `|${widths.map((w) => "-".repeat(w + 2)).join("|")}|`, ...lines.map(fmt), "==="].join("\n");
 }
 function withArtifacts(source, rows) {
-  const table = renderArtifacts(rows);
-  if (source === null) return ["=== meta", 'title = "Gemworks artifacts"', "===", "", table, ""].join("\n");
+  const table2 = renderArtifacts(rows);
+  if (source === null) return ["=== meta", 'title = "Gemworks artifacts"', "===", "", table2, ""].join("\n");
   const src = source.replace(/\r\n?/g, "\n");
   const unit = unitSpans3(src).find((u) => u.kind === "block" && u.id === ARTIFACTS_TABLE);
-  if (unit === void 0) return `${src.replace(/\n*$/, "\n\n")}${table}
+  if (unit === void 0) return `${src.replace(/\n*$/, "\n\n")}${table2}
 `;
   const lines = src.split("\n");
-  return [...lines.slice(0, unit.span.start), ...table.split("\n"), ...lines.slice(unit.span.end)].join("\n");
+  return [...lines.slice(0, unit.span.start), ...table2.split("\n"), ...lines.slice(unit.span.end)].join("\n");
 }
 function artifactsOfItem(rows, item) {
   const by = /* @__PURE__ */ new Map();
@@ -793,8 +797,8 @@ function versionOf(home, rows, item, abs, name, kind) {
     }
   }
   const where = `artifacts/${copyName(sha256, name)}`;
-  const target = join3(home, GEML_DIR, where);
-  if (!exists(target)) copyFileSync(abs, target);
+  const target2 = join3(home, GEML_DIR, where);
+  if (!exists(target2)) copyFileSync(abs, target2);
   return row(where);
 }
 function syncWritten(root, home, item, everything) {
@@ -844,9 +848,9 @@ function recordBytes(home, item, given) {
   changeRows(home, (rows) => {
     if (rows.some((r) => r.item === item && r.sha256 === sha256)) return rows;
     const where = `artifacts/${copyName(sha256, given.name)}`;
-    const target = join3(home, GEML_DIR, where);
-    mkdirSync(dirname2(target), { recursive: true });
-    if (!exists(target)) writeFileSync(target, given.bytes);
+    const target2 = join3(home, GEML_DIR, where);
+    mkdirSync(dirname2(target2), { recursive: true });
+    if (!exists(target2)) writeFileSync(target2, given.bytes);
     const version = String(rows.filter((r) => r.item === item && r.kind === given.kind && r.name === given.name).length + 1);
     made = { item, kind: given.kind, name: given.name, where, version, size: given.bytes.length, at: given.at, sha256 };
     rows.push(made);
@@ -1194,11 +1198,11 @@ function ledgerText(l) {
 ${rows.map((r) => `${JSON.stringify(r)}
 `).join("")}===
 `;
-  const quoted = (s) => s.replace(/["\r\n]/g, "");
+  const quoted2 = (s) => s.replace(/["\r\n]/g, "");
   return `=== meta
 title = "\u7EA0\u6B63"
-linked = "${quoted(l.linked)}"
-claim = "${quoted(l.claim)}"
+linked = "${quoted2(l.linked)}"
+claim = "${quoted2(l.claim)}"
 ===
 
 ${data("prompts", l.prompts)}
@@ -1360,11 +1364,11 @@ function tally(xs) {
 }
 var per100 = (n, of) => of > 0 ? (Math.round(1e3 * n / of) / 10).toFixed(1) : "\u2013";
 var localDay = (at, offset) => new Date(Date.parse(at) + offset * 6e4).toISOString().slice(0, 10);
-function mondayOf(day) {
-  const d = /* @__PURE__ */ new Date(`${day}T00:00:00Z`);
+function mondayOf(day3) {
+  const d = /* @__PURE__ */ new Date(`${day3}T00:00:00Z`);
   return new Date(d.getTime() - (d.getUTCDay() + 6) % 7 * 864e5).toISOString().slice(0, 10);
 }
-var addDays = (day, n) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+var addDays = (day3, n) => new Date(Date.parse(`${day3}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 function parsePeriod(s) {
   const m = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(s.trim());
   return m !== null && m[1] <= m[2] ? { from: m[1], to: m[2] } : void 0;
@@ -1410,34 +1414,34 @@ var SUB_NAMES = {
 };
 var WORK_NAMES = { ui: "\u754C\u9762", spec: "\u89E3\u6790\u5668\u4E0E\u89C4\u8303", writing: "\u6587\u6863\u4E0E\u5199\u4F5C", business: "\u4E1A\u52A1", other: "\u5176\u4ED6" };
 function reportText(r, cells, unlabelled = 0) {
-  const pad = (s, w) => s + " ".repeat(Math.max(0, w - cells(s)));
+  const pad3 = (s, w) => s + " ".repeat(Math.max(0, w - cells(s)));
   const num = (s, w = 8) => " ".repeat(Math.max(0, w - s.length)) + s;
   const NAME = 18;
-  const pair = (name, nb, nt) => `${pad(name, NAME)}${num(per100(nb, r.baseline.prompts))}${num(per100(nt, r.trial.prompts))}`;
+  const pair2 = (name, nb, nt) => `${pad3(name, NAME)}${num(per100(nb, r.baseline.prompts))}${num(per100(nt, r.trial.prompts))}`;
   const lines = [
     `\u7EA0\u6B63 \xB7 ${r.first} \u81F3 ${r.last} \xB7 ${r.all.sessions} \u4E2A\u4F1A\u8BDD \xB7 ${r.all.prompts} \u53E5 \xB7 \u7EA0\u6B63 ${r.all.corrections} \u53E5${unlabelled > 0 ? ` \xB7 ${unlabelled} \u53E5\u672A\u6807\u6CE8` : ""}`,
     "",
-    `${pad("\u6BCF\u767E\u53E5", NAME)}${num("\u57FA\u7EBF")}${num("\u8BD5\u9A8C\u671F")}`,
-    `${pad("", NAME)}${num(r.baseline.from.slice(5))}${num(r.trial.from.slice(5))}`,
-    `${pad("", NAME)}${num(r.baseline.to.slice(5))}${num(r.trial.to.slice(5))}`,
-    `${pad("\u53E5\u6570", NAME)}${num(String(r.baseline.prompts))}${num(String(r.trial.prompts))}`,
-    pair("\u7EA0\u6B63", r.baseline.corrections, r.trial.corrections),
-    pair("\u56FA\u5B9A\u68C0\u67E5", r.baseline.fixed, r.trial.fixed),
-    ...FIXED_SUBS.map((s) => pair(`  ${SUB_NAMES[s]}`, r.baseline.by[s], r.trial.by[s])),
-    pair("\u9760\u4EBA\u5224\u65AD\uFF08\u5BF9\u7167\uFF09", r.baseline.person, r.trial.person),
-    ...PERSON_SUBS.map((s) => pair(`  ${SUB_NAMES[s]}`, r.baseline.by[s], r.trial.by[s]))
+    `${pad3("\u6BCF\u767E\u53E5", NAME)}${num("\u57FA\u7EBF")}${num("\u8BD5\u9A8C\u671F")}`,
+    `${pad3("", NAME)}${num(r.baseline.from.slice(5))}${num(r.trial.from.slice(5))}`,
+    `${pad3("", NAME)}${num(r.baseline.to.slice(5))}${num(r.trial.to.slice(5))}`,
+    `${pad3("\u53E5\u6570", NAME)}${num(String(r.baseline.prompts))}${num(String(r.trial.prompts))}`,
+    pair2("\u7EA0\u6B63", r.baseline.corrections, r.trial.corrections),
+    pair2("\u56FA\u5B9A\u68C0\u67E5", r.baseline.fixed, r.trial.fixed),
+    ...FIXED_SUBS.map((s) => pair2(`  ${SUB_NAMES[s]}`, r.baseline.by[s], r.trial.by[s])),
+    pair2("\u9760\u4EBA\u5224\u65AD\uFF08\u5BF9\u7167\uFF09", r.baseline.person, r.trial.person),
+    ...PERSON_SUBS.map((s) => pair2(`  ${SUB_NAMES[s]}`, r.baseline.by[s], r.trial.by[s]))
   ];
   if (r.byWork !== void 0) {
-    lines.push("", `${pad("\u6309\u5DE5\u4F5C\u7C7B\u578B\uFF1A\u56FA\u5B9A\u68C0\u67E5", NAME)}${num("\u57FA\u7EBF")}${num("\u8BD5\u9A8C\u671F")}${num("\u53E5\u6570")}`);
+    lines.push("", `${pad3("\u6309\u5DE5\u4F5C\u7C7B\u578B\uFF1A\u56FA\u5B9A\u68C0\u67E5", NAME)}${num("\u57FA\u7EBF")}${num("\u8BD5\u9A8C\u671F")}${num("\u53E5\u6570")}`);
     for (const w of r.byWork) {
       if (w.baseline.prompts === 0 && w.trial.prompts === 0) continue;
-      lines.push(`${pad(`  ${WORK_NAMES[w.work]}`, NAME)}${num(per100(w.baseline.fixed, w.baseline.prompts))}${num(per100(w.trial.fixed, w.trial.prompts))}${num(`${w.baseline.prompts}/${w.trial.prompts}`, 10)}`);
-      lines.push(`${pad("    \u9760\u4EBA\u5224\u65AD", NAME)}${num(per100(w.baseline.person, w.baseline.prompts))}${num(per100(w.trial.person, w.trial.prompts))}`);
+      lines.push(`${pad3(`  ${WORK_NAMES[w.work]}`, NAME)}${num(per100(w.baseline.fixed, w.baseline.prompts))}${num(per100(w.trial.fixed, w.trial.prompts))}${num(`${w.baseline.prompts}/${w.trial.prompts}`, 10)}`);
+      lines.push(`${pad3("    \u9760\u4EBA\u5224\u65AD", NAME)}${num(per100(w.baseline.person, w.baseline.prompts))}${num(per100(w.trial.person, w.trial.prompts))}`);
     }
   }
-  lines.push("", `${pad("\u6BCF\u5468", 10)}${num("\u53E5\u6570", 6)}${num("\u7EA0\u6B63")}${num("\u56FA\u5B9A\u68C0\u67E5")}${num("\u9760\u4EBA\u5224\u65AD")}`);
+  lines.push("", `${pad3("\u6BCF\u5468", 10)}${num("\u53E5\u6570", 6)}${num("\u7EA0\u6B63")}${num("\u56FA\u5B9A\u68C0\u67E5")}${num("\u9760\u4EBA\u5224\u65AD")}`);
   for (const w of r.weeks) {
-    lines.push(w.prompts === 0 ? `${pad(w.week.slice(5), 10)}${num("\u2014", 6)}${num("\u2014")}${num("\u2014")}${num("\u2014")}` : `${pad(w.week.slice(5), 10)}${num(String(w.prompts), 6)}${num(per100(w.corrections, w.prompts))}${num(per100(w.fixed, w.prompts))}${num(per100(w.person, w.prompts))}`);
+    lines.push(w.prompts === 0 ? `${pad3(w.week.slice(5), 10)}${num("\u2014", 6)}${num("\u2014")}${num("\u2014")}${num("\u2014")}` : `${pad3(w.week.slice(5), 10)}${num(String(w.prompts), 6)}${num(per100(w.corrections, w.prompts))}${num(per100(w.fixed, w.prompts))}${num(per100(w.person, w.prompts))}`);
   }
   return lines.join("\n");
 }
@@ -1632,10 +1636,16 @@ function waitsOnPerson(next, sources2) {
 // src/core/session-log.ts
 var SESSIONS_DIR = "sessions";
 var SESSIONS_GITIGNORE = "*\n";
+var isSeenRun = (v) => {
+  if (typeof v !== "object" || v === null) return false;
+  const r = v;
+  return typeof r["command"] === "string" && typeof r["exit"] === "number" && typeof r["at"] === "string";
+};
 var isMetStep = (v) => {
   if (typeof v !== "object" || v === null) return false;
   const m = v;
-  return typeof m["step"] === "string" && typeof m["at"] === "string" && typeof m["turn"] === "number" && (m["said"] === void 0 || typeof m["said"] === "string") && (m["pressed"] === void 0 || typeof m["pressed"] === "boolean");
+  const text = (k) => m[k] === void 0 || typeof m[k] === "string";
+  return typeof m["step"] === "string" && typeof m["at"] === "string" && typeof m["turn"] === "number" && text("said") && (m["pressed"] === void 0 || typeof m["pressed"] === "boolean") && text("evidence") && (m["seen"] === void 0 || isSeenRun(m["seen"]));
 };
 var safe = (s) => s.replace(/[^A-Za-z0-9._-]+/g, "-");
 function logName(host, id) {
@@ -1809,8 +1819,8 @@ var NOTE_TOOL = {
   }
 };
 var SESSIONS_PROMPT = "Gemworks: this project is worked on in several sessions at once, on other branches, worktrees and tools. When a turn reaches a decision the other sessions should know \u2014 a choice the person made that changes what comes next, or a finding they would otherwise discover again \u2014 record it with the gemworks `note` tool before the turn ends, one short sentence each; never status (pushed, synced, committed, what a version does) or plans. Decisions the other sessions recorded arrive beside the person's prompts, marked [gemworks].";
-function decisionsContext(decisions, label) {
-  return ["[gemworks] \u672C\u9879\u76EE\u5176\u4ED6\u4F1A\u8BDD\u8BB0\u4E0B\u7684\u51B3\u5B9A\uFF1A", ...decisions.map((d) => `- ${d.text}\uFF08${label(d)}\uFF09`)].join("\n");
+function decisionsContext(decisions, label2) {
+  return ["[gemworks] \u672C\u9879\u76EE\u5176\u4ED6\u4F1A\u8BDD\u8BB0\u4E0B\u7684\u51B3\u5B9A\uFF1A", ...decisions.map((d) => `- ${d.text}\uFF08${label2(d)}\uFF09`)].join("\n");
 }
 
 // src/core/transcript.ts
@@ -2014,6 +2024,24 @@ function readSessions(root) {
   }
   return out;
 }
+function readSessionLogs(root) {
+  const dir = sessionsDirOf(root);
+  let names;
+  try {
+    const all = readdirSync2(dir);
+    names = all.filter((n) => isLogName(n, all));
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const n of names) {
+    try {
+      out.push(parseLog(readFileSync4(join7(dir, n), "utf8")));
+    } catch {
+    }
+  }
+  return out;
+}
 function samePath2(a, b) {
   const x = resolve2(a), y = resolve2(b);
   return process.platform === "win32" ? x.toLowerCase() === y.toLowerCase() : x === y;
@@ -2113,7 +2141,7 @@ import { todo } from "./vendor/geml/media-verbs.js";
 // src/hosts/claude-code/protocol.ts
 var PROTOCOL_VERSION = 1;
 var TODO_CAP = 999;
-var OPS = /* @__PURE__ */ new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss"]);
+var OPS = /* @__PURE__ */ new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "signoff", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss"]);
 var EXPORT_KINDS = /* @__PURE__ */ new Set(["journal", "workflow", "text"]);
 var EXPORT_FORMATS = /* @__PURE__ */ new Set(["geml", "md", "json"]);
 var VERBS = /* @__PURE__ */ new Set(["status", "move", "set"]);
@@ -2148,39 +2176,40 @@ function decodeRequest(text) {
   if (typeof v["root"] !== "string" || v["root"] === "") return { error: "root is required" };
   const op = v["op"];
   if (typeof op !== "string" || !OPS.has(op)) return { error: `unknown op ${String(op)}` };
-  const str2 = (k) => typeof v[k] === "string";
+  const str4 = (k) => typeof v[k] === "string";
   const isRecord = (x) => typeof x === "object" && x !== null && !Array.isArray(x);
   const obj = (k) => isRecord(v[k]);
-  const cwd = () => v["cwd"] === void 0 || str2("cwd") && v["cwd"] !== "";
+  const cwd = () => v["cwd"] === void 0 || str4("cwd") && v["cwd"] !== "";
   const fields = {
-    before: () => str2("tool") && str2("callId") && obj("input") && cwd() && (v["waived"] === void 0 || Array.isArray(v["waived"]) && v["waived"].every((k) => typeof k === "string")),
-    after: () => str2("tool") && str2("callId") && obj("input") && typeof v["isError"] === "boolean" && typeof v["gitOperation"] === "boolean" && cwd(),
-    verb: () => str2("name") && VERBS.has(v["name"]) && obj("args"),
-    learn: () => Array.isArray(v["lessons"]) && v["lessons"].every(isLesson) && str2("tool") && obj("input") && cwd(),
-    mark: () => str2("variable") && typeof v["checked"] === "boolean",
-    advance: () => str2("to"),
+    before: () => str4("tool") && str4("callId") && obj("input") && cwd() && (v["waived"] === void 0 || Array.isArray(v["waived"]) && v["waived"].every((k) => typeof k === "string")),
+    after: () => str4("tool") && str4("callId") && obj("input") && typeof v["isError"] === "boolean" && typeof v["gitOperation"] === "boolean" && cwd(),
+    verb: () => str4("name") && VERBS.has(v["name"]) && obj("args"),
+    learn: () => Array.isArray(v["lessons"]) && v["lessons"].every(isLesson) && str4("tool") && obj("input") && cwd(),
+    mark: () => str4("variable") && typeof v["checked"] === "boolean",
+    advance: () => str4("to"),
     rollback: () => Number.isInteger(v["rev"]) && v["rev"] >= 0,
-    "new-item": () => str2("path") && v["path"] !== "" && str2("title") && str2("text"),
-    bind: () => str2("id"),
-    use: () => str2("workflow"),
-    import: () => str2("path") && v["path"] !== "",
-    export: () => EXPORT_KINDS.has(v["kind"]) && EXPORT_FORMATS.has(v["format"]) && (v["name"] === void 0 || str2("name")) && (v["text"] === void 0 || str2("text")) && (v["strip"] === void 0 || typeof v["strip"] === "boolean") && (v["to"] === void 0 || str2("to") && v["to"] !== "") && (v["kind"] !== "text" || str2("text")),
-    artifact: () => (v["kind"] === "link" || v["kind"] === "image" || v["kind"] === "file") && str2("where") && (v["name"] === void 0 || str2("name")) && (v["version"] === void 0 || str2("version")) && (v["page"] === void 0 || str2("page")) && (v["data"] === void 0 || str2("data")) && (v["mediaType"] === void 0 || str2("mediaType")),
+    "new-item": () => str4("path") && v["path"] !== "" && str4("title") && str4("text"),
+    bind: () => str4("id"),
+    use: () => str4("workflow"),
+    import: () => str4("path") && v["path"] !== "",
+    export: () => EXPORT_KINDS.has(v["kind"]) && EXPORT_FORMATS.has(v["format"]) && (v["name"] === void 0 || str4("name")) && (v["text"] === void 0 || str4("text")) && (v["strip"] === void 0 || typeof v["strip"] === "boolean") && (v["to"] === void 0 || str4("to") && v["to"] !== "") && (v["kind"] !== "text" || str4("text")),
+    artifact: () => (v["kind"] === "link" || v["kind"] === "image" || v["kind"] === "file") && str4("where") && (v["name"] === void 0 || str4("name")) && (v["version"] === void 0 || str4("version")) && (v["page"] === void 0 || str4("page")) && (v["data"] === void 0 || str4("data")) && (v["mediaType"] === void 0 || str4("mediaType")),
     artifacts: () => (v["elsewhere"] === void 0 || Array.isArray(v["elsewhere"]) && v["elsewhere"].every((p) => typeof p === "string")) && (v["notMade"] === void 0 || Array.isArray(v["notMade"]) && v["notMade"].every((p) => typeof p === "string")),
-    attention: () => v["session"] === void 0 || str2("session") && v["session"] !== "",
-    "backfill-list": () => v["transcripts"] === void 0 || str2("transcripts"),
-    "backfill-one": () => str2("file") && v["file"] !== "" && (v["own"] === void 0 || typeof v["own"] === "boolean") && (v["transcripts"] === void 0 || str2("transcripts")),
-    "turn-ids": () => str2("session") && v["session"] !== "" && (v["transcripts"] === void 0 || str2("transcripts")),
-    memory: () => v["transcripts"] === void 0 || str2("transcripts"),
-    "memory-set": () => str2("file") && v["file"] !== "" && str2("hook") && (v["transcripts"] === void 0 || str2("transcripts")),
-    "memory-delete": () => str2("file") && v["file"] !== "" && (v["transcripts"] === void 0 || str2("transcripts")),
+    attention: () => v["session"] === void 0 || str4("session") && v["session"] !== "",
+    "backfill-list": () => v["transcripts"] === void 0 || str4("transcripts"),
+    "backfill-one": () => str4("file") && v["file"] !== "" && (v["own"] === void 0 || typeof v["own"] === "boolean") && (v["transcripts"] === void 0 || str4("transcripts")),
+    signoff: () => Array.isArray(v["ids"]) && v["ids"].every((x) => typeof x === "string") && (v["lang"] === void 0 || v["lang"] === "zh" || v["lang"] === "en" || v["lang"] === "ja"),
+    "turn-ids": () => str4("session") && v["session"] !== "" && (v["transcripts"] === void 0 || str4("transcripts")),
+    memory: () => v["transcripts"] === void 0 || str4("transcripts"),
+    "memory-set": () => str4("file") && v["file"] !== "" && str4("hook") && (v["transcripts"] === void 0 || str4("transcripts")),
+    "memory-delete": () => str4("file") && v["file"] !== "" && (v["transcripts"] === void 0 || str4("transcripts")),
     "practice-add": () => Array.isArray(v["practices"]) && v["practices"].every((x) => typeof x === "object" && x !== null && !Array.isArray(x)) && (v["memory"] === void 0 || typeof v["memory"] === "boolean"),
     "practice-share": () => Array.isArray(v["ids"]) && v["ids"].every((x) => typeof x === "string"),
-    "practice-set": () => str2("id") && v["id"] !== "" && (v["deleted"] === void 0 || typeof v["deleted"] === "boolean") && (v["layer"] === void 0 || v["layer"] === "personal" || v["layer"] === "project") && (v["everywhere"] === void 0 || typeof v["everywhere"] === "boolean"),
-    corrections: () => (v["toTheme"] === void 0 || typeof v["toTheme"] === "boolean") && (v["session"] === void 0 || str2("session")),
+    "practice-set": () => str4("id") && v["id"] !== "" && (v["deleted"] === void 0 || typeof v["deleted"] === "boolean") && (v["layer"] === void 0 || v["layer"] === "personal" || v["layer"] === "project") && (v["everywhere"] === void 0 || typeof v["everywhere"] === "boolean"),
+    corrections: () => (v["toTheme"] === void 0 || typeof v["toTheme"] === "boolean") && (v["session"] === void 0 || str4("session")),
     "corrections-add": () => Array.isArray(v["prompts"]) && v["prompts"].every(isRecord),
-    "corrections-themes": () => obj("answer") && Array.isArray(v["answer"]["assign"]) && Array.isArray(v["answer"]["links"]) && str2("linked"),
-    "corrections-dismiss": () => str2("key") && v["key"] !== "" && Number.isInteger(v["n"])
+    "corrections-themes": () => obj("answer") && Array.isArray(v["answer"]["assign"]) && Array.isArray(v["answer"]["links"]) && str4("linked"),
+    "corrections-dismiss": () => str4("key") && v["key"] !== "" && Number.isInteger(v["n"])
   };
   const check = fields[op];
   if (check !== void 0 && !check()) return { error: `op ${op}: missing or mistyped fields` };
@@ -2284,15 +2313,15 @@ function addWorkflow(root, name, o) {
   const names = bundledWorkflows();
   if (!names.includes(name)) return { ok: false, code: 2, reason: `unknown template "${name}"; expected ${names.join(" or ")}` };
   const home = homeOf(root);
-  const target = join8(home, WORKFLOWS_DIR, `${name}.geml`);
-  if (installedWorkflows(root, home).some((w) => w.name === name)) return { ok: false, code: 1, reason: `${WORKFLOWS_DIR}/${name}.geml already exists; not overwriting`, target };
+  const target2 = join8(home, WORKFLOWS_DIR, `${name}.geml`);
+  if (installedWorkflows(root, home).some((w) => w.name === name)) return { ok: false, code: 1, reason: `${WORKFLOWS_DIR}/${name}.geml already exists; not overwriting`, target: target2 };
   const dir = join8(BUNDLED, name);
   writeWorkflow(home, name, mergedWorkflow(name, readText(join8(dir, FLOW_FILE)), (f) => readIn(dir, f)));
   const tools = readIn(dir, TOOLS_FILE);
   if (tools !== void 0) mergeTools(home, tools);
   if (o.activate) setDefault(root, home, name);
   ensureGitignore(join8(home, GEML_DIR));
-  return { ok: true, name, target, activated: o.activate };
+  return { ok: true, name, target: target2, activated: o.activate };
 }
 function importWorkflow(root, path) {
   const given = resolve3(root, path);
@@ -2313,7 +2342,7 @@ function importWorkflow(root, path) {
   if (loaded.statechart === void 0 || errors.length > 0) return { ok: false, reason: `${path} does not load: ${errors.map((d) => d.message).join("; ") || "no statechart"}` };
   const home = homeOf(root);
   const installed = installedWorkflows(root, home);
-  const target = join8(home, WORKFLOWS_DIR, `${name}.geml`);
+  const target2 = join8(home, WORKFLOWS_DIR, `${name}.geml`);
   if (installed.some((w) => w.name === name)) return { ok: false, reason: `${WORKFLOWS_DIR}/${name}.geml already exists; not overwriting` };
   const activate = installed.length === 0 && projectDocOf(root, home) === void 0;
   writeWorkflow(home, name, mergedWorkflow(name, readText(flow), (f) => readIn(dir, f)));
@@ -2321,7 +2350,7 @@ function importWorkflow(root, path) {
   if (exists(dict)) mergeTools(home, readText(dict), basename5(flow).toLowerCase() === FLOW_FILE ? void 0 : usesOf(loaded.statechart));
   if (activate) setDefault(root, home, name);
   ensureGitignore(join8(home, GEML_DIR));
-  return { ok: true, name, target, activated: activate };
+  return { ok: true, name, target: target2, activated: activate };
 }
 function useWorkflow(root, name) {
   const have = projectWorkflows(root);
@@ -2432,6 +2461,1151 @@ ${ws.context() ?? NO_STAGE_CONTEXT}` };
   }
 }
 
+// src/signoff.ts
+import { mkdirSync as mkdirSync7, readFileSync as readFileSync7, writeFileSync as writeFileSync7 } from "node:fs";
+import { dirname as dirname7, join as join11 } from "node:path";
+
+// src/board-file.ts
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync as existsSync5, mkdirSync as mkdirSync6, readFileSync as readFileSync6, writeFileSync as writeFileSync6 } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename as basename6, dirname as dirname6, isAbsolute as isAbsolute3, join as join10 } from "node:path";
+
+// src/core/progress.ts
+function progressOf(steps, met, running = /* @__PURE__ */ new Set()) {
+  const work = steps.filter((s) => !s.final);
+  let furthest = -1;
+  work.forEach((s, i) => {
+    if (met.has(s.id)) furthest = i;
+  });
+  const at = work.findIndex((s, i) => i > furthest && !met.has(s.id));
+  const here = at < 0 ? null : work[at];
+  const cells = steps.map((s) => {
+    if (s.final) return { id: s.id, cell: here === null ? "met" : "ahead" };
+    const i = work.indexOf(s);
+    const cell = met.has(s.id) ? "met" : i === at ? "here" : i < furthest ? "skipped" : "ahead";
+    return { id: s.id, cell };
+  });
+  if (here === null) return { cells, here: null, whose: "done" };
+  const whose = here.judge === "you" ? "you" : here.judge === "fact" && running.has(here.id) ? "wait" : "me";
+  return { cells, here: here.id, whose };
+}
+
+// src/core/work.ts
+var COACH_FLOWS = ["design", "feature", "bugfix", "optimize", "incident", "review", "research", "refactor", "docs", "analysis"];
+var isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var str2 = (v) => typeof v === "string" ? v : "";
+var JUDGES = ["fact", "you", "model"];
+var pair = (v) => Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "string" && v[0] !== "" && v[1] !== "" ? [v[0], v[1]] : null;
+function readCoachFlow(name, text, reference) {
+  const lines = text.split(/\r?\n/);
+  const open = lines.findIndex((l) => /^===\s*diagram\b/.test(l.trim()) && l.includes("format=geml-statechart"));
+  if (open < 0) return void 0;
+  const close = lines.findIndex((l, i) => i > open && l.trim() === "===");
+  let v;
+  try {
+    v = JSON.parse(lines.slice(open + 1, close < 0 ? void 0 : close).join("\n"));
+  } catch {
+    return void 0;
+  }
+  if (!isObject(v) || !isObject(v["states"])) return void 0;
+  const states = Object.entries(v["states"]).flatMap(([id, s]) => {
+    if (!isObject(s)) return [];
+    const ref = reference?.states.find((r) => r.id === id);
+    const judge = JUDGES.find((j) => j === s["judge"]) ?? ref?.judge ?? "model";
+    const expires = s["expires"] === true || s["expires"] === void 0 && ref?.expires === true;
+    return [{ id, title: str2(s["title"]) || id, need: str2(s["description"]), final: s["final"] === true, judge, prevents: str2(s["prevents"]) || ref?.prevents || "", answers: pair(s["answers"]) ?? ref?.answers ?? null, ...expires ? { expires: true } : {} }];
+  });
+  if (states.length === 0) return void 0;
+  const at = (id) => states.findIndex((s) => s.id === id);
+  const edges = (Array.isArray(v["transitions"]) ? v["transitions"] : []).flatMap((x) => {
+    if (!isObject(x) || at(str2(x["from"])) < 0 || at(str2(x["to"])) < 0) return [];
+    const from = str2(x["from"]);
+    const to = str2(x["to"]);
+    return [{ from, to, label: str2(x["label"]) || str2(x["guard"]), back: at(to) !== at(from) + 1 }];
+  });
+  const title = text.match(/^title\s*=\s*"([^"]*)"/m)?.[1] ?? lines[open]?.match(/caption="([^"]*)"/)?.[1] ?? name;
+  const diff = reference !== void 0 ? { added: states.filter((s) => !s.final && !reference.states.some((r) => r.id === s.id)).map((s) => s.title), removed: reference.states.filter((r) => !r.final && !states.some((s) => s.id === r.id)).map((r) => r.title) } : void 0;
+  return { name, title, states, edges, ...diff !== void 0 ? { diff } : {} };
+}
+function metOf(e, flow) {
+  if (e.met !== void 0) return e.met;
+  if (flow === void 0) return [];
+  const at = flow.states.findIndex((s) => s.id === e.state);
+  if (at < 0) return [];
+  const done = flow.states[at].final;
+  return flow.states.filter((s, i) => !s.final && (done || i < at)).map((s) => ({ step: s.id, at: e.at, turn: e.turn }));
+}
+function itemProgress2(item, flow, running) {
+  return progressOf(flow.states, new Set(item.met.map((m) => m.step)), running);
+}
+var finalOf = (flow) => (flow.states.find((s) => s.final) ?? flow.states.at(-1)).id;
+function workItemsOf(sessions, flows = []) {
+  const by = /* @__PURE__ */ new Map();
+  for (const s of sessions) {
+    for (const e of s.items ?? []) {
+      const was = by.get(e.id);
+      if (was !== void 0 && was.at >= e.at) continue;
+      const met = metOf(e, flows.find((f) => f.name === e.flow));
+      by.set(e.id, { id: e.id, flow: e.flow, title: e.title, state: e.state, needs: e.needs, goal: e.goal, status: e.status, at: e.at, session: s.id, met, next: e.next ?? "" });
+    }
+  }
+  return [...by.values()].sort((a, b) => a.at < b.at ? 1 : a.at > b.at ? -1 : 0);
+}
+var WORK_TOOL = {
+  name: "work",
+  description: "Report, before the turn ends, the work items this turn was about, so the board shows the person where each stands: each a thing the person wants done (a new design, a new feature, a bugfix, an optimization), the flow that fits it, every step whose leave requirement is met now (where it stands follows from them, so steps may be skipped), what it still needs, what you will do next, and what it should be at the end. Update an item on the way by its id (listed beside the person's prompt); report a new one without an id. One turn may be about several items; a turn about none reports nothing.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "An item already on the way, by its id; leave it out for a new one." },
+            title: { type: "string", description: "What the item is, in a few words of the person's language." },
+            flow: { type: "string", description: "The flow it belongs to, by its name: design \u65B0\u8BBE\u8BA1, feature \u65B0\u529F\u80FD, bugfix, optimize \u4F18\u5316, incident \u7EBF\u4E0A\u4E8B\u6545, review \u4EE3\u7801\u5BA1\u67E5, research \u8C03\u7814\u9009\u578B, refactor \u91CD\u6784, docs \u6587\u6863, analysis \u6570\u636E\u5206\u6790, or one the project added (the flows are listed once)." },
+            met: { type: "array", items: { type: "string" }, description: "Every step whose leave requirement is met now, by the id or title the flow lists; a way back is the same list with the later steps left out. Leave it out on an update to keep what was met." },
+            said: { type: "string", description: "The person's own words, this turn, that meet a step they judge (marked you), e.g. \u300C\u597D\u4E86\u300D. Needed when met newly names such a step; without their words leave the step for their press." },
+            evidence: { type: "string", description: "What proves a step marked (fact) that met newly names: the check as it ran \u2014 the command in backticks and its result (`npm test` exit 0), the CI run, the numbers measured. It goes on the item's sign-off sheet beside the run gemworks saw." },
+            next: { type: "string", description: "What you will do next for it: one short sentence in the person's language, as it would follow \u300C\u63A5\u4E0B\u6765\u6211\u53BB\u300D." },
+            needs: { type: "string", description: "What it still needs to leave the step it stands at: one short phrase, in the person's language." },
+            goal: { type: "string", description: "What it should be at the end: one short sentence, in the person's language." },
+            status: { type: "string", enum: ["open", "done", "dropped"], description: "done once the person said it is; dropped when given up. Default open." }
+          },
+          required: ["title", "flow"],
+          additionalProperties: false
+        }
+      }
+    },
+    required: ["items"],
+    additionalProperties: false
+  }
+};
+var WORK_REMINDER = "Gemworks: this turn changed things but reported no work item. Before ending, call the gemworks `work` tool with the work items this turn was about (update one on the way by its id, report a new one without), then end the turn.";
+function workPrompt(flows) {
+  const listed = flows.map((f) => `${f.name} ${f.title}: ${f.states.filter((s) => !s.final).map((s) => `${s.id} ${s.title} (${s.judge})`).join(" \u2192 ")}`).join("; ");
+  return `Gemworks: before a turn ends, report the work items it was about with the gemworks \`work\` tool: the flow each belongs to, every step whose leave requirement is met now (\`met\`), what it still needs, what you will do next, what it should be at the end; update one on the way by its id. A step marked (you) is the person's to judge: name it in \`met\` only with their own words in \`said\`, else leave it for their press. A step marked (fact) is met with what proves it in \`evidence\`: the command as it ran and its result. The flows: ${listed}.`;
+}
+function workContext(items, flows, limit = 8) {
+  const open = items.filter((i) => i.status === "open").slice(0, limit);
+  if (open.length === 0) return [];
+  const where = (i) => {
+    const flow = flows.find((f) => f.name === i.flow);
+    const here = flow !== void 0 ? itemProgress2(i, flow).here ?? i.state : i.state;
+    const met = i.met.length > 0 ? `met ${i.met.map((m) => m.step).join(", ")}; ` : "";
+    return `${met}at ${here} ${flow?.states.find((s) => s.id === here)?.title ?? ""}`.trimEnd();
+  };
+  return [`[gemworks] work items on the way: ${open.map((i) => `#${i.id} \xAB${i.title}\xBB (${i.flow}: ${where(i)}${i.needs !== "" ? `, needs ${i.needs}` : ""})`).join("; ")}`];
+}
+function workEvents(args, flows, items, at, turn, newId, runs = []) {
+  const given = Array.isArray(args["items"]) ? args["items"] : [];
+  const events = [];
+  const errors = [];
+  given.forEach((x, n) => {
+    if (!isObject(x)) {
+      errors.push(`item ${n + 1} is not an object`);
+      return;
+    }
+    const flow = flows.find((f) => f.name === str2(x["flow"]));
+    if (flow === void 0) {
+      errors.push(`item ${n + 1}: flow must be one of ${flows.map((f) => f.name).join(", ")}`);
+      return;
+    }
+    const stepNamed = (name) => flow.states.find((s) => s.id === name) ?? flow.states.find((s) => s.title === name);
+    const ids = flow.states.map((s) => s.id).join(", ");
+    const id = str2(x["id"]).replace(/^#/, "");
+    const was = id !== "" ? items.find((i) => i.id === id) : void 0;
+    if (id !== "" && was === void 0) {
+      errors.push(`item ${n + 1}: no work item #${id} is on the way`);
+      return;
+    }
+    let named2;
+    if (Array.isArray(x["met"])) {
+      const unknown = x["met"].find((m) => stepNamed(str2(m)) === void 0);
+      if (unknown !== void 0) {
+        errors.push(`item ${n + 1}: ${flow.name} has no step "${str2(unknown)}" (${ids})`);
+        return;
+      }
+      const steps = x["met"].map((m) => stepNamed(str2(m)));
+      named2 = steps.some((s) => s.final) ? flow.states.filter((s) => !s.final) : steps;
+    } else if (str2(x["state"]) !== "") {
+      const state = stepNamed(str2(x["state"]));
+      if (state === void 0) {
+        errors.push(`item ${n + 1}: ${flow.name} has no state "${str2(x["state"])}" (${ids})`);
+        return;
+      }
+      const upTo = flow.states.indexOf(state);
+      named2 = flow.states.filter((s, i) => !s.final && (state.final || i < upTo));
+    }
+    const title = str2(x["title"]).trim() || was?.title || "";
+    if (title === "") {
+      errors.push(`item ${n + 1} has no title`);
+      return;
+    }
+    const before = was?.met ?? [];
+    const metIds = [...new Set(named2 !== void 0 ? named2.map((s) => s.id) : before.map((m) => m.step))];
+    const said = str2(x["said"]).trim();
+    const theirs = metIds.map((s) => stepNamed(s)).filter((s) => s.judge === "you" && !before.some((m) => m.step === s.id));
+    if (theirs.length > 0 && said === "") {
+      errors.push(`item ${n + 1}: ${theirs.map((s) => s.title).join("\u3001")} is the person's to meet: put what they said in \`said\`, or leave it for their press`);
+      return;
+    }
+    const evidence = str2(x["evidence"]).trim();
+    const facts = metIds.filter((s) => stepNamed(s).judge === "fact" && !before.some((m) => m.step === s));
+    const seen = evidence !== "" ? seenIn(evidence, runs) : void 0;
+    const met = metIds.map((s) => before.find((m) => m.step === s) ?? {
+      step: s,
+      at,
+      turn,
+      ...theirs.some((t) => t.id === s) ? { said } : {},
+      ...facts.includes(s) && evidence !== "" ? { evidence, ...seen !== void 0 ? { seen } : {} } : {}
+    });
+    const p = itemProgress2({ met }, flow);
+    const status = p.whose === "done" ? "done" : x["status"] === "done" || x["status"] === "dropped" ? x["status"] : was?.status === "held" ? "held" : "open";
+    const next = typeof x["next"] === "string" ? x["next"].trim() : was?.next ?? "";
+    events.push({
+      t: "item",
+      turn,
+      at,
+      id: was?.id ?? newId(n),
+      flow: flow.name,
+      title,
+      state: p.here ?? finalOf(flow),
+      needs: typeof x["needs"] === "string" ? x["needs"].trim() : was?.needs ?? "",
+      goal: typeof x["goal"] === "string" ? x["goal"].trim() : was?.goal ?? "",
+      status,
+      met,
+      ...next !== "" ? { next } : {}
+    });
+  });
+  return { events, errors };
+}
+function seenIn(evidence, runs) {
+  const quoted2 = [...evidence.matchAll(/`([^`]+)`/g)].map((m) => m[1].trim()).filter((q) => q !== "");
+  const named2 = (r) => {
+    const command = r.command.trim();
+    return command !== "" && (evidence.includes(command) || quoted2.some((q) => command.includes(q)));
+  };
+  return [...runs].reverse().find(named2);
+}
+function turnItem(items, session) {
+  return items.find((x) => x.status === "open" && x.session === session);
+}
+
+// src/core/board-page.ts
+var SAY_ZH = (key, ...args) => key.replace(/\{(\d+)\}/g, (hole, n) => args[Number(n)] !== void 0 ? String(args[Number(n)]) : hole);
+var SHOWN = { items: 12, artifacts: 5, decisions: 5 };
+function literal(text) {
+  return text.replace(/\s*\r?\n\s*/g, " ").replace(/[\\*`~$[\]|{}%!#<>_]/g, (c) => `\\${c}`);
+}
+var target = (href) => href.replace(/[ ()]/g, (c) => encodeURIComponent(c));
+var label = (text) => text.replace(/"/g, "'").replace(/[\r\n]+/g, " ");
+var JUDGE_WORDS = { fact: "\u4E8B\u5B9E", you: "\u4F60\u5224", model: "\u6A21\u578B\u5224" };
+var named = (i) => `\\#${i.id} ${literal(i.title)}`;
+function stepsLine(i, flow) {
+  const p = itemProgress2(i, flow);
+  return flow.states.filter((s) => !s.final).map((s) => {
+    const cell = p.cells.find((c) => c.id === s.id)?.cell;
+    return cell === "here" ? `**${literal(s.title)}**` : cell === "met" ? `${literal(s.title)} \u2713` : literal(s.title);
+  }).join(" \u2192 ");
+}
+var sayOne = (answers, t) => answers.map((a) => t("\u300C{0}\u300D", literal(a))).join(t("\u6216"));
+function waitingOf(flows, items, asks, proposals, t = SAY_ZH) {
+  const out = [];
+  for (const q of asks) {
+    const item = q.item !== void 0 ? items.find((x) => x.id === q.item) : void 0;
+    out.push({ ...item !== void 0 ? { item } : { label: t("\u63D0\u95EE") }, ask: q.question, say: q.options });
+  }
+  for (const item of items) {
+    const flow = flows.find((f) => f.name === item.flow);
+    if (flow === void 0 || item.status !== "open") continue;
+    const p = itemProgress2(item, flow);
+    const step = flow.states.find((s) => s.id === p.here);
+    if (p.whose !== "you" || step === void 0) continue;
+    out.push({ item, ask: t("{0}\uFF1A{1}", step.title, step.need), say: step.answers ?? [t("\u597D\u4E86"), t("\u6CA1\u597D")] });
+  }
+  for (const p of proposals.filter((x) => x.status === "open")) {
+    const what = p.kind === "new-flow" ? t("\u65B0\u7684\u4E00\u7C7B\u6D3B\u300C{0}\u300D\uFF1A{1}", p.title ?? p.flow, (p.steps ?? []).map((s) => s.title).join(" \u2192 ")) : p.kind === "add-step" ? t("{0} \u52A0\u4E00\u6B65\u300C{1}\u300D", p.flow, p.step?.title ?? "") : t("{0} \u53BB\u6389\u300C{1}\u300D", p.flow, p.remove ?? "");
+    const name = p.title ?? p.step?.title ?? p.remove ?? p.flow;
+    out.push({ label: t("\u63D0\u8BAE {0}", p.id), ask: `${what}${p.why !== "" ? t("\uFF08{0}\uFF09", p.why) : ""}`, say: [t("\u52A0\u4E0A{0}", name), t("\u4E0D\u7528{0}", name)] });
+  }
+  return out;
+}
+function waitingRows(i, open, t) {
+  return waitingOf(i.flows, open, i.asks, i.proposals, t).map((w) => `| ${w.item !== void 0 ? `\\#${w.item.id} ${literal(w.item.title)}` : literal(w.label ?? "")} | ${literal(w.ask)} | ${sayOne(w.say, t)} |`);
+}
+function table(head, rows, id, none) {
+  if (rows.length === 0) return [none];
+  const cells = head.split("|").filter((c) => c.trim() !== "").length;
+  return [`=== table {#${id}}`, head, `|${"---|".repeat(cells)}`, ...rows, "==="];
+}
+function flowPicture2(flow, on, t) {
+  const here = /* @__PURE__ */ new Map();
+  for (const item of on) {
+    const at = itemProgress2(item, flow).here;
+    if (at !== null) here.set(at, [...here.get(at) ?? [], item]);
+  }
+  const node = (s, n) => s.final ? `s${n}(["${label(s.title)}"])` : `s${n}["${label(s.title)} \xB7 ${t(JUDGE_WORDS[s.judge])}"]${here.has(s.id) ? ":::here" : ""}`;
+  const steps = [...flow.states.filter((s) => !s.final), ...flow.states.filter((s) => s.final)];
+  const caption = [...here.entries()].map(([step, items]) => t("{0} \u5728{1}", items.map((x) => `#${x.id}`).join(t("\u3001")), flow.states.find((s) => s.id === step)?.title ?? step)).join(t("\uFF1B"));
+  return [
+    `=== diagram {#flow-${flow.name} format=mermaid caption="${label(t("{0}\uFF1A{1}", flow.title, caption))}"}`,
+    "graph LR",
+    `  ${steps.map(node).join(" --> ")}`,
+    "  classDef here stroke-width:3px",
+    "==="
+  ];
+}
+function boardPage(i) {
+  const t = i.t ?? SAY_ZH;
+  const open = i.items.filter((x) => x.status === "open" || x.status === "held").slice(0, SHOWN.items);
+  const out = [
+    "=== meta",
+    `title = "${label(t("Gemworks \u770B\u677F \xB7 {0}", i.project))}"`,
+    `updated = "${label(i.updated)}"`,
+    "===",
+    "",
+    "=== note",
+    t("Gemworks \u6BCF\u56DE\u5408\u6539\u5199\u8FD9\u4E00\u9875\u3002VS Code \u7CFB\u7F16\u8F91\u5668\u91CC\u6253\u5F00\u9884\u89C8\u4F1A\u81EA\u52A8\u5237\u65B0\uFF1B\u6D4F\u89C8\u5668\u91CC\u6309 F5 \u5237\u65B0\u3002\u4E0B\u9762\u8981\u4F60\u5B9A\u7684\u4E8B\uFF0C\u90FD\u5728\u5BF9\u8BDD\u91CC\u56DE\u7B54\u3002"),
+    "===",
+    "",
+    `# ${t("\u7B49\u4F60")} {#waiting}`,
+    "",
+    ...table(`| ${t("\u4E8B\u9879")} | ${t("\u8981\u4F60\u5B9A")} | ${t("\u5728\u5BF9\u8BDD\u91CC\u8BF4")} |`, waitingRows(i, open, t), "asks", t("\u6CA1\u6709\u8981\u4F60\u5B9A\u7684\u4E8B\u3002")),
+    "",
+    `# ${t("\u5DE5\u4F5C\u9879")} {#items}`,
+    ""
+  ];
+  const itemRows = open.flatMap((item) => {
+    const flow = i.flows.find((f) => f.name === item.flow);
+    if (flow === void 0) return [];
+    const where = `${stepsLine(item, flow)}${item.status === "held" ? t("\uFF08\u6682\u7F13\uFF09") : ""}`;
+    return [`| ${named(item)} | ${literal(flow.title)} | ${where} | ${literal(item.needs)} | ${literal(item.next)} |`];
+  });
+  out.push(...table(`| ${t("\u5DE5\u4F5C\u9879")} | ${t("\u6D41\u7A0B")} | ${t("\u5728\u54EA\u4E00\u6B65")} | ${t("\u8FD8\u8981\u4EC0\u4E48")} | ${t("\u63A5\u4E0B\u6765")} |`, itemRows, "work", t("\u6CA1\u6709\u8FDB\u884C\u4E2D\u7684\u5DE5\u4F5C\u9879\u3002")));
+  const practiced = open.flatMap((item) => {
+    const flow = i.flows.find((f) => f.name === item.flow);
+    const here = flow !== void 0 && item.status === "open" ? itemProgress2(item, flow).here : null;
+    const at = flow !== void 0 && here !== null ? practicesAt(i.practices, flow.name, here) : [];
+    if (flow === void 0 || here === null || at.length === 0) return [];
+    return ["", t("{0} \u5728\u300C{1}\u300D\uFF1A", named(item), literal(flow.states.find((s) => s.id === here)?.title ?? here)), "", ...at.map((p, n) => `${n + 1}. ${literal(p.text)}`)];
+  });
+  if (practiced.length > 0) out.push("", `## ${t("\u8FD9\u4E00\u6B65\u7684\u505A\u6CD5")} {#practices}`, ...practiced);
+  out.push("", `# ${t("\u4EA7\u7269")} {#made}`, "");
+  const made = open.flatMap((item) => artifactsOfItem(i.artifacts, item.id).slice(0, SHOWN.artifacts).map((a) => {
+    const last = a.versions.at(-1);
+    const bare = a.name.replace(/`/g, "");
+    const name = literal(a.kind === "link" ? bare : bare.split(/[\\/]/).at(-1) ?? bare);
+    const href = i.linkOf(last);
+    return `| ${named(item)} | ${href !== void 0 ? `[${name}](${target(href)})` : name} | ${literal(last.version)} | ${i.clock(last.at)} |`;
+  }));
+  out.push(...table(`| ${t("\u5DE5\u4F5C\u9879")} | ${t("\u4EA7\u7269")} | ${t("\u7248\u672C")} | ${t("\u65F6\u95F4")} |`, made, "artifacts", t("\u8FD8\u6CA1\u6709\u4EA7\u7269\u3002")));
+  out.push("", `# ${t("\u6D41\u7A0B")} {#flow}`, "");
+  const pictured = i.flows.flatMap((flow) => {
+    const on = open.filter((x) => x.flow === flow.name && x.status === "open");
+    return on.length > 0 ? [...flowPicture2(flow, on, t), ""] : [];
+  });
+  out.push(...pictured.length > 0 ? pictured.slice(0, -1) : [t("\u6CA1\u6709\u5DE5\u4F5C\u9879\u5728\u6D41\u7A0B\u4E0A\u3002")]);
+  const decided = i.decisions.slice(-SHOWN.decisions).reverse();
+  out.push("", `# ${t("\u522B\u7684\u4F1A\u8BDD\u7684\u51B3\u5B9A")} {#decisions}`, "");
+  out.push(...decided.length > 0 ? decided.map((d) => `- ${t("{0}\uFF08{1}\uFF0C{2}\uFF09", literal(d.text), literal(i.hostName(d.host)), i.clock(d.at))}`) : [t("\u8FD8\u6CA1\u6709\u3002")]);
+  return `${out.join("\n")}
+`;
+}
+
+// src/hosts/claude-code/open-file.ts
+var OPEN_PATH_VAR = "GEMWORKS_OPEN_PATH";
+var POWERSHELL = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command"];
+var WIN_OPEN = `Start-Process -FilePath $env:${OPEN_PATH_VAR} -WindowStyle Normal`;
+var WIN_REVEAL = `Start-Process -FilePath explorer.exe -ArgumentList ('/select,' + [char]34 + $env:${OPEN_PATH_VAR} + [char]34) -WindowStyle Normal`;
+var START_VAR = "GEMWORKS_START";
+var CMD_START = ["cmd.exe", "/d", "/c", "start", `%${START_VAR}%`];
+function winStart(...args) {
+  return { argv: CMD_START, env: { [START_VAR]: ['""', ...args.map((a) => `"${a}"`)].join(" ") } };
+}
+var IN_BROWSER = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif", "html", "htm", "pdf", "txt", "json", "geml"]);
+function opensInBrowser(path) {
+  const ext = /\.([A-Za-z0-9]+)$/.exec(baseName(path))?.[1];
+  return ext !== void 0 && IN_BROWSER.has(ext.toLowerCase());
+}
+function fileUrl(path) {
+  const p = path.split("\\").join("/");
+  const segments = p.split("/").map((s, i) => i === 0 && /^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s)).join("/");
+  return p.startsWith("/") ? `file://${segments}` : `file:///${segments}`;
+}
+var BROWSER_PROGID_ARGV = ["reg", "query", "HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\https\\UserChoice", "/v", "ProgId"];
+function progIdOf(out) {
+  return /ProgId\s+REG_SZ\s+(\S+)/.exec(out)?.[1];
+}
+function browserCommandArgv(progId) {
+  return ["reg", "query", `HKCR\\${progId}\\shell\\open\\command`, "/ve"];
+}
+function browserExeOf(out) {
+  const line = /REG_(?:EXPAND_)?SZ\s+(.+)$/m.exec(out)?.[1]?.trim();
+  if (line === void 0 || line === "") return void 0;
+  const exe = line.startsWith('"') ? line.slice(1, line.indexOf('"', 1)) : line.split(/\s+/)[0] ?? "";
+  return /\.exe$/i.test(exe) ? exe : void 0;
+}
+function folderOf(path) {
+  const p = path.split("\\").join("/").replace(/\/+$/, "");
+  const cut = p.lastIndexOf("/");
+  return cut <= 0 ? "/" : p.slice(0, cut);
+}
+function openersFor(platform, path, reveal = false, browser) {
+  const os = platform ?? (/^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\") ? "win32" : void 0);
+  if (os === "win32") {
+    const win = path.split("/").join("\\");
+    const shell = { argv: [...POWERSHELL, reveal ? WIN_REVEAL : WIN_OPEN], env: { [OPEN_PATH_VAR]: win } };
+    if (reveal) return [shell];
+    const inBrowser = browser !== void 0 && opensInBrowser(path) ? [winStart(browser, fileUrl(path))] : [];
+    return [...inBrowser, winStart(win), shell];
+  }
+  const mac = { argv: reveal ? ["open", "-R", path] : ["open", path] };
+  if (os === "darwin") return [mac];
+  const xdg = { argv: ["xdg-open", reveal ? folderOf(path) : path] };
+  return os === void 0 ? [xdg, mac] : [xdg];
+}
+function baseName(path) {
+  const p = path.split("\\").join("/").replace(/\/+$/, "");
+  return p.slice(p.lastIndexOf("/") + 1) || p;
+}
+
+// src/loop.ts
+import { mkdirSync as mkdirSync5, readdirSync as readdirSync4, readFileSync as readFileSync5, writeFileSync as writeFileSync5 } from "node:fs";
+import { dirname as dirname5, join as join9 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+
+// src/core/ask-tool.ts
+var MOST_OPTIONS = 4;
+var ASK_TOOL = {
+  name: "ask",
+  description: "Register a question this turn ends with, for the person to answer from the status band: the question in full, its real answers (two to four, short, in the reply's language), and the one you recommend. Call it once per question, before the turn ends, whenever the reply asks the person to decide something; several questions are asked one by one. Do not register a question you answered yourself or one that needs no answer.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      question: { type: "string", description: "The question, whole, as the person should read it." },
+      options: { type: "array", items: { type: "string" }, minItems: 2, maxItems: MOST_OPTIONS, description: "The answers the person can give, each a few words." },
+      recommended: { type: "string", description: "The answer you recommend: one of options." },
+      item: { type: "string", description: "The work item on the way this question is about, by its id; leave it out when it is about none. The question then stands under that item on the board until answered." }
+    },
+    required: ["question", "options"],
+    additionalProperties: false
+  }
+};
+function askedOf(input) {
+  const question = typeof input["question"] === "string" ? input["question"].trim() : "";
+  if (question === "") return { error: "question is empty" };
+  const given = Array.isArray(input["options"]) ? input["options"].filter((o) => typeof o === "string").map((o) => o.trim()).filter((o) => o !== "") : [];
+  const options = [...new Set(given)];
+  if (options.length < 2 || options.length > MOST_OPTIONS) return { error: `options are two to ${MOST_OPTIONS} answers` };
+  const recommended = typeof input["recommended"] === "string" ? input["recommended"].trim() : "";
+  if (recommended !== "" && !options.includes(recommended)) return { error: "recommended is one of options" };
+  const ordered = recommended === "" ? options : [recommended, ...options.filter((o) => o !== recommended)];
+  const item = typeof input["item"] === "string" ? input["item"].trim().replace(/^#/, "") : "";
+  return { question, options: ordered, ...recommended !== "" ? { recommended } : {}, ...item !== "" ? { item } : {} };
+}
+var ASK_TOOL_ON_BOARD = {
+  ...ASK_TOOL,
+  description: "Register a question this turn ends with, so the Gemworks board lists it with its answers until the person's next prompt: the question in full, its real answers (two to four, short, in the reply's language), and the one you recommend. Ask it in your reply as well: the person answers in the conversation. Call it once per question, before the turn ends; do not register a question you answered yourself or one that needs no answer."
+};
+var ASK_PROMPT_ON_BOARD = "Gemworks: when a turn ends asking the person to decide something, ask it in your reply and register each question with the gemworks `ask` tool before the turn ends: the question in full, its real answers (two to four, short, in the reply's language) and the one you recommend. The Gemworks board lists a registered question with its answers until the person's next prompt; they answer in the conversation.";
+
+// src/core/growth.ts
+function parseLines(text, block2, is) {
+  const lines = text.split(/\r?\n/);
+  const open = lines.findIndex((l) => l.trim() === `=== data {#${block2} format=jsonl}`);
+  if (open < 0) return [];
+  const close = lines.findIndex((l, i) => i > open && l.trim() === "===");
+  const out = [];
+  for (const line of lines.slice(open + 1, close < 0 ? void 0 : close)) {
+    if (line.trim() === "") continue;
+    try {
+      const v = JSON.parse(line);
+      if (is(v)) out.push(v);
+    } catch {
+    }
+  }
+  return out;
+}
+var linesText = (title, block2, records) => `=== meta
+title = "${title}"
+===
+
+=== data {#${block2} format=jsonl}
+${records.map((r) => `${JSON.stringify(r)}
+`).join("")}===
+`;
+var isObj3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var str3 = (v) => typeof v === "string" ? v : "";
+var JUDGES2 = ["fact", "you", "model"];
+var isStep = (v) => isObj3(v) && ["id", "title", "need", "prevents"].every((k) => typeof v[k] === "string") && JUDGES2.includes(v["judge"]);
+var isProposal = (v) => isObj3(v) && ["id", "flow", "why", "at"].every((k) => typeof v[k] === "string") && ["add-step", "remove-step", "new-flow"].includes(v["kind"]) && ["model", "gemworks", "reference"].includes(v["by"]) && ["open", "accepted", "declined"].includes(v["status"]) && (v["step"] === void 0 || isStep(v["step"])) && (v["steps"] === void 0 || Array.isArray(v["steps"]) && v["steps"].every(isStep));
+var parseProposals = (text) => parseLines(text, "proposals", isProposal);
+var proposalsText = (list) => linesText("\u63D0\u8BAE", "proposals", list);
+function stepId(title, taken) {
+  const ascii = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  let base = ascii;
+  if (base === "") {
+    let h = 0;
+    for (const ch of title) h = h * 31 + (ch.codePointAt(0) ?? 0) >>> 0;
+    base = `s${h.toString(36).slice(0, 5)}`;
+  }
+  let id = base;
+  for (let n = 2; taken.includes(id); n++) id = `${base}-${n}`;
+  return id;
+}
+function newProposals(given, flows, kept, at, newId) {
+  const added = [];
+  const errors = [];
+  const stepOf = (x, taken) => {
+    const title = str3(x["title"]).trim();
+    if (title === "") return void 0;
+    const judge = JUDGES2.includes(x["judge"]) ? x["judge"] : "model";
+    const step = { id: stepId(title, taken), title, need: str3(x["need"]).trim(), judge, prevents: str3(x["prevents"]).trim() };
+    taken.push(step.id);
+    return step;
+  };
+  given.forEach((v, n) => {
+    if (!isObj3(v)) {
+      errors.push(`proposal ${n + 1} is not an object`);
+      return;
+    }
+    const why = str3(v["why"]).trim();
+    if (v["kind"] === "add-step") {
+      const flow = flows.find((f) => f.name === str3(v["flow"]));
+      if (flow === void 0) {
+        errors.push(`proposal ${n + 1}: no flow "${str3(v["flow"])}"`);
+        return;
+      }
+      const after = str3(v["after"]);
+      if (!flow.states.some((s) => s.id === after && !s.final)) {
+        errors.push(`proposal ${n + 1}: ${flow.name} has no step "${after}" to add after`);
+        return;
+      }
+      const step = stepOf(v, flow.states.map((s) => s.id));
+      if (step === void 0) {
+        errors.push(`proposal ${n + 1} names no step title`);
+        return;
+      }
+      if ([...kept, ...added].some((p) => p.kind === "add-step" && p.flow === flow.name && p.step?.title === step.title)) {
+        errors.push(`proposal ${n + 1}: already proposed`);
+        return;
+      }
+      added.push({ id: newId(n), kind: "add-step", flow: flow.name, after, step, why, at, by: "model", status: "open" });
+    } else if (v["kind"] === "new-flow") {
+      const title = str3(v["title"]).trim();
+      const raw = Array.isArray(v["steps"]) ? v["steps"] : [];
+      const taken = ["done"];
+      const steps = raw.flatMap((x) => isObj3(x) ? [stepOf(x, taken)] : []).filter((s) => s !== void 0);
+      if (title === "" || steps.length === 0) {
+        errors.push(`proposal ${n + 1}: a new kind of work needs its title and its steps`);
+        return;
+      }
+      const name = stepId(str3(v["name"]) || title, flows.map((f) => f.name));
+      if ([...kept, ...added].some((p) => p.kind === "new-flow" && p.title === title)) {
+        errors.push(`proposal ${n + 1}: already proposed`);
+        return;
+      }
+      added.push({ id: newId(n), kind: "new-flow", flow: name, title, steps, why, at, by: "model", status: "open" });
+    } else errors.push(`proposal ${n + 1}: kind must be add-step or new-flow`);
+  });
+  return { added, errors };
+}
+var toState = (s) => ({ id: s.id, title: s.title, need: s.need, final: false, judge: s.judge, prevents: s.prevents, answers: null });
+function applyToFlow(flow, p) {
+  if (p.kind === "add-step" && p.after !== void 0 && p.step !== void 0) {
+    const at = flow.states.findIndex((s) => s.id === p.after);
+    const step = toState(p.step);
+    const states = [...flow.states.slice(0, at + 1), step, ...flow.states.slice(at + 1)];
+    const next = flow.states[at + 1]?.id;
+    const edges = flow.edges.flatMap((e) => e.from === p.after && e.to === next && !e.back ? [{ ...e, to: step.id }, { from: step.id, to: next, label: "", back: false }] : [e]);
+    return { ...flow, states, edges };
+  }
+  if (p.kind === "remove-step" && p.remove !== void 0) {
+    const gone = p.remove;
+    const into = flow.edges.filter((e) => e.to === gone && !e.back).map((e) => e.from);
+    const out = flow.edges.filter((e) => e.from === gone && !e.back).map((e) => e.to);
+    const kept = flow.edges.filter((e) => e.from !== gone && e.to !== gone);
+    const joined2 = into.flatMap((a) => out.map((b) => ({ from: a, to: b, label: "", back: false })));
+    const backs = flow.edges.filter((e) => e.back && e.to === gone).map((e) => ({ ...e, to: out[0] ?? e.to })).filter((e) => e.to !== gone);
+    return { ...flow, states: flow.states.filter((s) => s.id !== gone), edges: [...kept, ...joined2, ...backs] };
+  }
+  return flow;
+}
+function newFlow(p) {
+  const steps = (p.steps ?? []).map(toState);
+  const states = [...steps, { id: "done", title: "\u5B8C\u6210", need: "", final: true, judge: "model", prevents: "", answers: null }];
+  const edges = states.slice(1).map((s, i) => ({ from: states[i].id, to: s.id, label: "", back: false }));
+  return { name: p.flow, title: p.title ?? p.flow, states, edges };
+}
+function flowText(flow) {
+  const states = Object.fromEntries(flow.states.map((s) => [s.id, s.final ? { title: s.title, final: true } : { title: s.title, description: s.need, judge: s.judge, ...s.prevents !== "" ? { prevents: s.prevents } : {}, ...s.answers !== null ? { answers: s.answers } : {}, ...s.expires === true ? { expires: true } : {} }]));
+  const transitions = flow.edges.map((e) => ({ from: e.from, to: e.to, ...e.label !== "" ? { guard: e.label } : {} }));
+  const initial = flow.states.find((s) => !s.final)?.id ?? flow.states[0]?.id ?? "done";
+  const json = JSON.stringify({ initial, states, transitions }, null, 2);
+  return `=== meta
+title   = "${flow.title}"
+profile = "geml-statechart/v1"
+===
+
+=== diagram {#flow format=geml-statechart caption="${flow.title}"}
+${json}
+===
+`;
+}
+var PROPOSE_TOOL = {
+  name: "propose",
+  description: "Propose a change to how the project's work goes, for the person to accept or decline on the flow tab: a step to add to a flow, when the same thing keeps being done at the same place in that kind of work and it prevents a pitfall; or a new kind of work, when several work items in a row fit none of the flows. Nothing changes until the person accepts.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      proposals: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            kind: { type: "string", enum: ["add-step", "new-flow"] },
+            flow: { type: "string", description: "add-step: the flow, by its name." },
+            after: { type: "string", description: "add-step: the step it comes after, by id." },
+            title: { type: "string", description: "add-step: the new step's title; new-flow: the kind of work's title." },
+            need: { type: "string", description: "add-step: what it needs to be left, a few words." },
+            judge: { type: "string", enum: ["fact", "you", "model"], description: "add-step: who judges that requirement." },
+            prevents: { type: "string", description: "add-step: the pitfall it prevents." },
+            name: { type: "string", description: "new-flow: a short ascii name for it." },
+            steps: { type: "array", items: { type: "object", properties: { title: { type: "string" }, need: { type: "string" }, judge: { type: "string", enum: ["fact", "you", "model"] }, prevents: { type: "string" } }, required: ["title"], additionalProperties: false }, description: "new-flow: its steps in order, as the work items that fit none actually went." },
+            why: { type: "string", description: "What you saw: the work items or the incidents behind it." }
+          },
+          required: ["kind", "why"],
+          additionalProperties: false
+        }
+      }
+    },
+    required: ["proposals"],
+    additionalProperties: false
+  }
+};
+var PROPOSE_TOOL_ON_BOARD = {
+  ...PROPOSE_TOOL,
+  description: PROPOSE_TOOL.description.replace("for the person to accept or decline on the flow tab", "for the person to accept or decline in the conversation (the Gemworks board lists it)")
+};
+var ANSWER_TOOL = {
+  name: "answer",
+  description: "Carry out the person's answer to a proposal the Gemworks board lists (a step to add or take out, a new kind of work): yes adds it to the project's flows, no declines it so it is not proposed again. Only with the person's own words, this turn, in said; never on your own judgement.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      proposal: { type: "string", description: "The proposal, by its id as the board lists it." },
+      yes: { type: "boolean", description: "true to accept it, false to decline it." },
+      said: { type: "string", description: "The person's own words, this turn, that answer it, e.g. \u300C\u52A0\u4E0A\u5199\u89C4\u8303\u300D." }
+    },
+    required: ["proposal", "yes", "said"],
+    additionalProperties: false
+  }
+};
+var GROWTH_PROMPT_ON_BOARD = "Gemworks: the flows grow from what happens here. When the same thing keeps being done at the same place in a kind of work, or several work items in a row fit none of the flows, propose it with the gemworks `propose` tool. The person answers a proposal in the conversation: when they say to add it or not, carry it out with the gemworks `answer` tool, their words in `said`.";
+
+// src/core/practice-tool.ts
+var PRACTICE_TOOL = {
+  name: "practice",
+  description: "Record what this project has learned about doing its work, each on the step of a flow it belongs to, so it reminds whoever comes to that step next. Record one when a turn paid a price \u2014 a way back, a failed test or CI, the person saying it is not fixed, the person correcting you, a rule blocking a call \u2014 as what would have avoided it; or when the person tells you how they want something done. A practice reminds; it never blocks.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      practices: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            flow: { type: "string", description: "The flow it belongs to, by its name; * for every flow." },
+            step: { type: "string", description: "The step's id in that flow; * for every step (with flow *, any time)." },
+            text: { type: "string", description: "What to do, one short sentence in the person's language." },
+            why: { type: "string", description: "The incident it came from: when, and what it cost, in a few words." },
+            layer: { type: "string", enum: ["personal", "project"], description: "personal for how this person wants work done in every project; project for this repository's own." },
+            ref: { type: "string", description: "Where a file read every turn already keeps its text, as file#heading (CLAUDE.md#build-and-check); the text then stays there." },
+            from: { type: "string", description: "Its source when it is moved, as memory:<file>." }
+          },
+          required: ["text", "layer"],
+          additionalProperties: false
+        }
+      },
+      memory: { type: "boolean", description: "true on the calls that move the project's memory in (asked once, on first start)." }
+    },
+    required: ["practices"],
+    additionalProperties: false
+  }
+};
+var PRACTICE_PROMPT = "Gemworks: when a turn paid a price (a way back, a failed test or CI, the person saying it is not fixed, the person correcting you, a rule blocking a call), record what would have avoided it with the gemworks `practice` tool, on the step it happened at; also when the person tells you how they want something done. Practices only remind. Beside a prompt you are shown the practices of the step your work item stands at: follow them.";
+function practiceContext(items, flows, practices, session) {
+  const i = turnItem(items, session);
+  const flow = flows.find((f) => f.name === i?.flow);
+  if (i === void 0 || flow === void 0) return [];
+  const here = itemProgress2(i, flow).here;
+  if (here === null) return [];
+  const at = practicesAt(practices, flow.name, here);
+  if (at.length === 0) return [];
+  const step = flow.states.find((s) => s.id === here)?.title ?? here;
+  return [`[gemworks] at ${flow.name} ${here} ${step} for \xAB${i.title}\xBB, the practices: ${at.map((p, n) => `(${n + 1}) ${p.text}${p.ref !== void 0 ? ` [${p.ref}]` : ""}`).join(" ")}`];
+}
+
+// src/loop.ts
+var SHIPPED_COACH = fileURLToPath2(new URL("../coach/", import.meta.url));
+var LOOP_TOOLS = [WORK_TOOL, PRACTICE_TOOL, PROPOSE_TOOL_ON_BOARD, ANSWER_TOOL, ASK_TOOL_ON_BOARD, ARTIFACT_TOOL];
+var isLoopTool = (name) => LOOP_TOOLS.some((t) => t.name === name);
+var gemlHome = (root) => join9(journalBaseOf(root), GEML_DIR);
+var readAt = (path) => {
+  try {
+    return readFileSync5(path, "utf8");
+  } catch {
+    return void 0;
+  }
+};
+var stampOf = (at) => Date.parse(at).toString(36).slice(-6);
+function coachFlowsAt(root, shipped = SHIPPED_COACH) {
+  const own = join9(gemlHome(root), "coach");
+  const flows = [];
+  for (const name of COACH_FLOWS) {
+    const shippedText = readAt(join9(shipped, `${name}.geml`));
+    const reference = shippedText !== void 0 ? readCoachFlow(name, shippedText) : void 0;
+    const ownText = readAt(join9(own, `${name}.geml`));
+    const teamText = ownText === void 0 ? readAt(join9(root, ".gemworks", "flows", `${name}.geml`)) : void 0;
+    const flow = (ownText !== void 0 ? readCoachFlow(name, ownText, reference) : teamText !== void 0 ? readCoachFlow(name, teamText, reference) : void 0) ?? reference;
+    if (flow !== void 0) flows.push(flow);
+  }
+  let added = [];
+  try {
+    added = readdirSync4(own).filter((n) => n.endsWith(".geml") && !COACH_FLOWS.includes(n.slice(0, -".geml".length))).sort();
+  } catch {
+  }
+  for (const file of added) {
+    const text = readAt(join9(own, file));
+    const flow = text !== void 0 ? readCoachFlow(file.slice(0, -".geml".length), text) : void 0;
+    if (flow !== void 0) flows.push(flow);
+  }
+  return flows;
+}
+function workItemsAt(root, flows) {
+  return workItemsOf(readSessions(root), flows);
+}
+function recordWork(root, host, session, args, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const flows = coachFlowsAt(root);
+  if (flows.length === 0) return { ok: false, text: "Nothing recorded: this project has no flows to report work items on." };
+  const items = workItemsAt(root, flows);
+  const stamp = stampOf(now);
+  let errors = [];
+  let made = [];
+  appendSession(root, host, session, (so) => {
+    const r = workEvents(args, flows, items, now, currentTurn(so), (n) => `${stamp}${n}`);
+    errors = r.errors;
+    made = r.events;
+    return r.events;
+  }, now);
+  if (made.length === 0) return { ok: false, text: `Nothing recorded: ${errors.join("; ") || "items is a list of work items"}.` };
+  try {
+    writeSignoffs(root, made.flatMap((e) => e.t === "item" ? [e.id] : []));
+  } catch {
+  }
+  const said = made.map((e) => e.t === "item" ? `#${e.id} \xAB${e.title}\xBB (${e.flow}: ${e.state}${e.status !== "open" ? `, ${e.status}` : ""})` : "").join("; ");
+  return { ok: true, text: `Recorded ${said}.${errors.length > 0 ? ` Left out: ${errors.join("; ")}.` : ""}` };
+}
+function recordPractices(root, host, session, args, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const given = Array.isArray(args["practices"]) ? args["practices"] : [];
+  const memory = args["memory"] === true;
+  const flows = coachFlowsAt(root);
+  const kept = readPractices(root).practices;
+  const stamp = stampOf(now);
+  const turn = currentTurn(appendSession(root, host, session, () => [], now));
+  const r = newPractices(given, kept, now, memory ? "memory" : "model", (n) => `p${stamp}${n}`, flows.map((f) => ({ name: f.name, steps: f.states.map((s) => s.id) })), { session, turn });
+  if (r.added.length === 0 && !memory) return { ok: false, text: `Nothing recorded: ${r.errors.join("; ") || "practices is a list"}.` };
+  writePractices(root, r.added, memory);
+  return { ok: true, text: `Recorded ${r.added.length} practice${r.added.length === 1 ? "" : "s"}; they remind at their steps.${r.errors.length > 0 ? ` Left out: ${r.errors.join("; ")}.` : ""}` };
+}
+function proposalsAt(root) {
+  const text = readAt(join9(gemlHome(root), "proposals.geml"));
+  return text !== void 0 ? parseProposals(text) : [];
+}
+function saveProposals(root, list) {
+  const path = join9(gemlHome(root), "proposals.geml");
+  mkdirSync5(dirname5(path), { recursive: true });
+  writeFileSync5(path, proposalsText(list), "utf8");
+}
+function recordProposals(root, args, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const given = Array.isArray(args["proposals"]) ? args["proposals"] : [];
+  const kept = proposalsAt(root);
+  const stamp = stampOf(now);
+  const r = newProposals(given, coachFlowsAt(root), kept, now, (n) => `q${stamp}${n}`);
+  if (r.added.length === 0) return { ok: false, text: `Nothing recorded: ${r.errors.join("; ") || "proposals is a list"}.` };
+  saveProposals(root, [...kept, ...r.added]);
+  return { ok: true, text: `Proposed ${r.added.length} (${r.added.map((p) => p.id).join(", ")}); the person answers in the conversation.${r.errors.length > 0 ? ` Left out: ${r.errors.join("; ")}.` : ""}` };
+}
+function answerProposal(root, args) {
+  const id = typeof args["proposal"] === "string" ? args["proposal"].trim().replace(/^#/, "") : "";
+  const said = typeof args["said"] === "string" ? args["said"].trim() : "";
+  if (typeof args["yes"] !== "boolean") return { ok: false, text: "Nothing done: yes is true or false." };
+  if (said === "") return { ok: false, text: "Nothing done: a proposal is answered only with the person's own words in said." };
+  const list = proposalsAt(root);
+  const p = list.find((x) => x.id === id);
+  if (p === void 0 || p.status !== "open") return { ok: false, text: `Nothing done: no open proposal ${id} (open: ${list.filter((x) => x.status === "open").map((x) => x.id).join(", ") || "none"}).` };
+  const yes = args["yes"];
+  if (yes) {
+    const flow = p.kind === "new-flow" ? newFlow(p) : coachFlowsAt(root).find((f) => f.name === p.flow);
+    if (flow === void 0) return { ok: false, text: `Nothing done: there is no flow ${p.flow} to change.` };
+    const path = join9(gemlHome(root), "coach", `${flow.name}.geml`);
+    mkdirSync5(dirname5(path), { recursive: true });
+    writeFileSync5(path, flowText(p.kind === "new-flow" ? flow : applyToFlow(flow, p)), "utf8");
+  }
+  saveProposals(root, list.map((x) => x.id === p.id ? { ...x, status: yes ? "accepted" : "declined" } : x));
+  return { ok: true, text: yes ? `Accepted ${p.id}: ${p.kind === "new-flow" ? `the flow ${p.flow} is added` : `the flow ${p.flow} is changed`}.` : `Declined ${p.id}; it is not proposed again.` };
+}
+function recordAsk(root, host, session, args, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  const asked = askedOf(args);
+  if ("error" in asked) return { ok: false, text: `Not registered: ${asked.error}.` };
+  appendSession(root, host, session, (so) => [{
+    t: "ask",
+    turn: currentTurn(so),
+    at: now,
+    question: asked.question,
+    options: asked.options,
+    ...asked.recommended !== void 0 ? { recommended: asked.recommended } : {},
+    ...asked.item !== void 0 ? { item: asked.item } : {}
+  }], now);
+  return { ok: true, text: "Registered: the Gemworks board lists it until the person's next prompt; ask it in your reply too." };
+}
+async function recordArtifact(root, session, args) {
+  const kind = args["kind"];
+  const where = typeof args["where"] === "string" ? args["where"].trim() : "";
+  if (kind !== "link" && kind !== "image" && kind !== "file" || where === "") return { ok: false, text: "Nothing recorded: kind is link, image or file, and where is the address or the path." };
+  const status = await handleRequest({ v: 1, root, op: "status" }).catch(() => void 0);
+  let on;
+  if (status !== void 0 && status.ok && status.shell.status?.item.kind === "item") on = {};
+  else {
+    const item = turnItem(workItemsAt(root, coachFlowsAt(root)), session);
+    if (item !== void 0) on = { item: item.id };
+  }
+  if (on === void 0) return { ok: false, text: "Nothing recorded: no work item is on the way in this session; report the one this is for with the work tool first." };
+  const name = typeof args["name"] === "string" ? args["name"] : void 0;
+  const version = typeof args["version"] === "string" ? args["version"] : void 0;
+  const res = await handleRequest({ v: 1, root, op: "artifact", ...on, kind, where, ...name !== void 0 ? { name } : {}, ...version !== void 0 ? { version } : {} }).catch((e) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+  if (!res.ok) return { ok: false, text: `Nothing recorded: ${res.error.replace(/^gemworks: /, "")}` };
+  return { ok: true, text: res.text ?? "Recorded." };
+}
+async function callLoopTool(root, host, session, name, args, now = (/* @__PURE__ */ new Date()).toISOString()) {
+  try {
+    switch (name) {
+      case WORK_TOOL.name:
+        return recordWork(root, host, session, args, now);
+      case PRACTICE_TOOL.name:
+        return recordPractices(root, host, session, args, now);
+      case PROPOSE_TOOL_ON_BOARD.name:
+        return recordProposals(root, args, now);
+      case ANSWER_TOOL.name:
+        return answerProposal(root, args);
+      case ASK_TOOL_ON_BOARD.name:
+        return recordAsk(root, host, session, args, now);
+      case ARTIFACT_TOOL.name:
+        return await recordArtifact(root, session, args);
+      default:
+        return void 0;
+    }
+  } catch (e) {
+    return { ok: false, text: `gemworks: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+function loopPrompt(flows) {
+  return flows.length === 0 ? [ASK_PROMPT_ON_BOARD] : [ASK_PROMPT_ON_BOARD, workPrompt(flows), PRACTICE_PROMPT, GROWTH_PROMPT_ON_BOARD];
+}
+function loopContext(root, session, flows = coachFlowsAt(root)) {
+  if (flows.length === 0) return [];
+  const items = workItemsAt(root, flows);
+  let practices = [];
+  try {
+    practices = readPractices(root).practices;
+  } catch {
+  }
+  return [...workContext(items, flows), ...practiceContext(items, flows, practices, session)];
+}
+
+// src/hosts/claude-code/coach.ts
+function flowsIn(flows, t) {
+  const say = (s) => s === "" ? "" : t(s);
+  return flows.map((f) => ({
+    ...f,
+    title: say(f.title),
+    states: f.states.map((s) => ({ ...s, title: say(s.title), need: say(s.need), prevents: say(s.prevents), answers: s.answers === null ? null : [say(s.answers[0]), say(s.answers[1])] }))
+  }));
+}
+
+// src/board-file.ts
+var BOARD_FILE = "board.geml";
+function boardLang(env = process.env) {
+  let system;
+  try {
+    system = Intl.DateTimeFormat().resolvedOptions().locale;
+  } catch {
+  }
+  return langOf(env["GEMWORKS_LANG"], env["LC_ALL"] || env["LC_MESSAGES"] || env["LANG"] || system);
+}
+var boardPath = (root) => join10(gemlHome(root), BOARD_FILE);
+var pad = (n) => String(n).padStart(2, "0");
+var clock = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+var day = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+function linkOf(row, home) {
+  if (row.kind === "link") return /^https?:\/\//i.test(row.where) ? row.where : void 0;
+  if (row.where === "git") return fileUrl(join10(home, row.name.replace(/`/g, "")));
+  if (row.where.startsWith("artifacts/")) return fileUrl(join10(home, GEML_DIR, row.where));
+  return isAbsolute3(row.where) ? fileUrl(row.where) : void 0;
+}
+function boardText(root, now = /* @__PURE__ */ new Date(), lang = boardLang()) {
+  const home = journalBaseOf(root);
+  const flows = coachFlowsAt(root);
+  const t = wordsFor(lang);
+  const sessions = readSessions(root).sort((a, b) => a.last < b.last ? 1 : a.last > b.last ? -1 : 0);
+  const asks = sessions.flatMap((s) => (s.asks ?? []).map((q) => ({ question: q.question, options: q.options, ...q.item !== void 0 ? { item: q.item } : {} })));
+  let practices = [];
+  try {
+    practices = readPractices(root).practices;
+  } catch {
+  }
+  let artifacts = [];
+  try {
+    artifacts = readArtifactRows(home);
+  } catch {
+  }
+  return boardPage({
+    project: basename6(home),
+    updated: day(now),
+    flows: flowsIn(flows, t),
+    items: workItemsAt(root, flows),
+    asks,
+    proposals: proposalsAt(root),
+    practices,
+    artifacts,
+    decisions: decisionsFor(root, "", null, now.toISOString()),
+    linkOf: (row) => linkOf(row, home),
+    clock,
+    hostName: hostLabel,
+    t
+  });
+}
+function writeBoard(root, now = /* @__PURE__ */ new Date(), lang = boardLang()) {
+  try {
+    const path = boardPath(root);
+    const text = boardText(root, now, lang);
+    let was = "";
+    try {
+      was = readFileSync6(path, "utf8");
+    } catch {
+    }
+    const body = (s) => s.replace(/^updated = .*$/m, "");
+    if (body(was) !== body(text)) {
+      mkdirSync6(dirname6(path), { recursive: true });
+      writeFileSync6(path, text, "utf8");
+    }
+    return path;
+  } catch {
+    return void 0;
+  }
+}
+function windowsBrowser() {
+  try {
+    const id = progIdOf(spawnSync(BROWSER_PROGID_ARGV[0], BROWSER_PROGID_ARGV.slice(1), { encoding: "utf8", timeout: 3e3, windowsHide: true }).stdout ?? "");
+    if (id === void 0) return void 0;
+    const argv = browserCommandArgv(id);
+    return browserExeOf(spawnSync(argv[0], argv.slice(1), { encoding: "utf8", timeout: 3e3, windowsHide: true }).stdout ?? "");
+  } catch {
+    return void 0;
+  }
+}
+function boardHasWork(root) {
+  try {
+    return workItemsAt(root, coachFlowsAt(root)).some((i) => i.status === "open");
+  } catch {
+    return false;
+  }
+}
+function openBoardOnce(root, session, platform = process.platform) {
+  if (process.env["GEMWORKS_OPEN_BOARD"] === "0") {
+    writeBoard(root);
+    return void 0;
+  }
+  const mark = join10(tmpdir(), "gemworks-board", `${session.replace(/[^A-Za-z0-9._-]/g, "_")}.opened`);
+  if (existsSync5(mark)) {
+    writeBoard(root);
+    return void 0;
+  }
+  try {
+    mkdirSync6(dirname6(mark), { recursive: true });
+    writeFileSync6(mark, (/* @__PURE__ */ new Date()).toISOString(), "utf8");
+  } catch {
+  }
+  return openBoard(root, platform);
+}
+function openBoard(root, platform = process.platform) {
+  const path = writeBoard(root);
+  if (path === void 0) return void 0;
+  try {
+    const [first] = openersFor(platform, path, false, platform === "win32" ? windowsBrowser() : void 0);
+    if (first === void 0) return void 0;
+    const child = spawn(first.argv[0], first.argv.slice(1), { detached: true, stdio: "ignore", windowsHide: true, env: { ...process.env, ...first.env ?? {} } });
+    child.on("error", () => {
+    });
+    child.unref();
+    return path;
+  } catch {
+    return void 0;
+  }
+}
+
+// src/core/signoff-page.ts
+var JUDGE_WORDS2 = { fact: "\u4E8B\u5B9E", you: "\u4F60\u5224", model: "\u6A21\u578B\u5224" };
+var quoted = (text) => text.replace(/"/g, "'").replace(/[\r\n]+/g, " ");
+function grounds(m, judge, t, clock3) {
+  if (judge === "you") {
+    if (m.pressed === true) return m.said !== void 0 && m.said !== "" ? t("\u4F60\u6309\u4E86\u300C{0}\u300D", literal(m.said)) : t("\u4F60\u6309\u4E86\u786E\u8BA4");
+    if (m.said !== void 0 && m.said !== "") return t("\u4F60\u7684\u539F\u8BDD\uFF1A\u300C{0}\u300D", literal(m.said));
+    return t("\u8BB0\u4E3A\u5DF2\u8FC7");
+  }
+  if (judge === "fact") {
+    if (m.evidence === void 0 || m.evidence === "") return t("\u53EA\u6709\u6A21\u578B\u7684\u62A5\u544A\uFF08\u7B2C {0} \u8F6E\uFF09", m.turn);
+    const seen = m.seen !== void 0 ? t("\u672C\u4F1A\u8BDD\u770B\u5230 {0} \u9000\u51FA\u7801 {1}\uFF08{2}\uFF09", `\`${m.seen.command.replace(/`/g, "'")}\``, m.seen.exit, clock3(m.seen.at)) : t("\u672C\u4F1A\u8BDD\u6CA1\u770B\u5230\u8FD9\u6761\u547D\u4EE4");
+    return `${t("\u6A21\u578B\u7ED9\u7684\u51ED\u636E\uFF1A{0}", literal(m.evidence))}${t("\uFF1B")}${seen}`;
+  }
+  return t("\u6A21\u578B\u5728\u7B2C {0} \u8F6E\u62A5\u544A\u505A\u5B8C", m.turn);
+}
+function signoffPage(i) {
+  const t = i.t ?? SAY_ZH;
+  const { item, flow } = i;
+  const p = itemProgress2(item, flow);
+  const steps = flow.states.filter((s) => !s.final);
+  const done = item.status === "done" || p.whose === "done";
+  const last = [...item.met].sort((a, b) => a.at < b.at ? -1 : a.at > b.at ? 1 : 0).at(-1);
+  const here = steps.find((s) => s.id === p.here);
+  const status = done ? t("\u5DF2\u5B8C\u6210") : item.status === "dropped" ? t("\u5DF2\u653E\u4E0B") : item.status === "held" ? t("\u6682\u7F13") : t("\u8FDB\u884C\u4E2D");
+  const out = [
+    "=== meta",
+    `title  = "${quoted(t("\u9A8C\u6536\u5355 \xB7 #{0} {1}", item.id, item.title))}"`,
+    `item   = "${quoted(item.id)}"`,
+    `flow   = "${quoted(flow.title)}"`,
+    `status = "${quoted(status)}"`,
+    `opened = "${quoted(i.day(i.opened))}"`,
+    ...done && last !== void 0 ? [`closed = "${quoted(i.day(last.at))}"`] : [],
+    "===",
+    "",
+    `# ${t("\u7ED3\u8BBA")} {#verdict}`,
+    ""
+  ];
+  const verdict = done ? t("\u5DF2\u5B8C\u6210\uFF1A{0} \u6B65\u90FD\u8FC7\u4E86\u3002", steps.filter((s) => item.met.some((m) => m.step === s.id)).length) : item.status === "dropped" ? t("\u5DF2\u653E\u4E0B\u3002") : t("{0}\uFF1A\u505C\u5728\u300C{1}\u300D\u3002", status, literal(here?.title ?? item.state));
+  out.push(`${verdict}${item.needs !== "" ? t("\u8FD8\u8BB0\u7740\uFF1A{0}", literal(item.needs)) : ""}`);
+  if (item.goal !== "") out.push("", t("\u76EE\u6807\uFF1A{0}", literal(item.goal)));
+  out.push(
+    "",
+    `# ${t("\u6BCF\u4E00\u6B65\u600E\u4E48\u8FC7\u7684")} {#steps}`,
+    "",
+    "=== table {#steps-table}",
+    `| ${t("\u6B65\u9AA4")} | ${t("\u8C01\u5224")} | ${t("\u51ED\u4EC0\u4E48")} | ${t("\u65F6\u95F4")} |`,
+    "|---|---|---|---|"
+  );
+  for (const s of steps) {
+    const m = item.met.find((x) => x.step === s.id);
+    const cell = p.cells.find((c) => c.id === s.id)?.cell;
+    const why = m !== void 0 ? grounds(m, s.judge, t, i.clock) : cell === "skipped" ? t("\u8DF3\u8FC7\u4E86") : t("\u8FD8\u6CA1\u8FC7");
+    out.push(`| ${literal(s.title)} | ${t(JUDGE_WORDS2[s.judge])} | ${why} | ${m !== void 0 ? i.clock(m.at) : ""} |`);
+  }
+  out.push("===", "", `# ${t("\u4EA7\u7269")} {#made}`, "");
+  const made = [
+    ...i.commits.map((c) => ({ at: c.at, row: `| ${literal(`${c.sha.slice(0, 7)} ${c.subject}`)} | ${t("\u63D0\u4EA4")} | ${i.clock(c.at)} |` })),
+    ...artifactsOfItem(i.artifacts, item.id).filter((a) => a.name !== i.self).map((a) => {
+      const v = a.versions.at(-1);
+      const kind = { link: "\u94FE\u63A5", doc: "\u6587\u6863", file: "\u6587\u4EF6", image: "\u56FE\u7247" }[a.kind];
+      const name = a.kind === "link" ? a.name : a.name.replace(/`/g, "").split(/[\\/]/).at(-1) ?? a.name;
+      return { at: v.at, row: `| ${literal(name)}${v.version !== "" ? ` (${literal(v.version)})` : ""} | ${t(kind)} | ${i.clock(v.at)} |` };
+    })
+  ].sort((a, b) => a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
+  out.push(...made.length > 0 ? ["=== table {#made-table}", `| ${t("\u4EA7\u7269")} | ${t("\u79CD\u7C7B")} | ${t("\u65F6\u95F4")} |`, "|---|---|---|", ...made.map((x) => x.row), "==="] : [t("\u8FD8\u6CA1\u6709\u4EA7\u7269\u3002")]);
+  out.push("", `# ${t("\u7ECF\u8FC7")} {#history}`, "", `- ${i.clock(i.opened)} ${t("\u5F00\u59CB\uFF0C\u6309\u300C{0}\u300D\u6D41\u7A0B\u8D70", literal(flow.title))}`);
+  for (const m of [...item.met].sort((a, b) => a.at < b.at ? -1 : a.at > b.at ? 1 : 0)) {
+    const s = steps.find((x) => x.id === m.step);
+    if (s !== void 0) out.push(`- ${i.clock(m.at)} ${t("\u8FC7\u4E86\u300C{0}\u300D", literal(s.title))}`);
+  }
+  if (done && last !== void 0) out.push(`- ${i.clock(last.at)} ${t("\u5DF2\u5B8C\u6210")}`);
+  return `${out.join("\n")}
+`;
+}
+
+// src/signoff.ts
+var SIGNOFF_DIR = "signoffs";
+var signoffPath = (root, id) => join11(gemlHome(root), SIGNOFF_DIR, `${id.replace(/[^A-Za-z0-9._-]+/g, "-")}.geml`);
+var pad2 = (n) => String(n).padStart(2, "0");
+var local = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? void 0 : d;
+};
+var clock2 = (iso) => {
+  const d = local(iso);
+  return d === void 0 ? "" : `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+};
+var day2 = (iso) => {
+  const d = local(iso);
+  return d === void 0 ? "" : `${d.getFullYear()}-${clock2(iso)}`;
+};
+function trailOf(logs, id) {
+  let opened;
+  const commits2 = [];
+  for (const events of logs) {
+    const turns = events.flatMap((e) => e.t === "item" && e.id === id ? [e.turn] : []);
+    for (const e of events) if (e.t === "item" && e.id === id && (opened === void 0 || e.at < opened)) opened = e.at;
+    if (turns.length === 0) continue;
+    const from = Math.min(...turns), to = Math.max(...turns);
+    for (const e of events) {
+      if (e.t === "commit" && e.turn >= from && e.turn <= to && !commits2.some((c) => c.sha === e.sha)) commits2.push({ sha: e.sha, subject: e.subject, at: e.at });
+    }
+  }
+  return { opened, commits: commits2 };
+}
+function writeSignoffs(root, ids, lang = boardLang()) {
+  const written = [];
+  if (ids.length === 0) return written;
+  let flows, items, logs, rows;
+  try {
+    flows = coachFlowsAt(root);
+    items = workItemsAt(root, flows);
+    logs = readSessionLogs(root);
+    rows = readArtifactRows(journalBaseOf(root));
+  } catch {
+    return written;
+  }
+  const t = wordsFor(lang);
+  const shown = flowsIn(flows, t);
+  const self = `${t("\u9A8C\u6536\u5355")}.geml`;
+  for (const id of new Set(ids)) {
+    try {
+      const item = items.find((x) => x.id === id);
+      const flow = item !== void 0 ? shown.find((f) => f.name === item.flow) : void 0;
+      if (item === void 0 || flow === void 0) continue;
+      const trail = trailOf(logs, id);
+      const text = signoffPage({ item, flow, opened: trail.opened ?? item.at, commits: trail.commits, artifacts: rows, clock: clock2, day: day2, t, self });
+      const path = signoffPath(root, id);
+      let was = "";
+      try {
+        was = readFileSync7(path, "utf8");
+      } catch {
+      }
+      if (was !== text) {
+        mkdirSync7(dirname7(path), { recursive: true });
+        writeFileSync7(path, text, "utf8");
+      }
+      written.push(path);
+      if (item.status === "done") recordBytes(journalBaseOf(root), id, { name: self, bytes: Buffer.from(text, "utf8"), kind: "file", at: (/* @__PURE__ */ new Date()).toISOString() });
+    } catch {
+    }
+  }
+  return written;
+}
+
 // src/bridge.ts
 function ghFor(req) {
   if (req.op === "after" && req.gitOperation) return ghOncePerBranch({ fresh: true });
@@ -2442,7 +3616,7 @@ function ghFor(req) {
 function contextKey(root) {
   let text;
   try {
-    text = readText(join9(root, CONTEXT_DOC));
+    text = readText(join12(root, CONTEXT_DOC));
   } catch {
     return null;
   }
@@ -2454,7 +3628,7 @@ var gemworksVersion = /* @__PURE__ */ (() => {
   return () => {
     if (read === void 0) {
       try {
-        read = JSON.parse(readFileSync5(new URL("../package.json", import.meta.url), "utf8")).version ?? "";
+        read = JSON.parse(readFileSync8(new URL("../package.json", import.meta.url), "utf8")).version ?? "";
       } catch {
         read = "";
       }
@@ -2509,7 +3683,7 @@ function shellAt(req) {
 function bindHere(ws, root, id) {
   const item = ws.item;
   if (item.kind !== "item") return { ok: false, reason: item.reason };
-  const path = join9(root, BACKLOG_DOC);
+  const path = join12(root, BACKLOG_DOC);
   if (!exists(path)) return { ok: false, reason: `no ${BACKLOG_DOC}` };
   return withLock(path, () => {
     const source = readText(path);
@@ -2531,56 +3705,56 @@ function stripPaths(text, root) {
 function exportOf(ws, root, req, now) {
   const stamp = now.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
   const item = ws.item.kind === "item" ? fileSafe(ws.item.id) : "no-item";
-  const given = req.name !== void 0 ? fileSafe(basename6(req.name.split("\\").join("/"))) : void 0;
+  const given = req.name !== void 0 ? fileSafe(basename7(req.name.split("\\").join("/"))) : void 0;
   const ext = `.${req.format}`;
   const to = req.to === void 0 ? void 0 : resolve4(root, req.to.replace(/^~(?=$|[\\/])/, homedir3()));
   const folder = to === void 0 || req.kind === "workflow" || extname(to) === "" || exists(to) && statSync5(to).isDirectory();
   const file = folder ? void 0 : `${to.slice(0, to.length - extname(to).length)}${ext}`;
-  const dir = file !== void 0 ? dirname5(file) : to ?? join9(root, EXPORTS_DIR);
+  const dir = file !== void 0 ? dirname8(file) : to ?? join12(root, EXPORTS_DIR);
   const free = (path) => {
     const stem = path.slice(0, path.length - extname(path).length);
     let out = path;
     for (let n = 2; exists(out); n++) out = `${stem}-${n}${extname(path)}`;
     return out;
   };
-  const named = (fallback) => {
+  const named2 = (fallback) => {
     const name2 = given ?? fallback;
     return name2.endsWith(ext) ? name2 : `${name2}${ext}`;
   };
   const shown = (path) => {
     const rel = relative4(root, path);
-    return (rel === "" || rel === ".." || rel.startsWith(`..${sep4}`) || isAbsolute3(rel) ? path : rel).split("\\").join("/");
+    return (rel === "" || rel === ".." || rel.startsWith(`..${sep4}`) || isAbsolute4(rel) ? path : rel).split("\\").join("/");
   };
   const write = (name2, text2) => {
     const out = req.strip === true ? stripPaths(text2, root) : text2;
-    const target2 = free(file ?? join9(dir, name2));
-    mkdirSync5(dirname5(target2), { recursive: true });
-    writeAtomic(target2, out);
-    return { ok: true, path: shown(target2), text: out };
+    const target3 = free(file ?? join12(dir, name2));
+    mkdirSync8(dirname8(target3), { recursive: true });
+    writeAtomic(target3, out);
+    return { ok: true, path: shown(target3), text: out };
   };
-  if (req.kind === "text") return write(named(`share-${item}-${stamp}`), req.text ?? "");
+  if (req.kind === "text") return write(named2(`share-${item}-${stamp}`), req.text ?? "");
   if (req.kind === "journal") {
     const path = ws.journalPath;
     if (path === void 0 || !exists(path)) return { ok: false, reason: ws.item.kind === "item" ? `${ws.item.id} has no journal yet` : ws.item.reason };
     const source = readText(path);
     const text2 = req.format === "geml" ? source : req.format === "md" ? renderJournalMarkdown(readJournal(source)) : JSON.stringify(readJournal(source), null, 2);
-    return write(named(`journal-${item}-${stamp}`), text2);
+    return write(named2(`journal-${item}-${stamp}`), text2);
   }
   const name = given ?? `workflow-${fileSafe(ws.workflowName)}-${stamp}`;
-  const target = join9(dir, name);
-  mkdirSync5(dir, { recursive: true });
+  const target2 = join12(dir, name);
+  mkdirSync8(dir, { recursive: true });
   const noHistory = (src) => !/[\\/]\.gemlhistory([\\/]|$)/.test(src);
   const text = readText(ws.workflowPath);
-  if (basename6(ws.workflowPath).toLowerCase() === FLOW_FILE) {
-    cpSync(ws.workflowDir, target, { recursive: true, filter: noHistory });
-    return { ok: true, path: shown(target), text };
+  if (basename7(ws.workflowPath).toLowerCase() === FLOW_FILE) {
+    cpSync(ws.workflowDir, target2, { recursive: true, filter: noHistory });
+    return { ok: true, path: shown(target2), text };
   }
-  writeAtomic(join9(target, FLOW_FILE), text);
-  const kept = join9(ws.workflowDir, ws.workflowName);
-  if (exists(kept)) cpSync(kept, join9(target, ws.workflowName), { recursive: true, filter: noHistory });
+  writeAtomic(join12(target2, FLOW_FILE), text);
+  const kept = join12(ws.workflowDir, ws.workflowName);
+  if (exists(kept)) cpSync(kept, join12(target2, ws.workflowName), { recursive: true, filter: noHistory });
   const uses = new Set([...ws.sc.states.values()].flatMap((st) => st.uses));
-  writeAtomic(join9(target, TOOLS_FILE), renderDictionary(ws.dictionary().rows.filter((r) => r.for === void 0 || uses.has(r.for))));
-  return { ok: true, path: shown(target), text };
+  writeAtomic(join12(target2, TOOLS_FILE), renderDictionary(ws.dictionary().rows.filter((r) => r.for === void 0 || uses.has(r.for))));
+  return { ok: true, path: shown(target2), text };
 }
 function listItems(ws, root, workflowFile, prs) {
   const dir = ws.journalsDir;
@@ -2596,9 +3770,9 @@ function listItems(ws, root, workflowFile, prs) {
   const out = [];
   const entries = [];
   const flows = /* @__PURE__ */ new Map([[workflowFile, { sc: ws.sc, title: ws.title }]]);
-  for (const e of readdirSync4(dir, { withFileTypes: true, recursive: true })) {
+  for (const e of readdirSync5(dir, { withFileTypes: true, recursive: true })) {
     if (!e.isFile() || !e.name.endsWith(".geml")) continue;
-    const full = join9(e.parentPath, e.name);
+    const full = join12(e.parentPath, e.name);
     const journal = readJournal(readText(full));
     const last = journal.snapshots.at(-1);
     if (!last) continue;
@@ -2618,7 +3792,7 @@ function listItems(ws, root, workflowFile, prs) {
     let depends = [];
     if (file !== void 0) {
       try {
-        const source = readText(join9(root, file));
+        const source = readText(join12(root, file));
         title = itemState(source, "title");
         gist = gistOf(source);
         about = itemState(source, "about");
@@ -2697,9 +3871,9 @@ function gistOf(source) {
 function newItem(root, path, title, text, units) {
   const rel = relative4(root, resolve4(root, path)).split("\\").join("/");
   if (rel.startsWith("../") || rel === "" || !units.some((glob) => globToRegExp(glob).test(rel))) return { ok: false, reason: `${path} is no work item's file of any flow here` };
-  const full = join9(root, rel);
+  const full = join12(root, rel);
   if (exists(full)) return { ok: false, reason: `${rel} is there already` };
-  mkdirSync5(dirname5(full), { recursive: true });
+  mkdirSync8(dirname8(full), { recursive: true });
   writeAtomic(full, `=== meta
 title = ${JSON.stringify(title)}
 by = "gemworks"
@@ -2756,7 +3930,7 @@ function madeOf(home, root, item, written, ours) {
         if (!isDocPath(f)) continue;
         const d = docs.get(f);
         if (d !== void 0) d.commits += 1;
-        else docs.set(f, { path: f, open: join9(root, f), commits: 1, at: c.at, sha: c.sha });
+        else docs.set(f, { path: f, open: join12(root, f), commits: 1, at: c.at, sha: c.sha });
       }
     }
     const rows = syncDocs(home, item, [...docs.values()].map((d) => ({ path: d.path, sha: d.sha, at: d.at })));
@@ -2817,7 +3991,7 @@ function artifactsOf(ws, root, journal) {
   }).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).map((c) => ({ ...c, ours: ws.sc.unit.kind === "branch" || c.files.some((f) => touched.has(f)) }));
   const commits2 = all.slice(0, COMMITS_SHOWN);
   const made = madeOf(ws.journalBase, root, ws.item.id, [...latest2].filter((p) => p !== file), all.filter((c) => c.ours));
-  const source = file !== void 0 && exists(join9(root, file)) ? readText(join9(root, file)) : void 0;
+  const source = file !== void 0 && exists(join12(root, file)) ? readText(join12(root, file)) : void 0;
   const section = source !== void 0 ? blockText(source, "result") : void 0;
   const result = section?.replace(/^#[^\n]*\n*/, "").trim();
   return {
@@ -2855,11 +4029,11 @@ function syncArtifacts(ws, root, req) {
   }
   if (notMade.length > 0) {
     try {
-      forgetFiles(root, home, notMade, join9(homedir3(), ".gemworks", "trash", `${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}-artifacts`));
+      forgetFiles(root, home, notMade, join12(homedir3(), ".gemworks", "trash", `${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}-artifacts`));
     } catch {
     }
   }
-  const claudeHome = process.env["CLAUDE_CONFIG_DIR"] ?? join9(homedir3(), ".claude");
+  const claudeHome = process.env["CLAUDE_CONFIG_DIR"] ?? join12(homedir3(), ".claude");
   for (const path of elsewhere.filter(isMadeForPeople).filter((p) => !isUnder(p, claudeHome) && !notMade.some((n) => isUnder(p, n)))) {
     try {
       recordFile(root, home, item, path, isImagePath(path) ? "image" : "file");
@@ -2878,7 +4052,7 @@ function titleOf(text) {
     return void 0;
   }
 }
-function recordArtifact(ws, root, req) {
+function recordArtifact2(ws, root, req) {
   const at = artifactsAt(ws, root, req.item);
   if (at === void 0) return { ok: false, reason: "there is no current work item to record it under" };
   const { home, item } = at;
@@ -2893,7 +4067,7 @@ function recordArtifact(ws, root, req) {
       } catch {
       }
     }
-    const fallback = req.page !== void 0 ? basename6(req.page).replace(/\.[^.]*$/, "") : void 0;
+    const fallback = req.page !== void 0 ? basename7(req.page).replace(/\.[^.]*$/, "") : void 0;
     recordLink(home, item, { name, ...fallback !== void 0 ? { fallback } : {}, url: where, ...req.version !== void 0 && req.version !== "" ? { version: req.version } : {}, at: (/* @__PURE__ */ new Date()).toISOString() });
     return { ok: true, text: `Recorded the link under ${item}'s artifacts.` };
   }
@@ -2908,25 +4082,25 @@ function recordArtifact(ws, root, req) {
   const row = recordFile(root, home, item, where, req.kind);
   return row !== void 0 ? { ok: true, text: `Recorded ${row.name} (version ${row.version}) under ${item}'s artifacts.` } : { ok: true, text: "Nothing new to record: no file there, or this version is recorded already." };
 }
-var transcriptsRoot = (req) => req.transcripts ?? join9(homedir3(), ".claude", "projects");
+var transcriptsRoot = (req) => req.transcripts ?? join12(homedir3(), ".claude", "projects");
 var TRANSCRIPT_HOST = "claude-code";
 var LIVE_LOG_MS = 10 * 6e4;
 function transcriptFiles(root, under) {
   const dirs = new Set([root, journalBaseOf(root), ...worktreesOf(root)].map((d) => slugOf(resolve4(d))));
   const out = [];
   for (const slug of dirs) {
-    const dir = join9(under, slug);
+    const dir = join12(under, slug);
     let names;
     try {
-      names = readdirSync4(dir);
+      names = readdirSync5(dir);
     } catch {
       continue;
     }
     for (const name of names) {
       if (!name.endsWith(".jsonl")) continue;
       try {
-        const st = statSync5(join9(dir, name));
-        if (st.isFile()) out.push({ file: join9(dir, name), id: name.slice(0, -".jsonl".length), size: st.size, mtimeMs: st.mtimeMs });
+        const st = statSync5(join12(dir, name));
+        if (st.isFile()) out.push({ file: join12(dir, name), id: name.slice(0, -".jsonl".length), size: st.size, mtimeMs: st.mtimeMs });
       } catch {
       }
     }
@@ -2941,15 +4115,15 @@ function backfillOne(ws, root, req) {
   try {
     tr = readTranscript(readText(req.file));
   } catch (e) {
-    return { ok: false, reason: `cannot read ${basename6(req.file)}: ${e.message}` };
+    return { ok: false, reason: `cannot read ${basename7(req.file)}: ${e.message}` };
   }
-  if (tr === void 0) return { ok: false, reason: `${basename6(req.file)} holds no session` };
-  if (tr.id === "") tr = { ...tr, id: basename6(req.file, ".jsonl") };
+  if (tr === void 0) return { ok: false, reason: `${basename7(req.file)} holds no session` };
+  if (tr.id === "") tr = { ...tr, id: basename7(req.file, ".jsonl") };
   const home = ws.journalBase;
-  const dir = join9(home, GEML_DIR, SESSIONS_DIR);
-  mkdirSync5(dir, { recursive: true });
-  if (!exists(join9(dir, ".gitignore"))) writeAtomic(join9(dir, ".gitignore"), SESSIONS_GITIGNORE);
-  const path = join9(dir, logName(TRANSCRIPT_HOST, tr.id));
+  const dir = join12(home, GEML_DIR, SESSIONS_DIR);
+  mkdirSync8(dir, { recursive: true });
+  if (!exists(join12(dir, ".gitignore"))) writeAtomic(join12(dir, ".gitignore"), SESSIONS_GITIGNORE);
+  const path = join12(dir, logName(TRANSCRIPT_HOST, tr.id));
   const was = exists(path) ? parseLog(readText(path)) : [];
   const head = was.find((e) => e.t === "session");
   if (req.own !== true && head !== void 0 && head.backfilled !== true) {
@@ -3006,7 +4180,7 @@ function backfillOne(ws, root, req) {
 function boardOf(ws, root, view) {
   const sc = ws.sc;
   const tree = ws.contentTree();
-  const backlogPath = join9(root, BACKLOG_DOC);
+  const backlogPath = join12(root, BACKLOG_DOC);
   const backlog = exists(backlogPath) ? readBacklog(readText(backlogPath)) : null;
   const guards = new Map(view.status.next.map((t) => [t.name, t.guard]));
   const items = listItems(ws, root, view.status.workflow.path);
@@ -3067,7 +4241,7 @@ function handoffOf(delivered, ws, view, context) {
 function moveEarlierLayout(root) {
   const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "");
   try {
-    migrateLayout(root, join9(homedir3(), ".gemworks", "trash", `${stamp}-layout`));
+    migrateLayout(root, join12(homedir3(), ".gemworks", "trash", `${stamp}-layout`));
   } catch {
   }
 }
@@ -3089,12 +4263,12 @@ function correctionsView(ledger, practices, now, toTheme) {
   const live = practices.filter((p) => p.deleted !== true);
   const since = new Date(Date.parse(now) - 7 * 864e5).toISOString();
   const offset = -(/* @__PURE__ */ new Date()).getTimezoneOffset();
-  const day = (at) => localDay(at, offset).slice(5);
+  const day3 = (at) => localDay(at, offset).slice(5);
   return {
     cards: ledgerCards(ledger, live, now).map((c) => ({
       ...c,
-      quotes: c.quotes.map((q) => ({ ...q, day: day(q.at) })),
-      ...c.kind === "failing" && c.instead !== void 0 ? { insteadDay: day(c.instead.at) } : {}
+      quotes: c.quotes.map((q) => ({ ...q, day: day3(q.at) })),
+      ...c.kind === "failing" && c.instead !== void 0 ? { insteadDay: day3(c.instead.at) } : {}
     })),
     counts: practiceCounts(ledger, live),
     flowless: flowless(ledger, now).map((f) => ({
@@ -3138,7 +4312,7 @@ function answer(req) {
   if (req.op === "made") return { v: 1, ok: true, shell: shellAt(req), made: madeAllOf(root) };
   if (req.op === "memory" || req.op === "memory-set" || req.op === "memory-delete") {
     const dir = memoryDir(transcriptsRoot(req), journalBaseOf(root));
-    const trash = join9(homedir3(), ".gemworks", "trash", `${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}-memory`);
+    const trash = join12(homedir3(), ".gemworks", "trash", `${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}-memory`);
     if (req.op === "memory-set" && !setMemoryHook(dir, req.file, req.hook, trash)) return { v: 1, ok: false, error: `no memory ${req.file} to change`, shell: shellAt(req) };
     if (req.op === "memory-delete" && !deleteMemory(dir, req.file, trash)) return { v: 1, ok: false, error: `no memory ${req.file} to delete`, shell: shellAt(req) };
     return { v: 1, ok: true, shell: shellAt(req), memory: readMemory(dir) };
@@ -3172,10 +4346,10 @@ function answer(req) {
   if (!opened.ok) {
     const shell = notOpened(opened, req.root);
     const asks = req.op === "verb" || req.op === "mark" || req.op === "advance" || req.op === "bind" || req.op === "learn" || req.op === "pause" || req.op === "resume" || req.op === "rollback" || req.op === "export";
-    const record = req.op === "status" ? { sessions: join9(journalBaseOf(root), GEML_DIR, SESSIONS_DIR), practices: practicesOf(root) } : req.op === "attention" ? { host: hostOf(root) } : {};
+    const record = req.op === "status" ? { sessions: join12(journalBaseOf(root), GEML_DIR, SESSIONS_DIR), practices: practicesOf(root) } : req.op === "attention" ? { host: hostOf(root) } : {};
     if (req.op === "artifacts") syncArtifacts(void 0, root, req);
     if (req.op === "artifact") {
-      const r = recordArtifact(void 0, root, req);
+      const r = recordArtifact2(void 0, root, req);
       return r.ok ? { v: 1, ok: true, shell, text: r.text } : { v: 1, ok: false, error: r.reason, shell };
     }
     return asks ? { v: 1, ok: false, error: opened.reason, shell } : { v: 1, ok: true, shell, ...record };
@@ -3185,7 +4359,7 @@ function answer(req) {
   const failed = (reason) => ({ v: 1, ok: false, error: reason, shell: shellOf(ws.view(), root) });
   switch (req.op) {
     case "status":
-      return ok(ws.view(), { sessions: join9(journalBaseOf(root), GEML_DIR, SESSIONS_DIR), practices: practicesOf(root) });
+      return ok(ws.view(), { sessions: join12(journalBaseOf(root), GEML_DIR, SESSIONS_DIR), practices: practicesOf(root) });
     case "refresh": {
       const change = ws.refresh({ reread: false });
       const view = ws.view();
@@ -3263,14 +4437,14 @@ function answer(req) {
       const bump = uncommittedBump(root);
       const host = hostOf(root);
       const elsewhere = req.session !== void 0 ? branchesElsewhere(markOpen(root, TRANSCRIPT_HOST, req.session), host.branch) : [];
-      return ok(view, { attention: { ahead: ahead ?? [], prs: open ?? [], ...unread.length > 0 ? { unread } : {}, ...bump !== void 0 ? { bump: { version: bump.version, path: bump.path } } : {}, ...elsewhere.length > 0 ? { elsewhere } : {} }, host, sessions: join9(journalBaseOf(root), GEML_DIR, SESSIONS_DIR) });
+      return ok(view, { attention: { ahead: ahead ?? [], prs: open ?? [], ...unread.length > 0 ? { unread } : {}, ...bump !== void 0 ? { bump: { version: bump.version, path: bump.path } } : {}, ...elsewhere.length > 0 ? { elsewhere } : {} }, host, sessions: join12(journalBaseOf(root), GEML_DIR, SESSIONS_DIR) });
     }
     case "artifacts": {
       syncArtifacts(ws, root, req);
       return ok(ws.view());
     }
     case "artifact": {
-      const r = recordArtifact(ws, root, req);
+      const r = recordArtifact2(ws, root, req);
       return r.ok ? ok(ws.view(), { text: r.text }) : failed(r.reason);
     }
     case "backfill-list":
@@ -3279,6 +4453,11 @@ function answer(req) {
       const r = backfillOne(ws, root, req);
       return r.ok ? ok(ws.view(), { backfill: r.backfill }) : failed(r.reason);
     }
+    case "signoff": {
+      const lang = req.lang === "zh" || req.lang === "en" || req.lang === "ja" ? req.lang : void 0;
+      writeSignoffs(root, req.ids, ...lang !== void 0 ? [lang] : []);
+      return ok(ws.view());
+    }
     case "turn-ids": {
       const file = transcriptFiles(root, transcriptsRoot(req)).find((f) => f.id === req.session);
       if (file === void 0) return failed(`no transcript of session ${req.session}`);
@@ -3286,7 +4465,7 @@ function answer(req) {
       try {
         text = readText(file.file);
       } catch (e) {
-        return failed(`cannot read ${basename6(file.file)}: ${e.message}`);
+        return failed(`cannot read ${basename7(file.file)}: ${e.message}`);
       }
       const last = text.split(/\r?\n/).reverse().find((l) => l.trim() !== "") ?? "";
       try {
@@ -3313,13 +4492,6 @@ export {
   useWorkflow,
   normalised,
   contextOf,
-  ARTIFACT_TOOL,
-  artifactsOfItem,
-  readArtifactRows,
-  practicesAt,
-  newPractices,
-  readPractices,
-  writePractices,
   LABEL_GUIDE,
   localDay,
   parsePeriod,
@@ -3347,6 +4519,16 @@ export {
   commits,
   decodeRequest,
   runVerb,
+  WORK_REMINDER,
+  LOOP_TOOLS,
+  isLoopTool,
+  coachFlowsAt,
+  callLoopTool,
+  loopPrompt,
+  loopContext,
+  writeBoard,
+  boardHasWork,
+  openBoardOnce,
   stripPaths,
   handleRequest,
   answerRequest

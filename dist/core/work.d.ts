@@ -1,7 +1,7 @@
 import { type Judge, type Progress } from "./progress.js";
-import type { ItemStatus, MetStep, SessionEvent, SessionSummary } from "./session-log.js";
+import type { ItemStatus, MetStep, SeenRun, SessionEvent, SessionSummary } from "./session-log.js";
 /** The light flows, by file name: the bundled `coach/<name>.geml`, or the project's own `.geml/coach/<name>.geml`. */
-export declare const COACH_FLOWS: readonly ["design", "feature", "bugfix", "optimize"];
+export declare const COACH_FLOWS: readonly ["design", "feature", "bugfix", "optimize", "incident", "review", "research", "refactor", "docs", "analysis"];
 /**
  * A state: its words, what it needs to be left (its `description`), who judges that, what the step prevents, and for a
  * step the person judges the two words of its buttons (null: 好了 / 没好).
@@ -93,7 +93,7 @@ export declare const WORK_TOOL: {
                         };
                         readonly flow: {
                             readonly type: "string";
-                            readonly description: "The flow it belongs to, by its name: design 新设计, feature 新功能, bugfix, optimize 优化, or one the project added (the flows are listed once).";
+                            readonly description: "The flow it belongs to, by its name: design 新设计, feature 新功能, bugfix, optimize 优化, incident 线上事故, review 代码审查, research 调研选型, refactor 重构, docs 文档, analysis 数据分析, or one the project added (the flows are listed once).";
                         };
                         readonly met: {
                             readonly type: "array";
@@ -105,6 +105,10 @@ export declare const WORK_TOOL: {
                         readonly said: {
                             readonly type: "string";
                             readonly description: "The person's own words, this turn, that meet a step they judge (marked you), e.g. 「好了」. Needed when met newly names such a step; without their words leave the step for their press.";
+                        };
+                        readonly evidence: {
+                            readonly type: "string";
+                            readonly description: "What proves a step marked (fact) that met newly names: the check as it ran — the command in backticks and its result (`npm test` exit 0), the CI run, the numbers measured. It goes on the item's sign-off sheet beside the run gemworks saw.";
                         };
                         readonly next: {
                             readonly type: "string";
@@ -146,18 +150,24 @@ export declare function workContext(items: readonly WorkItem[], flows: readonly 
  * what was met; an older caller's `state` meets every step before it). A step
  * the person judges, newly met, needs their words in `said`. Every step met, or
  * a final one named, finishes the item; an id must be one on the way. `newId`
- * names a new item.
+ * names a new item. A fact step newly met keeps the item's `evidence` and the
+ * run of `runs` (this session's, oldest first) it names.
  */
-export declare function workEvents(args: Record<string, unknown>, flows: readonly CoachFlow[], items: readonly WorkItem[], at: string, turn: number, newId: (n: number) => string): {
+export declare function workEvents(args: Record<string, unknown>, flows: readonly CoachFlow[], items: readonly WorkItem[], at: string, turn: number, newId: (n: number) => string, runs?: readonly SeenRun[]): {
     events: ItemEvent[];
     errors: string[];
 };
 /**
- * A press on a step the person judges: `yes` meets it; no takes the item back
- * the way the step's first way back goes (every step from there on unmet), or
- * unmeets the step itself where it has none.
+ * The run evidence names: the newest of `runs` whose command the evidence
+ * holds, or that holds a backticked command of the evidence; undefined for none.
  */
-export declare function pressEvent(item: WorkItem, flow: CoachFlow, step: string, yes: boolean, at: string, turn: number): ItemEvent;
+export declare function seenIn(evidence: string, runs: readonly SeenRun[]): SeenRun | undefined;
+/**
+ * A press on a step the person judges: `yes` meets it, with the button's words
+ * when given; no takes the item back the way the step's first way back goes
+ * (every step from there on unmet), or unmeets the step itself where it has none.
+ */
+export declare function pressEvent(item: WorkItem, flow: CoachFlow, step: string, yes: boolean, at: string, turn: number, label?: string): ItemEvent;
 /** The person putting an item aside, or taking it up again: the item as it stands, with that status. */
 export declare function holdEvent(item: WorkItem, held: boolean, at: string, turn: number): ItemEvent;
 /**

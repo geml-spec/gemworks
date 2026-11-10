@@ -61,17 +61,24 @@ Once it's done, the board shows your earlier sessions and artifacts.
 
 ## How flows grow
 
-It comes with four starter flows: **design**, **feature**, **bugfix** and **optimize**. Each step says
-which pitfall it guards against. The first step of **feature**, for instance, is "Mockup: you've seen it
-and said yes", against "building something that isn't what you wanted, the costliest thing to redo".
+It comes with ten starter flows: **design**, **feature**, **bugfix**, **optimize**, **incident**, **review**,
+**research**, **refactor**, **docs** and **analysis**. Each step says which pitfall it guards against.
+The first step of **feature**, for instance, is "Mockup: you've seen it and said yes", against "building
+something that isn't what you wanted, the costliest thing to redo".
 
-As you work, the flows grow:
+As you work, the flows grow, and shrink too:
 
-1. You correct the model once.
+1. You correct the model once, or a turn costs you something: a redo, a failed test, you saying it isn't fixed.
 2. It records a **practice**, attached to that step, and brings it up the next time work reaches it.
-3. When the same kind of correction keeps coming, it **proposes** a new step for the flow; it is added
-   only if you agree.
+3. When the same kind of correction keeps coming, it **proposes** a new step for the flow; when several
+   pieces of work fit no flow, a new kind of work; when a step was skipped in 4 of a flow's last 5, taking
+   it out. Nothing changes unless you agree.
 4. When a practice must be kept, press "Make it a rule": until that step is met, the calls it covers are refused.
+
+Practices sit in three layers: your **personal** ones follow you into every project, the **project**'s stay
+with this project, and "Share with the team" writes one into the repository's `.gemworks/`, so your teammates
+get it once you commit it. Another project's `.gemworks/`, or a flow file exported from one, can be imported
+as a reference; its steps are proposed to you on the Flow tab.
 
 ## Where your data stays
 
@@ -96,7 +103,7 @@ You don't need Claude Code to use it. What each host gets differs:
 | Antigravity | A GEML board page | Yes | Yes | No; the model records practices itself |
 | Other MCP hosts | A GEML board page | Yes | Only when the model calls its tools | No; the model records practices itself |
 
-"Make it a rule" is only on Claude Code for now.
+"Make it a rule", proposals to take a step out, and importing a reference are only on Claude Code for now.
 
 **A GEML board page**: every turn rewrites `.geml/board.geml` in your project, with what waits for you,
 the work items, the artifacts, the flows, and what other sessions decided. Open it in a VS Code–style editor
@@ -108,7 +115,7 @@ How to install on each host: [docs/hosts.md](docs/hosts.md).
 
 ## When no step may be skipped: strict flows
 
-The four starter flows remind; they don't stop anything, except at the steps you've made a rule.
+The starter flows remind; they don't stop anything, except at the steps you've made a rule.
 Some work has to go in order: no claiming it's done without a real test run, no release without your
 approval. For that, add a **strict flow**: the model can only move forward stage by stage, and a tool that
 doesn't belong to the current stage is refused, with the reason given to the model.

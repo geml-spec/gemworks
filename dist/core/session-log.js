@@ -10,12 +10,19 @@
 /** The directory under the project's shared `.geml/` that holds the logs, and the ignore file that keeps them out of git. */
 export const SESSIONS_DIR = "sessions";
 export const SESSIONS_GITIGNORE = "*\n";
+const isSeenRun = (v) => {
+    if (typeof v !== "object" || v === null)
+        return false;
+    const r = v;
+    return typeof r["command"] === "string" && typeof r["exit"] === "number" && typeof r["at"] === "string";
+};
 const isMetStep = (v) => {
     if (typeof v !== "object" || v === null)
         return false;
     const m = v;
+    const text = (k) => m[k] === undefined || typeof m[k] === "string";
     return typeof m["step"] === "string" && typeof m["at"] === "string" && typeof m["turn"] === "number"
-        && (m["said"] === undefined || typeof m["said"] === "string") && (m["pressed"] === undefined || typeof m["pressed"] === "boolean");
+        && text("said") && (m["pressed"] === undefined || typeof m["pressed"] === "boolean") && text("evidence") && (m["seen"] === undefined || isSeenRun(m["seen"]));
 };
 const safe = (s) => s.replace(/[^A-Za-z0-9._-]+/g, "-");
 /** A log's file name: the host and the session's id, neither able to leave the directory. */

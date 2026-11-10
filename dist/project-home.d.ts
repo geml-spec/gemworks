@@ -15,7 +15,7 @@ export interface InstalledWorkflow {
  * home has no file of.
  */
 export declare function installedWorkflows(root: string, home?: string): InstalledWorkflow[];
-/** The project document: the home's, else the earlier `.geml/gemflow.geml` (the checkout's, then the home's); undefined when there is none. */
+/** The project document, the home's; undefined when there is none. */
 export declare function projectDocOf(root: string, home?: string): string | undefined;
 /** How a journal names a workflow file: relative to the home when it lies there, else to the checkout; `/`-separated. */
 export declare function recordedPath(root: string, home: string, path: string): string;
@@ -75,9 +75,8 @@ export interface Moved {
 /**
  * Move the earlier layout into the home (the checkout's, then the home's own):
  * each workflow directory becomes `.geml/workflows/<name>.geml`, its guide
- * taken in; its dictionary's rows join `.geml/tools.geml`; `.geml/gemflow.geml`
- * becomes `.geml/project.geml`. A file the home has already is kept, never
- * overwritten. What git tracks is copied and stays; the rest goes to `trash`.
+ * taken in; its dictionary's rows join `.geml/tools.geml`. A file the home has
+ * already is kept, never overwritten. What git tracks is copied and stays; the rest goes to `trash`.
  * The home's `.geml/` gets its .gitignore. Answers what moved; nothing when
  * there is nothing of the earlier layout.
  */

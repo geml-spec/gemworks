@@ -19,8 +19,6 @@ export const BACKLOG_DOC = `${GEML_DIR}/backlog.geml`;
 export const EXPORTS_DIR = `${GEML_DIR}/exports`;
 /** The project document: meta `flow-workflow` names the default workflow. */
 export const PROJECT_DOC = `${GEML_DIR}/project.geml`;
-/** The project document's earlier name, still read. */
-export const LEGACY_CONFIG_DOC = `${GEML_DIR}/gemflow.geml`;
 /** What each work item made (core/artifacts.ts): the `#artifacts` table. */
 export const ARTIFACTS_DOC = `${GEML_DIR}/artifacts.geml`;
 /** The copies of the files git does not keep, by content hash; a table row's `where` is relative to GEML_DIR. */

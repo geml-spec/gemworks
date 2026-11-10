@@ -33,7 +33,6 @@ var CONTEXT_DOC = `${GEML_DIR}/context.geml`;
 var BACKLOG_DOC = `${GEML_DIR}/backlog.geml`;
 var EXPORTS_DIR = `${GEML_DIR}/exports`;
 var PROJECT_DOC = `${GEML_DIR}/project.geml`;
-var LEGACY_CONFIG_DOC = `${GEML_DIR}/gemflow.geml`;
 var ARTIFACTS_DOC = `${GEML_DIR}/artifacts.geml`;
 var ARTIFACTS_DIR = `${GEML_DIR}/artifacts`;
 var TOOLS_DOC = `${GEML_DIR}/tools.geml`;
@@ -871,7 +870,6 @@ export {
   BACKLOG_DOC,
   EXPORTS_DIR,
   PROJECT_DOC,
-  LEGACY_CONFIG_DOC,
   ARTIFACTS_DOC,
   TOOLS_DOC,
   globToRegExp,

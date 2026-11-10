@@ -3,7 +3,7 @@
 *English | [中文](workflow_CN.md)*
 
 - Status: **draft**: this may still change. Design rationale:
-  [`docs/design/specs/2026-10-11-gemflow-design.md`](../docs/design/specs/2026-10-11-gemflow-design.md).
+  [`docs/design/specs/2026-10-11-gemworks-design.md`](../docs/design/specs/2026-10-11-gemworks-design.md).
 - Nature: **Gemworks's own format, not a GEML profile.** It adds no block type,
   no attribute key and no diagram format to GEML, so it needs no vocabulary:
   a workflow declares [`geml-statechart/v1`](../../../spec/profiles/geml-statechart/geml-statechart-profile.md)
@@ -429,8 +429,8 @@ sections after the statechart, adds its dictionary's rows to
 its own workflow (§3.2).
 
 A checkout laid out the earlier way — a directory `.geml/workflows/<name>/`
-holding `flow.geml`, its prompt documents and its `tools.geml`, and
-`.geml/gemflow.geml` — is still read, the home's file of a name coming first.
+holding `flow.geml`, its prompt documents and its `tools.geml` —
+is still read, the home's file of a name coming first.
 `gemworks migrate`, and a Claude Code session's first status, move it into the
 home; what git tracks there is copied and left in place. A journal that names
 such a `flow.geml` goes on under the file it moved to.

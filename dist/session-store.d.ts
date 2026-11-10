@@ -9,6 +9,8 @@ export declare function sessionsDirOf(root: string): string;
 export declare function appendSession(root: string, host: string, id: string, make: (events: SessionEvent[]) => SessionEvent[], now?: string): SessionEvent[];
 /** Every session in the project's record. */
 export declare function readSessions(root: string): SessionSummary[];
+/** Every session log's events, one list a session: what a sign-off sheet reads an item's turns and commits from. */
+export declare function readSessionLogs(root: string): SessionEvent[][];
 /** The session of `host` that asked last, in this checkout when it has one: what an MCP server, which is told no session, writes for. */
 export declare function latestSessionOf(root: string, host: string): string | undefined;
 /** A person's prompt into the log, as the next turn. */

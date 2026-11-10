@@ -13,7 +13,6 @@ import {
   FLOW_FILE,
   GEML_DIR,
   JOURNALS_DIR,
-  LEGACY_CONFIG_DOC,
   PROJECT_DOC,
   TOOLS_DOC,
   WORKFLOWS_DIR,
@@ -35,7 +34,7 @@ import {
   treeFingerprint,
   withLock,
   writeAtomic
-} from "./gemworks-chunk-SXXU2DVO.mjs";
+} from "./gemworks-chunk-4A7KYSFU.mjs";
 
 // src/workspace.ts
 import { readdirSync as readdirSync2 } from "node:fs";
@@ -358,7 +357,8 @@ function installedWorkflows(root, home = homeOf(root)) {
   return [...found.values()].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 }
 function projectDocOf(root, home = homeOf(root)) {
-  return [join(home, PROJECT_DOC), join(root, LEGACY_CONFIG_DOC), join(home, LEGACY_CONFIG_DOC)].find(exists);
+  const doc = join(home, PROJECT_DOC);
+  return exists(doc) ? doc : void 0;
 }
 function recordedPath(root, home, path) {
   const abs = resolve(root, path);
@@ -493,16 +493,6 @@ function migrateLayout(root, trash, home = homeOf(root)) {
       if (tools !== void 0) dictionaries.push({ text: tools, at: statSync(join(from, TOOLS_FILE)).mtimeMs });
       const keep = kept(from);
       out.push({ from, to, kept: keep, ...keep ? {} : { trashed: toTrash(from, trash, label(from)) } });
-    }
-    const config = join(base, LEGACY_CONFIG_DOC);
-    if (exists(config)) {
-      const to = join(home, PROJECT_DOC);
-      if (!exists(to)) {
-        mkdirSync(dirname(to), { recursive: true });
-        writeAtomic(to, readText(config));
-      }
-      const keep = kept(config);
-      out.push({ from: config, to, kept: keep, ...keep ? {} : { trashed: toTrash(config, trash, label(config)) } });
     }
     if (exists(join(geml, ".gitignore"))) ensureGitignore(geml);
   }
@@ -2048,11 +2038,10 @@ function resolveWorkflow(root, env = process.env) {
   const doc = projectDocOf(root, home);
   if (doc !== void 0) {
     const name = metaValue(readText(doc), "flow-workflow");
-    const docName = basename2(doc) === basename2(PROJECT_DOC) ? PROJECT_DOC : LEGACY_CONFIG_DOC;
     if (typeof name === "string" && name !== "") {
-      if (name.includes("/") || !isSafeItemId(name)) return { error: `${docName} names workflow "${name}", which is not the name of a workflow in ${WORKFLOWS_DIR}`, kind: "invalid" };
+      if (name.includes("/") || !isSafeItemId(name)) return { error: `${PROJECT_DOC} names workflow "${name}", which is not the name of a workflow in ${WORKFLOWS_DIR}`, kind: "invalid" };
       const named2 = installed.find((w) => w.name === name);
-      return named2 !== void 0 ? { name, path: named2.path } : { error: `${docName} names workflow "${name}", but ${WORKFLOWS_DIR} has no ${name}.geml`, kind: "invalid" };
+      return named2 !== void 0 ? { name, path: named2.path } : { error: `${PROJECT_DOC} names workflow "${name}", but ${WORKFLOWS_DIR} has no ${name}.geml`, kind: "invalid" };
     }
   }
   const names = installed.map((w) => w.name);

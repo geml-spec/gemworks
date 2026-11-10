@@ -71,13 +71,13 @@ export function run(options) {
     const percent = warnAboutPercent(options.task, launcher.shell);
     if (percent)
         note(`gemworks: ${percent}`);
-    const add = spawn(launcher.command, [...launcher.prefix, "plugin", "--profile", options.profile, "add", "gemworks"], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", shell: launcher.shell, env });
+    const add = spawn(launcher.command, [...launcher.prefix, "plugin", "--profile", options.profile, "add", "@geml/gemworks"], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", shell: launcher.shell, env });
     if (add.error !== undefined || add.status !== 0) {
         note(`gemworks: could not add the bundle to profile "${options.profile}" with ${dsh}`);
         if (add.stderr)
             note(String(add.stderr).trimEnd());
         note(`gemworks: run these two by hand instead:`);
-        note(`  ${dsh} plugin --profile ${options.profile} add gemworks`);
+        note(`  ${dsh} plugin --profile ${options.profile} add @geml/gemworks`);
         note(`  ${dsh} --profile ${options.profile} "<your task>"`);
         return 1;
     }

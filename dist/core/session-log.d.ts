@@ -81,13 +81,25 @@ export type SessionEvent =
 };
 /** Where a work item stands: on its way, put aside by the person, finished, or given up. */
 export type ItemStatus = "open" | "held" | "done" | "dropped";
-/** A step whose leave requirement is met: when, in which turn, and how a step the person judges was met — their words, or their press. */
+/**
+ * A step whose leave requirement is met: when, in which turn, and how — a step the person judges by their words or
+ * their press (`said` then holds the button's words); a fact step by what proves it as the model gave it
+ * (`evidence`), and the run this session saw that matches it (`seen`).
+ */
 export interface MetStep {
     step: string;
     at: string;
     turn: number;
     said?: string;
     pressed?: boolean;
+    evidence?: string;
+    seen?: SeenRun;
+}
+/** A command this session ran and how it ended: what a fact step's evidence is checked against. */
+export interface SeenRun {
+    command: string;
+    exit: number;
+    at: string;
 }
 /** A log's file name: the host and the session's id, neither able to leave the directory. */
 export declare function logName(host: string, id: string): string;

@@ -1,0 +1,26 @@
+=== meta
+title   = "调研选型"
+profile = "geml-statechart/v1"
+===
+
+=== diagram {#flow format=geml-statechart caption="调研选型"}
+{
+  "initial": "goal",
+  "states": {
+    "goal":    { "title": "问清目标", "description": "目标、约束、怎样算选对，你认可", "judge": "you", "prevents": "目标没对齐，调研一圈答错了题", "answers": ["认可", "再聊"] },
+    "options": { "title": "列方案", "description": "至少两三个方案，各写取舍", "judge": "model", "prevents": "只看了一个方案就定了" },
+    "probe":   { "title": "小实验", "description": "关键假设用最小的实验验过", "judge": "model", "prevents": "纸上看着行，一用就不行" },
+    "decide":  { "title": "你拍板", "description": "你选定一个", "judge": "you", "prevents": "没人拍板，调研一直收不了尾", "answers": ["定了", "再看看"] },
+    "record":  { "title": "记下决定", "description": "选了哪个、为什么、代价是什么", "judge": "model", "prevents": "过几个月，没人记得当初为什么这么选" },
+    "done":    { "title": "完成", "final": true }
+  },
+  "transitions": [
+    { "from": "goal",    "to": "options" },
+    { "from": "options", "to": "probe" },
+    { "from": "probe",   "to": "decide" },
+    { "from": "decide",  "to": "record" },
+    { "from": "decide",  "to": "options", "guard": "你说再看看" },
+    { "from": "record",  "to": "done" }
+  ]
+}
+===

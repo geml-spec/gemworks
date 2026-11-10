@@ -16,7 +16,21 @@ import { journalBaseOf } from "./host-git.js";
 import { coachFlowsAt, gemlHome, proposalsAt, workItemsAt } from "./loop.js";
 import { readPractices } from "./practice-store.js";
 import { decisionsFor, hostLabel, readSessions } from "./session-store.js";
+import { langOf, wordsFor } from "./hosts/claude-code/text.js";
+import { flowsIn } from "./hosts/claude-code/coach.js";
 export const BOARD_FILE = "board.geml";
+/**
+ * The language the page is written in: `GEMWORKS_LANG` (zh, en or ja) when set, else the locale the environment
+ * names, else the system's own. A host with no panel has no settings of its own to ask.
+ */
+export function boardLang(env = process.env) {
+    let system;
+    try {
+        system = Intl.DateTimeFormat().resolvedOptions().locale;
+    }
+    catch { /* none known */ }
+    return langOf(env["GEMWORKS_LANG"], env["LC_ALL"] || env["LC_MESSAGES"] || env["LANG"] || system);
+}
 /** Where a project's GEML board is. */
 export const boardPath = (root) => join(gemlHome(root), BOARD_FILE);
 const pad = (n) => String(n).padStart(2, "0");
@@ -37,9 +51,10 @@ function linkOf(row, home) {
     return isAbsolute(row.where) ? fileUrl(row.where) : undefined;
 }
 /** The page as the project's record stands now: what `writeBoard` writes. */
-export function boardText(root, now = new Date()) {
+export function boardText(root, now = new Date(), lang = boardLang()) {
     const home = journalBaseOf(root);
     const flows = coachFlowsAt(root);
+    const t = wordsFor(lang);
     const sessions = readSessions(root).sort((a, b) => (a.last < b.last ? 1 : a.last > b.last ? -1 : 0));
     const asks = sessions.flatMap((s) => (s.asks ?? []).map((q) => ({ question: q.question, options: q.options, ...(q.item !== undefined ? { item: q.item } : {}) })));
     let practices = [];
@@ -53,15 +68,15 @@ export function boardText(root, now = new Date()) {
     }
     catch { /* the page without them */ }
     return boardPage({
-        project: basename(home), updated: day(now), flows, items: workItemsAt(root, flows), asks, proposals: proposalsAt(root), practices, artifacts,
-        decisions: decisionsFor(root, "", null, now.toISOString()), linkOf: (row) => linkOf(row, home), clock, hostName: hostLabel,
+        project: basename(home), updated: day(now), flows: flowsIn(flows, t), items: workItemsAt(root, flows), asks, proposals: proposalsAt(root), practices, artifacts,
+        decisions: decisionsFor(root, "", null, now.toISOString()), linkOf: (row) => linkOf(row, home), clock, hostName: hostLabel, t,
     });
 }
 /** The board written again when what it says changed; its path, or undefined when it could not be. */
-export function writeBoard(root, now = new Date()) {
+export function writeBoard(root, now = new Date(), lang = boardLang()) {
     try {
         const path = boardPath(root);
-        const text = boardText(root, now);
+        const text = boardText(root, now, lang);
         let was = "";
         try {
             was = readFileSync(path, "utf8");

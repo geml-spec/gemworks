@@ -23,6 +23,7 @@ import { handleRequest } from "./bridge.js";
 import { journalBaseOf } from "./host-git.js";
 import { readPractices, writePractices } from "./practice-store.js";
 import { appendSession, readSessions } from "./session-store.js";
+import { writeSignoffs } from "./signoff.js";
 /** The flows the package ships, beside `dist/`. */
 export const SHIPPED_COACH = fileURLToPath(new URL("../coach/", import.meta.url));
 /** The tools of the work loop on a host with no status band, in the order they are listed. */
@@ -89,6 +90,10 @@ export function recordWork(root, host, session, args, now = new Date().toISOStri
     }, now);
     if (made.length === 0)
         return { ok: false, text: `Nothing recorded: ${errors.join("; ") || "items is a list of work items"}.` };
+    try {
+        writeSignoffs(root, made.flatMap((e) => (e.t === "item" ? [e.id] : [])));
+    }
+    catch { /* written at the item's next step */ }
     const said = made.map((e) => (e.t === "item" ? `#${e.id} «${e.title}» (${e.flow}: ${e.state}${e.status !== "open" ? `, ${e.status}` : ""})` : "")).join("; ");
     return { ok: true, text: `Recorded ${said}.${errors.length > 0 ? ` Left out: ${errors.join("; ")}.` : ""}` };
 }
