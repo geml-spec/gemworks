@@ -292,7 +292,8 @@ export function boardApi(sessions, recorded = new Map()) {
             res.end(JSON.stringify(body));
         };
         try {
-            const url = new URL(req.url ?? "/", "http://gemworks.invalid");
+            // Only a base to parse the request's path against; nothing is fetched from it.
+            const url = new URL(req.url ?? "/", "https://gemworks.invalid");
             if (req.method === "GET" && url.pathname === "/api/gemworks/board") {
                 const q = readQuery(url.searchParams);
                 const a = sessions.get(q.session);
