@@ -72,7 +72,7 @@ geml；没加的话 gemworks 能装上，但加载不起来。第二行加上 ge
   带上。在另一个检出（子 agent 的 worktree）里的工具调用按那个检出的工作项裁决，它的
   阶段交给在那里干活的子 agent。`/clear` 之后的下一次提交重新带上。
 
-要加一条固化流程，从 `/gemworks add dev`（或 `npx -y gemworks init --template dev`）开始，
+要加一条固化流程，从 `/gemworks add dev`（或 `npx -y @geml/gemworks init --template dev`）开始，
 再把 `.geml/tools.geml` 改成项目的测试与部署命令、把 `.geml/workflows/dev.geml` 里各阶段的文字改成项目自己的约定——
 [开发流程](workflows.zh.md#开发流程)一节把它走一遍。
 
@@ -123,7 +123,7 @@ npm run test:claude   # 构建，再 claude plugin validate + claude plugin test
 
 `gemworks mcp` 用 stdio MCP 提供模型可调的工具：工作循环的 `work`、`practice`、
 `propose`、`answer`（照你对一条提议的回答去做）、`ask`、`artifact`，`note`，以及固化流程的
-`status`、`move`、`set`。在宿主的 MCP 配置里登记为 `npx -y gemworks mcp --host <宿主>`
+`status`、`move`、`set`。在宿主的 MCP 配置里登记为 `npx -y @geml/gemworks mcp --host <宿主>`
 （宿主在项目之外启动服务时加 `--root <目录>`）。skill `skills/gemworks-mcp/SKILL.md`
 要求模型每轮先调用 `status`——阶段、进行中的工作项、这一步的做法都在里面——这类宿主
 没有把它们交给模型的通道。这类宿主没有的：
@@ -170,7 +170,7 @@ Codex；Windows 上不包）。这里的编辑器是 `apply_patch`：内置词�
 ### Antigravity
 
 ```sh
-npm install -g gemworks
+npm install -g @geml/gemworks
 gemworks antigravity install
 ```
 
@@ -187,7 +187,7 @@ GEML 看板（`.geml/board.geml`），每条提示词和每轮结束时重写。
 ### DeepSeek Harness
 
 ```sh
-dsh plugin --profile web add gemworks
+dsh plugin --profile web add @geml/gemworks
 ```
 
 先不启动、只验证这一层，再启动：
@@ -234,7 +234,7 @@ dsh 的会话是它自己的，所以这里留着记录页，看会话里发生�
 ### pi agent
 
 ```sh
-pi install npm:gemworks
+pi install npm:@geml/gemworks
 ```
 
 同一个 npm 包就是一个 pi package：`pi.extensions` 指向扩展，`pi.skills` 指向
@@ -265,7 +265,7 @@ pi agent 这边有一件事只读过它发布的类型与随包文档、没有�
 返回的东西算的，出问题由 `gemworks verify` 抓）。
 
 不装 harness、只用 CLI，就是[在一个项目上开始用](advanced.zh.md#在一个项目上开始用)第 1 步装上的
-`gemworks` 命令（`npm install -g gemworks`）：
+`gemworks` 命令（`npm install -g @geml/gemworks`）：
 
 ```sh
 gemworks init

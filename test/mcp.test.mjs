@@ -301,7 +301,8 @@ test("the work loop over MCP: what the model is told once, a work item recorded 
     call(4, "ask", { question: "用哪个？", options: ["网页", "GEML 页面"], recommended: "GEML 页面" }),
     call(5, "work", { items: [{ title: "x", flow: "nope" }] }),
   ];
-  const out = mcp(root, msgs, ["--host", "grok"]);
+  // The board page is written in the machine's language unless told: this one reads its Chinese.
+  const out = mcp(root, msgs, ["--host", "grok"], { env: { GEMWORKS_LANG: "zh" } });
   assert.match(out.get(1).result.instructions, /gemworks `work` tool/);
   assert.match(out.get(1).result.instructions, /feature 新功能: mockup 样稿 \(you\)/);
   const work = out.get(2).result;

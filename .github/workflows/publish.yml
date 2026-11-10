@@ -5,11 +5,11 @@ name: Publish
 # (`node scripts/bump.mjs <version>`), let CI pass on all three systems, then run this.
 #
 # One build goes out twice:
-# - to npm, under the two names scripts/publish.mjs publishes by hand: `gemworks`; and `gemwork`, so that a name typed
-#   without its last letter installs ours. (npm refuses `gwx` as too like other names; the `gwx` command comes with
-#   the `gemworks` package.) The gemworks marketplace (.claude-plugin/marketplace.json) installs the plugin from the
-#   `gemworks` package.
-# - to the `plugin` branch: the files of that same `gemworks` package, committed, for Anthropic's plugin directory. The
+# - to npm, in the geml organization, under the two names scripts/publish.mjs publishes by hand: `@geml/gemworks`; and
+#   `@geml/gemwork`, so that the name typed without its last letter installs it too. Either name brings the commands
+#   `gemworks` and `gwx`. The gemworks marketplace (.claude-plugin/marketplace.json) installs the plugin from the
+#   `@geml/gemworks` package. npm packs a scoped name as `geml-<name>-<version>.tgz`.
+# - to the `plugin` branch: the files of that same `@geml/gemworks` package, committed, for Anthropic's plugin directory. The
 #   directory reads a plugin from a GitHub branch and people get only that folder, so it cannot follow main, where
 #   dist/ is built and gitignored.
 #
@@ -19,7 +19,7 @@ name: Publish
 #
 # Three jobs, so the token never shares a runner with an install script. `build` installs, tests and packs with nothing
 # to steal; `npm` installs nothing and runs no script, it hands npm the tarballs `build` packed (a tarball's lifecycle
-# scripts do not run on publish); `branch` commits the unpacked `gemworks` tarball and holds no npm token.
+# scripts do not run on publish); `branch` commits the unpacked `@geml/gemworks` tarball and holds no npm token.
 on:
   workflow_dispatch:
     inputs:
@@ -57,7 +57,7 @@ jobs:
       - name: Build + test
         run: npm test
 
-      # The same build under each name. `gemworks` packs package.json as committed; the other two change only its
+      # The same build under each name. `@geml/gemworks` packs package.json as committed; the other changes only its
       # name (`npm pkg set` also reflows the file, so git puts it back rather than a second `npm pkg set`).
       - name: Pack
         id: pack
@@ -65,7 +65,7 @@ jobs:
           version=$(node -p "require('./package.json').version")
           mkdir -p "$RUNNER_TEMP/pack"
           npm pack --ignore-scripts --silent --pack-destination "$RUNNER_TEMP/pack"
-          for name in gemwork; do
+          for name in @geml/gemwork; do
             npm pkg set name="$name"
             npm pack --ignore-scripts --silent --pack-destination "$RUNNER_TEMP/pack"
           done
@@ -106,13 +106,15 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
-          for name in gemworks gemwork; do
+          for name in @geml/gemworks @geml/gemwork; do
             # A version a name does not have prints nothing, and some npm releases still exit 0: the output is what counts.
             if [ -n "$(npm view "$name@$VERSION" version 2>/dev/null)" ]; then
               echo "$name@$VERSION is already on npm"
               continue
             fi
-            npm publish "./pack/$name-$VERSION.tgz" --provenance --access public
+            # npm packs @geml/gemworks as geml-gemworks-<version>.tgz.
+            tarball="./pack/$(printf %s "${name#@}" | tr / -)-$VERSION.tgz"
+            npm publish "$tarball" --provenance --access public
           done
 
   branch:
@@ -146,12 +148,12 @@ jobs:
           fi
           git rm -rq --ignore-unmatch .
           git clean -fdxq
-          tar -xzf "$RUNNER_TEMP/pack/gemworks-$VERSION.tgz" --strip-components=1
+          tar -xzf "$RUNNER_TEMP/pack/geml-gemworks-$VERSION.tgz" --strip-components=1
           git add -A
           if git diff --cached --quiet; then
             echo "the plugin branch already holds gemworks $VERSION"
             exit 0
           fi
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -q -m "gemworks $VERSION" -m "The files of the gemworks@$VERSION npm package, from $GITHUB_SHA."
+            commit -q -m "gemworks $VERSION" -m "The files of the @geml/gemworks@$VERSION npm package, from $GITHUB_SHA."
           git push origin plugin

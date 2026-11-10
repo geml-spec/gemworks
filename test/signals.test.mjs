@@ -167,6 +167,8 @@ test("person-only: a gemworks mark, unmark or advance in command position is ref
     "env gemworks mark ok", "env A=1 gemworks mark ok", "command gemworks mark ok", "FOO=1 gemworks mark ok", "time gemworks mark ok", "sudo gemworks mark ok",
     "timeout 5 gemworks mark ok", "xargs gemworks mark ok", "nohup gemworks advance x &",
     "gemwork mark ok", "npx gemwork advance r", "node node_modules/gemwork/cli.js mark ok", "gwx mark ok", "npx gwx advance r", "GWX unmark x",
+    "npx @geml/gemworks mark ok", "npx -y @geml/gemworks@latest advance r", "npx @geml/gemwork unmark x", "npm exec @geml/gemworks -- mark x",
+    "pnpm dlx @geml/gemworks mark x", "npx -p @geml/gemworks gemworks mark ok", "node node_modules/@geml/gemworks/dist/cli.js mark ok",
     "(gemworks mark ok)", "echo $(gemworks mark ok)", 'echo "$(gemworks mark ok)"', "echo `gemworks mark ok`", "{ gemworks mark ok; }",
     "if true; then gemworks mark ok; fi", "true || gemworks mark ok", "true | gemworks mark ok", "true & gemworks mark ok", "true\ngemworks mark ok",
     'bash -c "gemworks mark ok"', "sh -c 'cd x && gemworks advance y'", "eval gemworks mark ok", 'eval "gemworks" mark ok', 'bash -c "bash -c \'gemworks mark ok\'"',

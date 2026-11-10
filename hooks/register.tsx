@@ -265,7 +265,7 @@ const REFUSAL_NOTIFY_MS = 3 * 60_000
 /** The prompts kept for the sessions tab. */
 const PROMPTS_KEPT = 300
 const STORE_SETTINGS = 'settings'
-const REGISTRY = 'https://registry.npmjs.org/gemworks/latest'
+const REGISTRY = 'https://registry.npmjs.org/@geml/gemworks/latest'
 /** This project's repository and license, as package.json names them (the smoke test holds them to it). */
 const REPO = 'https://github.com/geml-spec/gemworks'
 const LICENSE = 'AGPL-3.0-only'

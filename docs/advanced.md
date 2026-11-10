@@ -246,10 +246,10 @@ path>` puts it right.
 
 ```sh
 # 1. the CLI, from npm
-npm install -g gemworks                           # the gemworks command (short: gwx)
+npm install -g @geml/gemworks                     # the gemworks command (short: gwx)
 
 # 2. the same package into pi agent: its extension and its skills
-pi install npm:gemworks
+pi install npm:@geml/gemworks
 
 # 3. in the repository you want to work on, on a branch of its own
 cd ~/code/my-project

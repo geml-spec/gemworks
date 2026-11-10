@@ -6,7 +6,7 @@ const here = new URL(".", import.meta.url);
 const pkg = JSON.parse(readFileSync(new URL("../package.json", here), "utf8"));
 
 test("package identity: the renamed bundle", () => {
-  assert.equal(pkg.name, "gemworks");
+  assert.equal(pkg.name, "@geml/gemworks");
   assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
   const lock = JSON.parse(readFileSync(new URL("../package-lock.json", here), "utf8"));
   const claude = JSON.parse(readFileSync(new URL("../.claude-plugin/plugin.json", here), "utf8"));
@@ -97,13 +97,18 @@ test("the bundle patch contributes the runtime row alongside the MCP server and 
   assert.ok(!lines.some((l) => l.startsWith("statechart:")), "the workflow is resolved from the project, not pinned to one path");
 });
 
-test("one build, two names on npm: gemworks; gemwork, so that a name typed without its last letter installs ours (npm refuses gwx)", () => {
+test("one build, two names on npm in the geml organization: @geml/gemworks; @geml/gemwork, so that the name typed without its last letter installs it too", () => {
   const script = readFileSync(new URL("../scripts/publish.mjs", here), "utf8");
-  assert.match(script, /const NAMES = \["gemworks", "gemwork"\];/);
+  assert.match(script, /const NAMES = \["@geml\/gemworks", "@geml\/gemwork"\];/);
   const workflow = readFileSync(new URL("../.github/workflows/publish.yml", here), "utf8");
-  assert.match(workflow, /for name in gemworks gemwork; do/, "the Publish workflow publishes the same names");
+  assert.match(workflow, /for name in @geml\/gemworks @geml\/gemwork; do/, "the Publish workflow publishes the same names");
+  assert.match(workflow, /pack\/geml-gemworks-\$VERSION\.tgz/, "the plugin branch unpacks the tarball npm names after the scope");
   assert.match(script, /finally \{\s*writeFileSync\(file, original\);/, "the name is always put back");
-  assert.equal(pkg.name, "gemworks");
+  assert.equal(pkg.name, "@geml/gemworks");
+  assert.equal(pkg.publishConfig?.access, "public", "a scoped name is private on its first publish unless told otherwise");
+  const market = JSON.parse(readFileSync(new URL("../.claude-plugin/marketplace.json", here), "utf8"));
+  assert.equal(market.plugins[0].source.package, pkg.name, "the marketplace installs the plugin from the package by its name");
+  assert.ok(readFileSync(new URL("../hooks/register.tsx", here), "utf8").includes(`'https://registry.npmjs.org/${pkg.name}/latest'`), "the board asks npm for the newest version by the package's name");
   assert.equal(pkg.scripts.release, "node scripts/publish.mjs");
   assert.deepEqual(pkg.bin, { gemworks: "dist/cli.js", gwx: "dist/cli.js" }, "two commands, the long and the short, whichever name installed it");
 });

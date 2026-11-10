@@ -67,7 +67,7 @@ test("run adds the bundle to the profile, then runs the task, and passes the cod
   const code = run({ profile: "headless", task: "refund order A-17", spawn, env: { PATH: dir, PATHEXT: ".CMD" }, note: () => {} });
   assert.equal(code, 7, "dsh's exit code is the verb's exit code");
   assert.equal(calls.length, 2);
-  assert.deepEqual(calls[0].args.slice(-5), ["plugin", "--profile", "headless", "add", "gemworks"]);
+  assert.deepEqual(calls[0].args.slice(-5), ["plugin", "--profile", "headless", "add", "@geml/gemworks"]);
   assert.deepEqual(calls[1].args.slice(-3), ["--profile", "headless", "refund order A-17"]);
   assert.equal(calls[1].options.stdio, "inherit", "the model's output goes straight to the terminal");
   rmSync(dir, { recursive: true, force: true });
@@ -81,7 +81,7 @@ test("run reports a failed add and hands back the two commands, without running 
   assert.equal(code, 1);
   assert.equal(calls.length, 1, "the task must not run when the bundle is not in place");
   assert.ok(lines.some((l) => l.includes("no such profile")), "dsh's own words are shown");
-  assert.ok(lines.some((l) => l.includes("plugin --profile web add gemworks")));
+  assert.ok(lines.some((l) => l.includes("plugin --profile web add @geml/gemworks")));
   rmSync(dir, { recursive: true, force: true });
 });
 

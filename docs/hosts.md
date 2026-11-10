@@ -107,7 +107,7 @@ What you get:
   next prompt carries the stage again.
 
 To add a strict flow, start with `/gemworks add dev` (or
-`npx -y gemworks init --template dev`), then set `.geml/tools.geml` to
+`npx -y @geml/gemworks init --template dev`), then set `.geml/tools.geml` to
 your test and deploy commands and the stages' texts in
 `.geml/workflows/dev.geml` to your conventions —
 [The dev workflow](workflows.md#the-dev-workflow) walks through it.
@@ -177,7 +177,7 @@ npm run test:claude   # the build, claude plugin validate + claude plugin test
 `practice`, `propose`, `answer` (carry out your answer to a proposal), `ask`
 and `artifact`, the `note` tool, and a strict flow's `status`, `move` and
 `set`. Register it in the host's MCP configuration as
-`npx -y gemworks mcp --host <host>` (`--root <dir>` when the host starts
+`npx -y @geml/gemworks mcp --host <host>` (`--root <dir>` when the host starts
 servers outside the project). The skill `skills/gemworks-mcp/SKILL.md` tells
 the model to call `status` at the start of every turn — the stage, the work
 items on the way and the step's practices — since such a host has no channel
@@ -246,7 +246,7 @@ and only the paths of a patch are judged, never its text.
 ### Antigravity
 
 ```sh
-npm install -g gemworks
+npm install -g @geml/gemworks
 gemworks antigravity install
 ```
 
@@ -265,7 +265,7 @@ editor (Antigravity IDE included) or with Chrome's GEML Viewer.
 ### DeepSeek Harness
 
 ```sh
-dsh plugin --profile web add gemworks
+dsh plugin --profile web add @geml/gemworks
 ```
 
 Verify the layer without booting, then boot:
@@ -333,7 +333,7 @@ path for the browser half's sake (above). The journal is one per session under
 ### pi agent
 
 ```sh
-pi install npm:gemworks
+pi install npm:@geml/gemworks
 ```
 
 The same npm package is a pi package: its `pi.extensions` points at the
@@ -374,7 +374,7 @@ returns, and `gemworks verify` is what would catch it).
 
 The CLI alone, without a harness, is the `gemworks` command step 1 of
 [Start on a repository](advanced.md#start-on-a-repository) installs
-(`npm install -g gemworks`):
+(`npm install -g @geml/gemworks`):
 
 ```sh
 gemworks init

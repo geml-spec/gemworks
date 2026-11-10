@@ -13,7 +13,7 @@
       "name": "gemworks",
       "source": {
         "source": "npm",
-        "package": "gemworks"
+        "package": "@geml/gemworks"
       },
       "description": "A workbench right beside your agent chat: it keeps your artifacts in order, sums up what you've learned, remembers what you've decided, and lets your workflow grow on its own. A line above the prompt shows where the work stands; a board holds the work items, artifacts and flows.",
       "strict": true

@@ -210,10 +210,10 @@ tarball，它会照单收下、写进 `settings.json`，然后此后每次启动
 
 ```sh
 # 1. CLI，从 npm 装
-npm install -g gemworks                           # gemworks 命令（简写 gwx）
+npm install -g @geml/gemworks                     # gemworks 命令（简写 gwx）
 
 # 2. 同一个包装进 pi agent：它的扩展和技能
-pi install npm:gemworks
+pi install npm:@geml/gemworks
 
 # 3. 到你要干活的仓库里，开一个自己的分支
 cd ~/code/my-project
