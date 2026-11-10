@@ -150,8 +150,8 @@ export function unlabelledPrompts(ledger: Ledger, transcripts: string, o: { sinc
 }
 
 /**
- * The prompts the project's other hosts recorded in its shared record (session-store.ts: Codex, Antigravity, DeepSeek
- * Harness, Pi, an MCP-only host), with no label yet: what their sessions could not label themselves, for `gemworks
+ * The prompts the project's other hosts recorded in its shared record (session-store.ts: Codex, Antigravity, Cursor,
+ * DeepSeek Harness, Pi, an MCP-only host), with no label yet: what their sessions could not label themselves, for `gemworks
  * corrections pending` and whatever labels later. Claude Code's own are its transcripts' (unlabelledPrompts); a turn
  * read back from a transcript, or a prompt that was not the person's, is none. `before` is the answer of the turn before.
  */

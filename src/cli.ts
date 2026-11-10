@@ -20,6 +20,7 @@ import { addWorkflow, useWorkflow, type Added } from "./project.js";
 import { handleRequest } from "./bridge.js";
 import { runCodex } from "./codex.js";
 import { installAntigravity, runAntigravity } from "./antigravity.js";
+import { installCursor, runCursor } from "./cursor.js";
 import { serveMcp } from "./mcp.js";
 import { decodeRequest, type BridgeResponse } from "./hosts/claude-code/protocol.js";
 import { docReader, openWorkspace, resolvePromptRef, resolveWorkflow, type Workspace } from "./workspace.js";
@@ -46,6 +47,7 @@ const USAGE = [
   "  hook                                    the Claude Code bridge: one JSON request on stdin, one answer on stdout",
   "  codex                                   the Codex hook: one event on stdin, its answer on stdout (exit 0 always)",
   "  antigravity <Event> | install           the Antigravity editor's hook (one event on stdin), or put its hooks and MCP server in place",
+  "  cursor [install]                        Cursor's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place",
   "  mcp [--host h] [--root dir]             the model's tools over stdio MCP (host default: mcp)",
   "  corrections [--baseline a..b] [--trial a..b] [--since day] [--by work] [--json]",
   "                                          how often you corrected the agent, per 100 prompts, by kind and by week",
@@ -180,6 +182,24 @@ async function runCodexHook(): Promise<number> {
     process.stderr.write(`gemworks codex: ${e instanceof Error ? e.message : String(e)}\n`);
     return 0;
   }
+}
+
+/** `gemworks cursor`: one Cursor hook event in, its answer out; exit 0 and `{}` whatever failed, since Cursor blocks a permission hook whose output is no JSON. `install` puts the hooks and the MCP server in place. */
+async function runCursorHook(arg: string | undefined): Promise<number> {
+  if (arg === "install") {
+    for (const f of installCursor(resolve(process.argv[1] ?? "gemworks.mjs"))) process.stdout.write(`${f}\n`);
+    return 0;
+  }
+  try {
+    process.stdin.setEncoding("utf8");
+    let text = "";
+    for await (const chunk of process.stdin) text += chunk;
+    process.stdout.write((await runCursor(text, process.env)).stdout);
+  } catch (e) {
+    process.stderr.write(`gemworks cursor: ${e instanceof Error ? e.message : String(e)}\n`);
+    process.stdout.write("{}\n");
+  }
+  return 0;
 }
 
 /** `gemworks antigravity <Event>`: one Antigravity hook event in, its answer out; exit 0 whatever happened. `install` puts the hooks and the MCP server in place. */
@@ -448,6 +468,7 @@ const argv = process.argv.slice(2);
 if (argv[0] === "hook") void runHook().then((code) => { process.exitCode = code; });
 else if (argv[0] === "codex") void runCodexHook().then((code) => { process.exitCode = code; });
 else if (argv[0] === "antigravity") void runAntigravityHook(argv[1]).then((code) => { process.exitCode = code; });
+else if (argv[0] === "cursor") void runCursorHook(argv[1]).then((code) => { process.exitCode = code; });
 else if (argv[0] === "mcp") {
   const rest = argv.slice(1);
   if (positionals("mcp", rest, [], ["--host", "--root"]).length > 0) fail(USAGE, 2);

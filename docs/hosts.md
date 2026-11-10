@@ -262,6 +262,39 @@ and no board button: answer what waits for you in the chat; "Make it a rule" and
 here. The geml plugin has no Antigravity version yet, so view the page with the GEML extension in a VS Code–style
 editor (Antigravity IDE included) or with Chrome's GEML Viewer.
 
+### Cursor
+
+```sh
+npm install -g @geml/gemworks
+gemworks cursor install
+```
+
+The second line writes gemworks' hooks into `~/.cursor/hooks.json` and its MCP server into `~/.cursor/mcp.json`,
+both pointing at the `gemworks` you just installed, and prints the two paths. Your own hooks and MCP servers in those
+files are kept; running it again replaces the earlier install. Reload the Cursor window afterwards.
+
+Cursor gets what Codex gets: the work loop's tools and the flows' steps at the session's start, the GEML board page
+above, and the gate. A command a fenced use or a person owns is refused with the reason; a tool's default parameters
+are filled in; a shell command whose exit status is evidence is wrapped to print it last (`[gemworks exit N]`, not on
+Windows); the files the agent edits, the turn's answer and the commits it made go into the project's session record;
+a turn that changed things and reported no work item is sent back once, by a follow-up message the record does not
+count as yours.
+
+Two things differ from Codex because of what Cursor's hooks allow:
+
+- Cursor's prompt hook cannot speak to the model. What Codex says beside a prompt (the work items on the way, the
+  step's practices, other sessions' decisions, a new stage text) reaches the model with the result of the turn's
+  first tool call instead. A turn that calls no tool hears it at the next one.
+- Cursor names its tools `Shell`, `Write`, `Read`, `Grep`, `Delete` and `MCP:<tool>`. The gate reads them by Claude
+  Code's names: `Shell` as `Bash`, `Write` as `Write`, and the other file-writing tools as `Edit`. Write a dictionary
+  row for Cursor with those names; the bundled dictionaries need nothing more.
+
+The hooks run in `~/.cursor`, so the project is the workspace folder holding a `.geml/`, else the first one. The MCP
+server learns the conversation and its project from the hooks, as on Antigravity: with two Cursor windows open, it
+writes for the one that ran a hook last. As on Codex there is no band and no board button; "Make it a rule" and the
+corrections ledger are not here. View the board page with the GEML extension, which Cursor runs as a VS Code
+extension.
+
 ### DeepSeek Harness
 
 ```sh

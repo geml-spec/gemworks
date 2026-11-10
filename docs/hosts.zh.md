@@ -184,6 +184,34 @@ GEML 看板（`.geml/board.geml`），每条提示词和每轮结束时重写。
 要你定的事在对话里回答；「改成规定」和从纠正里学的纠正账本这里都没有。geml 插件目前没有 Antigravity
 版，看这页看板要用 VS Code 一类编辑器（Antigravity IDE 也行）的 GEML 扩展，或者 Chrome 的 GEML Viewer。
 
+### Cursor
+
+```sh
+npm install -g @geml/gemworks
+gemworks cursor install
+```
+
+第二行把 gemworks 的 hooks 写进 `~/.cursor/hooks.json`，把 gemworks 的 MCP server 写进 `~/.cursor/mcp.json`，
+两处都指向刚装的这份 `gemworks`；它会打印这两个文件的路径。这两个文件里你自己的 hooks 和 MCP 服务都保留，再跑一次
+会替换上一次装的。装完重新加载 Cursor 窗口。
+
+Cursor 拿到的和 Codex 一样：会话开始时交代工作循环的工具和流程的步骤，上面那页 GEML 看板，还有闸门。围起来的用途和
+只归人的命令会被拒并说明原因；工具的默认参数会补上；退出码算证据的 shell 命令会包一层，最后打印
+`[gemworks exit N]`（Windows 上不包）；agent 改的文件、这一轮的回答和它做的提交进项目的会话记录；一轮改了东西却没报
+工作项，会用一条追问消息送回去一次，这条消息不算你说的话。
+
+和 Codex 不同的有两处，都是 Cursor 的 hooks 决定的：
+
+- Cursor 的提示词 hook 不能对模型说话。Codex 放在提示词旁边的内容（进行中的工作项、这一步的做法、别的会话定下的事、
+  新的阶段文本）改成随这一轮第一次工具调用的结果送到。一轮没调工具的话，下一次调用时才送到。
+- Cursor 的工具叫 `Shell`、`Write`、`Read`、`Grep`、`Delete` 和 `MCP:<工具名>`。闸门按 Claude Code 的名字读：
+  `Shell` 当 `Bash`，`Write` 还是 `Write`，其他写文件的工具当 `Edit`。给 Cursor 写词典行也用这些名字；自带的词典
+  不用改。
+
+hooks 在 `~/.cursor` 下运行，所以项目是工作区里带 `.geml/` 的那个文件夹，没有就取第一个。MCP 服务和 Antigravity
+一样，从 hooks 那里得知当前对话和项目：同时开着两个 Cursor 窗口时，它写给最后跑过 hook 的那个。和 Codex 一样，没有
+状态带和看板按钮；「改成规定」和纠正账本这里都没有。看板页用 GEML 扩展看，Cursor 能跑 VS Code 扩展。
+
 ### DeepSeek Harness
 
 ```sh

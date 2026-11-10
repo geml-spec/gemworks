@@ -22,6 +22,7 @@ usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmar
   hook                                    the Claude Code bridge: one JSON request on stdin, one answer on stdout
   codex                                   the Codex hook: one event on stdin, its answer on stdout (exit 0 always)
   antigravity <Event> | install           the Antigravity editor's hook (one event on stdin), or put its hooks and MCP server in place
+  cursor [install]                        Cursor's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place
   mcp [--host h] [--root dir]             the model's tools over stdio MCP (host default: mcp)
   corrections [--baseline a..b] [--trial a..b] [--since day] [--by work] [--json]
                                           how often you corrected the agent, per 100 prompts, by kind and by week
@@ -63,6 +64,9 @@ usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmar
 - `antigravity <Event>` 是 Antigravity 编辑器的 hook，stdin 一个事件；`antigravity install`
   把它的 hooks 写进 `~/.gemini/config/hooks.json`，把 MCP 服务写进
   `~/.gemini/config/mcp_config.json`。
+- `cursor` 是 Cursor 的 hook（[Cursor](hosts.zh.md#cursor)）：stdin 一个事件，stdout 给应答，
+  没话说或出了错都给 `{}`，不论出什么事都以 0 退出。`cursor install` 把它的 hooks 写进
+  `~/.cursor/hooks.json`，把 MCP 服务写进 `~/.cursor/mcp.json`。
 - `mcp` 用 stdio MCP 提供模型可调的工具——固化流程的 `status`、`move`、`set`，`note`，
   以及工作循环的 `work`、`practice`、`propose`、`answer`、`ask`、`artifact`——给没有自己的
   Gemworks 外壳的宿主用（`--host` 指定词典里的 `Bash(…)` 键对应哪个宿主的工具名，默认
