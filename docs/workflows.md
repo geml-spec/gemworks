@@ -22,6 +22,10 @@ nothing is recorded on the default branch. Five states:
 | `#deploy` | `deploy-staging` |
 | `#release` | `deploy-prod` |
 
+Only the two deploy uses are rules (`rules`), fenced to their states; `edit`,
+`test` and `pr` are listed under `tools`, so they run anywhere, and their
+evidence counts only in the states that list them.
+
 What moves it without the model's word is the evidence:
 
 | variable | source | read from |
@@ -166,8 +170,8 @@ What moves it without the model's word is the evidence:
    which takes the workflow to `#publish`; once the episode is out, `published`
    (已发布) ends the work item at `#done`.
 
-The line above the prompt shows the episode's to-do count:
-`⧗ episodes/ep02 · assets · 待办 7 项 · assets-done ✗ · → #cut 自动 · 待 assets-done`.
+When the line above the prompt names the episode, it shows its to-do count
+after the stage: `我在做 episodes/ep02 · 素材 · 待办 7 项`.
 It is counted when a session starts and when the board opens or refreshes, in
 process, by the parser's own `todo` — the items
 `geml media todo <file> --root . --json` lists — and shows while the episode
@@ -189,6 +193,3 @@ not count after it.
 Every command names the episode's file and passes `--root .`: the dictionary
 reads the command line, and under a `file:` unit a command's evidence goes to
 the episode its command names, relative to the directory it runs in.
-`geml media todo --check` is in `@geml/geml`'s unreleased changes; until a
-release carries it, run the parser from this checkout
-(`node geml-parser/dist/cli.js media todo …`) and add a row for that spelling.

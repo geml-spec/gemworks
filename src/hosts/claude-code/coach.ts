@@ -1,5 +1,5 @@
 // The coach: the light flows a work item goes through — 新设计, 新功能, bugfix,
-// 优化 — each its own statechart whose steps say who judges their leave
+// 优化, 线上事故, 代码审查, 调研选型, 重构, 文档, 数据分析 — each its own statechart whose steps say who judges their leave
 // requirement and what they prevent; the work items the model reports with the
 // work tool at a turn's end (the steps met) and the person sets with a press,
 // merged from every session's log; where each stands, worked out from the steps

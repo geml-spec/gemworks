@@ -29,7 +29,7 @@ const call = (id, name, args = {}) => ({ jsonrpc: "2.0", id, method: "tools/call
 function install(root, name, text) {
   mkdirSync(join(root, ".geml", "workflows", name), { recursive: true });
   writeFileSync(join(root, ".geml", "workflows", name, "flow.geml"), text);
-  writeFileSync(join(root, ".geml", "gemflow.geml"), `=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "${name}"\n===\n`);
+  writeFileSync(join(root, ".geml", "project.geml"), `=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "${name}"\n===\n`);
 }
 
 test("gemworks mcp: the handshake, the three tools, verbs over the project's workspace, errors by code", () => {

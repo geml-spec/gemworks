@@ -31,7 +31,7 @@ import {
   loadGrowth, loadMade, loadMemory, loadPractices, loadProjectSessions, loadWorkflows, nowIso, openBoard,
   openDialog, openFile, otherSessionText, practicesKept, proposalsKept, readAttention, readBoard, readPrompts,
   readSettings, reasonOf, rulesKept, saveProposals, saveRules, sessionText, setQueued, share, startBridge,
-  storePrompts, takeOption, themeLedger, trace, turnBusy, words, workItems, writeOwnFlow,
+  signoffAfter, storePrompts, takeOption, themeLedger, trace, turnBusy, words, workItems, writeOwnFlow,
 } from './register.tsx'
 // The atoms act reads and updates, declared here as register.tsx declares them: the same plugin and key is the same
 // value, and the validator reads a state source only from an atom made in the file that reads it.
@@ -130,12 +130,13 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
       if (item === undefined || (flow === undefined && action.op === 'work-meet')) return
       const at = await nowIso($)
       await appendOwn($, (so) => [
-        action.op === 'work-meet' && flow !== undefined ? pressEvent(item, flow, action.step, action.yes, at, currentTurn(so))
+        action.op === 'work-meet' && flow !== undefined ? pressEvent(item, flow, action.step, action.yes, at, currentTurn(so), action.label)
           : action.op === 'work-take' ? closeEvent(item, 'open', at, currentTurn(so))
           : action.op === 'work-close' ? closeEvent(item, action.status, at, currentTurn(so))
           : holdEvent(item, action.op === 'work-hold' ? action.held : false, at, currentTurn(so)),
       ])
       await loadProjectSessions($)
+      signoffAfter($, [item.id])
       if (action.op === 'work-meet' && item.session === (await $.session.id().catch(() => ''))) {
         const step = flow?.states.find((s) => s.id === action.step)?.title ?? action.step
         await act($, { op: 'say', text: `${item.title} · ${step}：${action.label}` }, surface)

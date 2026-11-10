@@ -23,7 +23,7 @@ import { commandOf } from "./core/command-line.js";
 import { bindingOf, normalizedCommand, type Dictionary, type Lesson } from "./core/dictionary.js";
 import type { HostTools } from "./core/host-tools.js";
 import { readJournal } from "./core/journal.js";
-import { CONTEXT_DOC, GEML_DIR, JOURNALS_DIR, LEGACY_CONFIG_DOC, PROJECT_DOC, WORKFLOWS_DIR } from "./core/layout.js";
+import { CONTEXT_DOC, GEML_DIR, JOURNALS_DIR, PROJECT_DOC, WORKFLOWS_DIR } from "./core/layout.js";
 import { ensureGitignore, homeOf, installedWorkflows, projectDocOf, recordedPath, workflowAt, workflowNameOf } from "./project-home.js";
 
 export { workflowNameOf };
@@ -203,12 +203,11 @@ export function resolveWorkflow(root: string, env: Record<string, string | undef
   const doc = projectDocOf(root, home);
   if (doc !== undefined) {
     const name = metaValue(readText(doc), "flow-workflow");
-    const docName = basename(doc) === basename(PROJECT_DOC) ? PROJECT_DOC : LEGACY_CONFIG_DOC;
     if (typeof name === "string" && name !== "") {
       // A workflow is one of the project's: the name may not reach anywhere else.
-      if (name.includes("/") || !isSafeItemId(name)) return { error: `${docName} names workflow "${name}", which is not the name of a workflow in ${WORKFLOWS_DIR}`, kind: "invalid" };
+      if (name.includes("/") || !isSafeItemId(name)) return { error: `${PROJECT_DOC} names workflow "${name}", which is not the name of a workflow in ${WORKFLOWS_DIR}`, kind: "invalid" };
       const named = installed.find((w) => w.name === name);
-      return named !== undefined ? { name, path: named.path } : { error: `${docName} names workflow "${name}", but ${WORKFLOWS_DIR} has no ${name}.geml`, kind: "invalid" };
+      return named !== undefined ? { name, path: named.path } : { error: `${PROJECT_DOC} names workflow "${name}", but ${WORKFLOWS_DIR} has no ${name}.geml`, kind: "invalid" };
     }
   }
   const names = installed.map((w) => w.name);

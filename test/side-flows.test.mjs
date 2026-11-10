@@ -52,7 +52,7 @@ test("read from the branch, a matter beside it still has its file, its name, its
 
 test("several workflows and no choice made: the one whose work item is no file is the default, the others run beside it", () => {
   const root = sideBySide();
-  rmSync(join(root, ".geml", "gemflow.geml"));
+  rmSync(join(root, ".geml", "project.geml"));
   assert.equal(hook(root, { op: "status" }).shell.status.workflow.name, "dev");
   assert.equal(hook(root, { op: "status", lastFile: ".geml/matters/logo.geml" }).shell.status.workflow.name, "matter");
 });

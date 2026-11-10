@@ -58,6 +58,8 @@ import { addWorkflow, bundledWorkflows, importWorkflow, projectWorkflows, sugges
 import { timelineOf } from "./timeline.js";
 import { flowPicture } from "./core/picture.js";
 import { runVerb } from "./verbs.js";
+import { writeSignoffs } from "./signoff.js";
+import type { Lang } from "./hosts/claude-code/text.js";
 import { dependsOf, fileUnitOf, itemProgress, loadWorkspace, openWorkspace, resolveWorkflow, sideFlows, workflowNameOf, type FlowCache, type Opened, type ShellView, type Workspace } from "./workspace.js";
 import type { Backfill, BoardData, BoardItem, BridgeRequest, BridgeResponse, CorrectionsView, Made, MadeAll, MadeAllEntry, MadeEntry, Artifacts, ShellStatus, TimelineEntry, TodoCount } from "./hosts/claude-code/protocol.js";
 
@@ -988,6 +990,11 @@ function answer(req: BridgeRequest): BridgeResponse {
     case "backfill-one": {
       const r = backfillOne(ws, root, req);
       return r.ok ? ok(ws.view(), { backfill: r.backfill }) : failed(r.reason);
+    }
+    case "signoff": {
+      const lang: Lang | undefined = req.lang === "zh" || req.lang === "en" || req.lang === "ja" ? req.lang : undefined;
+      writeSignoffs(root, req.ids, ...(lang !== undefined ? [lang] : []));
+      return ok(ws.view());
     }
     case "turn-ids": {
       const file = transcriptFiles(root, transcriptsRoot(req)).find((f) => f.id === req.session);

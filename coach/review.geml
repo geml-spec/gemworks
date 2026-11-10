@@ -1,0 +1,26 @@
+=== meta
+title   = "代码审查"
+profile = "geml-statechart/v1"
+===
+
+=== diagram {#flow format=geml-statechart caption="代码审查"}
+{
+  "initial": "scope",
+  "states": {
+    "scope":    { "title": "看全貌", "description": "这个改动该不该有、说明写清了没有", "judge": "model", "prevents": "细节审完才发现，这个改动本来就不该做" },
+    "core":     { "title": "先审主体", "description": "最主要的部分先看，设计问题先提", "judge": "model", "prevents": "设计问题拖到最后才说，前面都白改" },
+    "rest":     { "title": "看其余", "description": "其余文件和测试都看过", "judge": "model", "prevents": "只挑格式，不看功能和测试" },
+    "comments": { "title": "写意见", "description": "每条意见标明必须改还是可改可不改", "judge": "model", "prevents": "大问题和小意见混在一起，作者不知道先改哪个" },
+    "approve":  { "title": "批准", "description": "必须改的都改了，你说行", "judge": "you", "prevents": "问题没改完就合进去", "answers": ["行", "还要改"] },
+    "done":     { "title": "完成", "final": true }
+  },
+  "transitions": [
+    { "from": "scope",    "to": "core" },
+    { "from": "core",     "to": "rest" },
+    { "from": "rest",     "to": "comments" },
+    { "from": "comments", "to": "approve" },
+    { "from": "approve",  "to": "done", "approval": true },
+    { "from": "approve",  "to": "rest", "guard": "你说还要改" }
+  ]
+}
+===

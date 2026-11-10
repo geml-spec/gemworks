@@ -1103,6 +1103,32 @@ test('the version that runs is the one the board says; one synced and not loaded
   expect(await bandText($), 'the same version: nothing to reload').not.toMatch(/待重载/)
 })
 
+test('a reload as another version reads the light flows again: the session\'s state outlives the code, and the new code may ship other flows', async ($, on) => {
+  const w = world(on)
+  w.workflow = false
+  w.sessionsDir = LOGS
+  w.manifest = '0.3.0'
+  w.files.set(`${ROOT}/.geml/coach/bugfix.geml`, BUGFIX_JUDGED)
+  const clock = await start($, on)
+  await clock.settle()
+  const flowTab = async (): Promise<string> => {
+    const pane = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+    await pane.press({ key: 'tab-flow' })
+    const words = shown((await pane.drawn()) as unknown as Drawn).join(' ')
+    await pane.unmount()
+    return words
+  }
+  expect(await flowTab()).not.toContain('热修')
+  w.files.set(`${ROOT}/.geml/coach/hotfix.geml`, BUGFIX_JUDGED.replaceAll('bugfix', '热修'))
+  await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(await flowTab(), 'a reload as the same version: the flows read once a session').not.toContain('热修')
+  w.manifest = '0.3.1'
+  await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(await flowTab(), 'a reload as another version: read again').toContain('热修')
+})
+
 test('a reload with the board still up opens it again, so this module draws it and its presses work; a dialog left up is closed', async ($, on) => {
   const w = world(on)
   const pane = (id: string) => ({ id, title: id, isShown: true, isFocused: false, isPlaced: true })

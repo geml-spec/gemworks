@@ -234,7 +234,7 @@ test("apply(): mounted as a Cordis plugin, an agent is supervised the moment it 
 
 // -- the workflow is resolved like the CLI resolves it -----------------------
 
-test("several workflows and no choice: unsupervised; .geml/gemflow.geml names the one in force", async () => {
+test("several workflows and no choice: unsupervised; .geml/project.geml names the one in force", async () => {
   const w = await world();
   const config = { journalDir: join(w.dir, "journals"), onMissing: "skip" };
   putWorkflow(w.dir, "refund");
@@ -243,7 +243,7 @@ test("several workflows and no choice: unsupervised; .geml/gemflow.geml names th
   assert.equal(attach(w.ctx, w.agent, "startup", config), null, "two workflows: the CLI would ask for `gemworks use`, and so does this");
   assert.deepEqual(lines, ["warn: several workflows (other, refund): choose one with `gemworks use <name>`; leaving this agent unsupervised"], "a choice left unmade is worth a warning");
 
-  writeFileSync(join(w.dir, ".geml", "gemflow.geml"), '=== meta\nflow-workflow = "refund"\n===\n');
+  writeFileSync(join(w.dir, ".geml", "project.geml"), '=== meta\nflow-workflow = "refund"\n===\n');
   const a = attach(w.ctx, w.agent, "startup", config);
   assert.ok(a, "the config document chooses");
   assert.match(readJournal(readFileSync(a.journalPath, "utf8")).meta.workflow.replace(/\\/g, "/"), /\.geml\/workflows\/refund\/flow\.geml$/);
@@ -293,10 +293,10 @@ test("an unresolved workflow leaves the agent alone and the log says why", async
 test("a workflow the configuration names wrongly is a warning; no workflow at all stays a debug line", async () => {
   const w = await world();
   putWorkflow(w.dir, "refund");
-  writeFileSync(join(w.dir, ".geml", "gemflow.geml"), '=== meta\nflow-workflow = "gone"\n===\n');
+  writeFileSync(join(w.dir, ".geml", "project.geml"), '=== meta\nflow-workflow = "gone"\n===\n');
   const lines = captureLog(w);
   assert.equal(attach(w.ctx, w.agent, "startup", { journalDir: join(w.dir, "journals"), onMissing: "skip" }), null);
-  assert.deepEqual(lines, ['warn: .geml/gemflow.geml names workflow "gone", but .geml/workflows has no gone.geml; leaving this agent unsupervised']);
+  assert.deepEqual(lines, ['warn: .geml/project.geml names workflow "gone", but .geml/workflows has no gone.geml; leaving this agent unsupervised']);
   await w.dispose();
 });
 

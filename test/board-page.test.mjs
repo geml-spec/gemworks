@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse } from "@geml/geml";
 import { boardPage, literal } from "../dist/core/board-page.js";
-import { boardPath, boardText, writeBoard } from "../dist/board-file.js";
+import { boardLang, boardPath, boardText, writeBoard } from "../dist/board-file.js";
 import { coachFlowsAt, recordAsk, recordProposals, recordWork, workItemsAt } from "../dist/loop.js";
 import { recordDecisions, recordPrompt } from "../dist/session-store.js";
 import { gitRepo } from "./helpers/repo.mjs";
@@ -41,7 +41,7 @@ test("what waits on the person: the question with what to say, the step they jud
   recordProposals(root, { proposals: [{ kind: "new-flow", name: "spec", title: "写规范", steps: [step], why: "近 7 天纠正 10 次" }] }, AT);
   recordDecisions(root, "claude-code", "other", ["看板用 GEML 页面"], new Date().toISOString());
   const practices = [{ id: "p1", flow: "feature", step: "mockup", text: "样稿先画最简单的一版", why: "", at: AT, by: "model", layer: "project" }];
-  const page = boardText(root).replace(/^updated = .*$/m, "");
+  const page = boardText(root, new Date(), "zh").replace(/^updated = .*$/m, "");
   assert.deepEqual(errorsOf(page), [], "the page parses with no error, whatever the titles hold");
   const t = `\\#${item.id} ${literal("看板 | *粗* [x]")}`;
   assert.ok(page.includes(`| ${t} | 用哪个？ | 「GEML 页面」或「网页」 |`), "the question, its recommended answer first");
@@ -85,4 +85,18 @@ test("written into the main working tree's .geml, from a worktree too, and not a
   recordWork(wt, "codex", "cx1", { items: [{ title: "另一件", flow: "bugfix" }] }, AT);
   writeBoard(wt);
   assert.ok(readFileSync(path, "utf8").includes("另一件"), "something new: written again");
+});
+
+test("the board speaks the person's language: GEMWORKS_LANG, else the locale, else the system; the flows' words with it, ids and the person's own words as they are", () => {
+  assert.equal(boardLang({ GEMWORKS_LANG: "ja", LANG: "en_US.UTF-8" }), "ja");
+  assert.equal(boardLang({ LANG: "zh_CN.UTF-8" }), "zh");
+  assert.equal(boardLang({ LC_ALL: "en_GB.UTF-8", LANG: "zh_CN.UTF-8" }), "en");
+  assert.equal(boardLang({ LANG: "C.UTF-8" }), "en");
+  const root = gitRepo();
+  recordWork(root, "codex", "cx1", { items: [{ title: "看板", flow: "feature", needs: "你看样稿", next: "等你定" }] }, AT);
+  const page = boardText(root, new Date(), "en");
+  assert.deepEqual(errorsOf(page), [], "the English page parses with no error");
+  for (const words of ["Gemworks board", "# Yours {#waiting}", "| matter |","Mockup: You've seen it and said yes", "“Yes” or “Change it”", "**Mockup** → Build → Verify → You confirm", "No artifacts yet.", "# Other sessions' decisions {#decisions}"]) assert.ok(page.includes(words), words);
+  assert.ok(page.includes("看板") && page.includes("你看样稿"), "the person's own words stay as written");
+  assert.ok(!/[一-鿿]/.test(page.replace(/看板|你看样稿|等你定/g, "")), "no Chinese of the page's own left");
 });

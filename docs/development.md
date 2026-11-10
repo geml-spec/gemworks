@@ -13,6 +13,10 @@
   artifacts/                    copies of the files git does not keep, named by their content's hash
   journals/<item>.geml          one journal per work item: a branch, or one file of a set
   sessions/                     the project's session record, every host's sessions
+  coach/<name>.geml             the project's own light flows: a starter flow it changed, a flow it added
+  practices.geml                the project's practices, each on the step of a flow it belongs to
+  proposals.geml                the steps and kinds of work proposed, waiting for a yes or no
+  board.geml                    the GEML board page, for the hosts with no panel of their own
   exports/                      what the board exports
   .gitignore                    gemworks's own files, written by gemworks init: none of them goes into git
 .geml/                          in each checkout
@@ -21,11 +25,11 @@
 ```
 
 A project laid out the earlier way — a directory per workflow (`flow.geml`,
-`guide.geml`, `tools.geml`) and `.geml/gemflow.geml`, in the checkout — is
+`guide.geml`, `tools.geml`), in the checkout — is
 still read. A Claude Code session's first status, or `gemworks migrate`, moves
 it into the main checkout: each directory becomes one file with its guide's
-sections in it, its rows join `.geml/tools.geml`, and `gemflow.geml` becomes
-`project.geml`. What git tracks is copied and left where it is, for you to
+sections in it, its rows join `.geml/tools.geml`.
+What git tracks is copied and left where it is, for you to
 `git rm`; the rest goes to `~/.gemworks/trash/`. A journal started under an
 earlier `flow.geml` goes on under the file it moved to.
 
@@ -67,9 +71,10 @@ backlog; gemworks's own files stay out of git.
 ## Development
 
 ```sh
-npm install        # links @geml/geml from ../../geml-parser
-npm test           # tsc + the bundle + node --test
-npm run test:claude   # the hooks module under claude plugin test (needs the claude CLI)
+npm install           # @geml/geml from npm, and the hosts' packages the tests run against
+npm run build         # tsc + the bundle
+npm test              # the build, then every node:test suite (node test/all.mjs)
+npm run test:claude   # the build, then claude plugin validate and claude plugin test (needs the claude CLI)
 ```
 
 `npm run build` runs `tsc` and then bundles the CLI the Claude Code plugin
@@ -117,5 +122,7 @@ throw included; `src/attribution.ts` says which checkout and work item a call
 acts in. `src/hosts/claude-code/` is the Node-free side the hooks module
 imports: the request and answer types, the fast path, the readers of Claude
 Code's tool results, and the words of the band, the board and `/gemworks` as
-pure functions. `src/mcp.ts` serves the same verbs (`src/verbs.ts`) over stdio
-MCP.
+pure functions. `src/mcp.ts` serves the same verbs (`src/verbs.ts`) and the
+work loop's tools (`src/loop.ts`) over stdio MCP; `src/codex.ts` and
+`src/antigravity.ts` are those hosts' hooks, and `src/board-file.ts` writes the
+GEML board page they and `gemworks mcp` open.

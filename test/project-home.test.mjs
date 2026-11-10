@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -99,7 +99,8 @@ test("installedWorkflows: the home's files, then the earlier layout's directorie
     ["dev", join(home, ".geml", "workflows", "dev.geml")],
     ["matter", join(root, ".geml", "workflows", "matter", "flow.geml")],
   ]);
-  assert.equal(projectDocOf(root, home), join(root, ".geml", "gemflow.geml"), "the earlier document, the checkout's first");
+  rmSync(join(home, ".geml", "project.geml"));
+  assert.equal(projectDocOf(root, home), undefined, "a checkout's own document is not read: only the home's");
   writeFileSync(join(home, ".geml", "project.geml"), "=== meta\nflow-workflow = \"dev\"\n===\n");
   assert.equal(projectDocOf(root, home), join(home, ".geml", "project.geml"));
 });
@@ -120,7 +121,7 @@ test("a journal's workflow: named relative to the home; the earlier layout's nam
   assert.equal(workflowNameOf(root, join(root, ".geml", "workflows", "other", "flow.geml")), "other");
 });
 
-test("migrateLayout: each workflow directory becomes one file in the home, its dictionary the project's, gemflow.geml project.geml; what git does not track goes to the trash; a second run moves nothing", () => {
+test("migrateLayout: each workflow directory becomes one file in the home, its dictionary the project's; what git does not track goes to the trash; a second run moves nothing", () => {
   const root = tmp();
   const trash = tmp();
   withWorkflow(root, DEV, "dev");
@@ -128,11 +129,9 @@ test("migrateLayout: each workflow directory becomes one file in the home, its d
   const moved = migrateLayout(root, trash, root);
   assert.deepEqual(moved.map((m) => [m.from, m.to, m.kept]), [
     [join(root, ".geml", "workflows", "dev"), join(root, ".geml", "workflows", "dev.geml"), false],
-    [join(root, ".geml", "gemflow.geml"), join(root, ".geml", "project.geml"), false],
   ]);
   assert.ok(!existsSync(join(root, ".geml", "workflows", "dev")), "the directory is gone from the project");
   assert.ok(existsSync(join(moved[0].trashed, "flow.geml")), "and kept in the trash");
-  assert.ok(!existsSync(join(root, ".geml", "gemflow.geml")));
   assert.match(read(join(root, ".geml", "project.geml")), /flow-workflow = "dev"/);
   assert.ok(readDictionary(read(join(root, ".geml", "tools.geml"))).rows.some((r) => r.tool === "Bash(npm test)"), "the dictionary's rows are the project's");
   assert.equal(read(join(root, ".geml", ".gitignore")), GITIGNORE, "the earlier list is replaced");
@@ -179,7 +178,7 @@ test("migrateLayout leaves what git tracks where it is: copied into the home, re
   git(root, "add", ".geml");
   git(root, "commit", "-qm", "workflow");
   const moved = migrateLayout(root, trash, root);
-  assert.deepEqual(moved.map((m) => m.kept), [true, true]);
+  assert.deepEqual(moved.map((m) => m.kept), [true]);
   assert.ok(existsSync(join(root, ".geml", "workflows", "dev", "flow.geml")), "left where it is");
   assert.ok(existsSync(join(root, ".geml", "workflows", "dev.geml")));
   assert.equal(resolveWorkflow(root, {}).path, join(root, ".geml", "workflows", "dev.geml"), "the home's file wins");

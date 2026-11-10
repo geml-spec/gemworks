@@ -20,16 +20,16 @@ process.env.USERPROFILE = HOME;
 const AT = "2026-11-09T08:00:00.000Z";
 const events = (root, host, id) => parseLog(readFileSync(join(sessionsDirOf(root), logName(host, id)), "utf8"));
 
-test("the flows: the shipped four, a project's own copy of one in its place, and a flow the project added after them", () => {
+test("the flows: the shipped ten, a project's own copy of one in its place, and a flow the project added after them", () => {
   const root = gitRepo();
-  assert.deepEqual(coachFlowsAt(root).map((f) => f.name), ["design", "feature", "bugfix", "optimize"]);
+  assert.deepEqual(coachFlowsAt(root).map((f) => f.name), ["design", "feature", "bugfix", "optimize", "incident", "review", "research", "refactor", "docs", "analysis"]);
   const own = join(root, ".geml", "coach");
   mkdirSync(own, { recursive: true });
   const shipped = readFileSync(new URL("../coach/feature.geml", import.meta.url), "utf8");
   writeFileSync(join(own, "feature.geml"), shipped.replace(/"title":\s*"样稿"/, '"title": "画样稿"'));
   writeFileSync(join(own, "writing.geml"), shipped.replace(/^title\s*=.*$/m, 'title = "写文章"'));
   const flows = coachFlowsAt(root);
-  assert.deepEqual(flows.map((f) => f.name), ["design", "feature", "bugfix", "optimize", "writing"]);
+  assert.deepEqual(flows.map((f) => f.name), ["design", "feature", "bugfix", "optimize", "incident", "review", "research", "refactor", "docs", "analysis", "writing"]);
   assert.equal(flows.find((f) => f.name === "feature").states[0].title, "画样稿", "the project's own copy, not the shipped one");
 });
 

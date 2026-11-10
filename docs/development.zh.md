@@ -13,6 +13,10 @@
   artifacts/                    git 不留的文件的副本，按内容哈希命名
   journals/<item>.geml          每个工作项一本 journal：一个分支，或一组文件中的一个
   sessions/                     项目的会话记录，各家宿主的会话都在这里
+  coach/<name>.geml             项目自己的轻流程：改过的起步流程、加的流程
+  practices.geml                项目的做法，各挂在它所属流程的那一步上
+  proposals.geml                提议加的步骤和新的一类活，等你说行或不行
+  board.geml                    一页 GEML 看板，给没有自己面板的宿主
   exports/                      看板导出的文件
   .gitignore                    gemworks 自己的文件，由 gemworks init 写出：它们都不进 git
 .geml/                          在每个检出里
@@ -20,10 +24,10 @@
   backlog.geml                  backlog 表
 ```
 
-旧布局——检出里每个流程一个目录（`flow.geml`、`guide.geml`、`tools.geml`）加
-`.geml/gemflow.geml`——照样能读。Claude Code 会话的第一次 status，或者
+旧布局——检出里每个流程一个目录（`flow.geml`、`guide.geml`、`tools.geml`）——
+照样能读。Claude Code 会话的第一次 status，或者
 `gemworks migrate`，会把它搬进主检出：每个目录合成一个文件、guide 的各节并进去，
-词典的行并进 `.geml/tools.geml`，`gemflow.geml` 改名 `project.geml`。git 跟踪着的
+词典的行并进 `.geml/tools.geml`。git 跟踪着的
 只复制、留在原处，由你 `git rm`；其余的挪进 `~/.gemworks/trash/`。在旧 `flow.geml`
 下开始的 journal，接着在它搬去的那个文件下走。
 
@@ -57,9 +61,10 @@ gemworks 自己的文件不进 git。
 ## 开发
 
 ```sh
-npm install        # 把 @geml/geml 链到 ../../geml-parser
-npm test           # tsc + 打包 + node --test
-npm run test:claude   # 在 claude plugin test 下跑 hooks 模块（需要 claude CLI）
+npm install           # 从 npm 装 @geml/geml，以及测试要对照的各宿主的包
+npm run build         # tsc + 打包
+npm test              # 构建，再跑全部 node:test 套件（node test/all.mjs）
+npm run test:claude   # 构建，再 claude plugin validate 与 claude plugin test（需要 claude CLI）
 ```
 
 `npm run build` 先跑 `tsc`，再打包 Claude Code 插件启动的 CLI：`dist/gemworks.mjs` 和它加载的
@@ -94,4 +99,6 @@ Claude Code 外壳也按这条规矩分在桥的两侧。`src/bridge.ts` 是 `ge
 一次调用作用在哪个检出、哪个工作项。`src/hosts/claude-code/` 是 hooks 模块 import 的、
 不依赖 Node 的一侧：请求与应答的类型、快路径、读 Claude Code 工具结果的函数，以及
 状态带、看板与 `/gemworks` 的文字——都是纯函数。`src/mcp.ts` 用 stdio MCP 提供同样的
-动词（`src/verbs.ts`）。
+动词（`src/verbs.ts`）和工作循环的工具（`src/loop.ts`）；`src/codex.ts` 与
+`src/antigravity.ts` 是这两家的 hooks，`src/board-file.ts` 写出它们和 `gemworks mcp` 打开的
+那一页 GEML 看板。

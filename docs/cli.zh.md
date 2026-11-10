@@ -20,7 +20,13 @@ usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmar
   rollback [<rev>|checkpoint]             a person restores an earlier revision's state and variables
   run [--profile name] <task>             add the bundle to a dsh profile and run the task there
   hook                                    the Claude Code bridge: one JSON request on stdin, one answer on stdout
-  mcp [--host h] [--root dir]             the three model tools over stdio MCP (host default: mcp)
+  codex                                   the Codex hook: one event on stdin, its answer on stdout (exit 0 always)
+  antigravity <Event> | install           the Antigravity editor's hook (one event on stdin), or put its hooks and MCP server in place
+  mcp [--host h] [--root dir]             the model's tools over stdio MCP (host default: mcp)
+  corrections [--baseline a..b] [--trial a..b] [--since day] [--by work] [--json]
+                                          how often you corrected the agent, per 100 prompts, by kind and by week
+  corrections guide | pending [--limit n] | label [file] [--import]
+                                          the labelling guide; your prompts not labelled yet (JSONL); labels written back
 ```
 
 - `check` 先跑 `geml check`，再跑状态机的检查（`statechart-*`：没有初始状态、转换指向
@@ -52,11 +58,22 @@ usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmar
   `eval`、命令替换里——在每个状态都会在执行前被拒，这次拒绝记进 journal。
 - `hook` 是 Claude Code 插件的桥：hooks 模块往它的 stdin 写一个 JSON 请求，从
   stdout 读一行应答。
-- `mcp` 用 stdio MCP 提供 `status`、`move`、`set` 三个工具，给没有自己的 Gemworks 外壳的
-  宿主用（`--host` 指定词典里的 `Bash(…)` 键对应哪个宿主的工具名，默认 `mcp`，它不跑
-  任何命令）。在这种宿主上看不到任何工具调用：`tool` 证据永远写不了，什么都不拒。
-  `status` 回答之前会重新读一遍 git 和文件变量，并带上阶段的文字；改变了阶段的 `move`
-  把新阶段的文字附在结果后面。
+- `codex` 是 Codex 插件的 hook（[Codex](hosts.zh.md#codex)）：stdin 一个事件，stdout 给
+  应答，不论出什么事都以 0 退出。
+- `antigravity <Event>` 是 Antigravity 编辑器的 hook，stdin 一个事件；`antigravity install`
+  把它的 hooks 写进 `~/.gemini/config/hooks.json`，把 MCP 服务写进
+  `~/.gemini/config/mcp_config.json`。
+- `mcp` 用 stdio MCP 提供模型可调的工具——固化流程的 `status`、`move`、`set`，`note`，
+  以及工作循环的 `work`、`practice`、`propose`、`answer`、`ask`、`artifact`——给没有自己的
+  Gemworks 外壳的宿主用（`--host` 指定词典里的 `Bash(…)` 键对应哪个宿主的工具名，默认
+  `mcp`，它不跑任何命令）。在这种宿主上看不到任何工具调用：`tool` 证据永远写不了，什么都
+  不拒。`status` 回答之前会重新读一遍 git 和文件变量，并带上阶段的文字、进行中的工作项和
+  这一步的做法；改变了阶段的 `move` 把新阶段的文字附在结果后面。模型记下的东西会重写那一页
+  GEML 看板 `.geml/board.geml`（见 [hosts.zh.md](hosts.zh.md) 的「其他宿主（MCP）」一节）。
+- `corrections` 是你的纠正账本：不带子命令时，按每 100 条提示词算你纠正了 agent 几次，
+  拿一段基线期对比一段试用期（默认是本周之前的八周和本周），按纠正的种类、按周分开，
+  加 `--by work` 再按活的种类分开。`guide` 打印归类指南，`pending` 把还没归类的提示词按
+  JSON 行打出来，`label` 把填好归类的这些行收回去。
 - `run` 是唯一会伸到这个包外面的动词：它在 PATH 上找 `dsh`（找不到就退回
   `npx -y @deepseek-ai/dsh`），把 bundle 加进 profile（不指定就是 `headless`），然后
   把任务交过去，并把 dsh 的退出码原样传回。加失败时它把 dsh 自己的话打出来，再给出
@@ -109,8 +126,9 @@ CLI 每个工作项一本 journal。coding 流程（`flow-unit = "branch"`，默
 ### 切换流程
 
 `gemworks use <name>` 改的是默认流程：**新**工作项在哪份流程下开始。已有 journal 的
-工作项继续用它的 journal 开始时的那份流程，所以 `use` 不需要提醒什么；状态带、看板
-和 `gemworks status` 在工作项的流程不是默认流程时会点名：
+工作项继续用它的 journal 开始时的那份流程，所以 `use` 不需要提醒什么；`gemworks status`
+和 `/gemworks` 在工作项的流程不是默认流程时会点名，看板的流程页显示的就是这个工作项
+自己的流程：
 
 ```
 $ gemworks use dev

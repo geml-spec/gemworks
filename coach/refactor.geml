@@ -1,0 +1,24 @@
+=== meta
+title   = "重构"
+profile = "geml-statechart/v1"
+===
+
+=== diagram {#flow format=geml-statechart caption="重构"}
+{
+  "initial": "covered",
+  "states": {
+    "covered": { "title": "先有测试", "description": "要动的代码有测试兜着，现在全绿", "judge": "fact", "expires": true, "prevents": "没有测试兜底，改坏了也不知道" },
+    "steps":   { "title": "小步改", "description": "只改结构不加功能，每步都跑测试", "judge": "model", "prevents": "边重构边加功能，出了问题分不清是哪边引起的" },
+    "same":    { "title": "行为没变", "description": "测试通过", "judge": "fact", "expires": true, "prevents": "名为重构，其实改了行为" },
+    "confirm": { "title": "你确认", "description": "你看过说更好懂了", "judge": "you", "prevents": "改完反而更难懂", "answers": ["行", "要改"] },
+    "done":    { "title": "完成", "final": true }
+  },
+  "transitions": [
+    { "from": "covered", "to": "steps" },
+    { "from": "steps",   "to": "same" },
+    { "from": "same",    "to": "confirm" },
+    { "from": "confirm", "to": "done", "approval": true },
+    { "from": "confirm", "to": "steps", "guard": "你要改" }
+  ]
+}
+===

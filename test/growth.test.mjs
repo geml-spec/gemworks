@@ -49,7 +49,8 @@ test("a flow changed by a proposal: a step added after another, the way on throu
 
 test("gemworks proposes taking out a step skipped in most of a flow's recent finished items; one declined is not proposed again", () => {
   const done = (n, met) => item({ id: `d${n}`, status: "done", at: `2026-10-2${n}T00:00:00Z`, met: met.map((s) => m(s)) });
-  const items = [done(1, ["fix", "verify", "confirm"]), done(2, ["fix", "verify", "confirm"]), done(3, ["fix", "verify", "confirm"]), done(4, ["reproduce", "fix", "verify", "confirm"]), done(5, ["fix", "verify", "confirm"])];
+  const rest = ["rootcause", "failtest", "fix", "verify", "confirm"];
+  const items = [done(1, rest), done(2, rest), done(3, rest), done(4, ["reproduce", ...rest]), done(5, rest)];
   assert.deepEqual(skippedSteps(items, flows, []), [{ flow: "bugfix", step: "reproduce", skipped: 4 }]);
   assert.deepEqual(skippedSteps(items.slice(1), flows, []), [], "fewer than five finished: too few to tell");
   assert.deepEqual(skippedSteps(items, flows, [{ id: "k", kind: "remove-step", flow: "bugfix", remove: "reproduce", why: "", at: "x", by: "gemworks", status: "declined" }]), []);

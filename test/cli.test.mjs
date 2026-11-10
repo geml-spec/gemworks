@@ -133,7 +133,7 @@ function repo() {
 function installWorkflow(dir, name, text) {
   mkdirSync(join(dir, ".geml", "workflows", name), { recursive: true });
   writeFileSync(join(dir, ".geml", "workflows", name, "flow.geml"), text);
-  writeFileSync(join(dir, ".geml", "gemflow.geml"), `=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "${name}"\n===\n`);
+  writeFileSync(join(dir, ".geml", "project.geml"), `=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "${name}"\n===\n`);
 }
 
 // a -> b by hand; b -> c on its own once a person ticks `ok`.

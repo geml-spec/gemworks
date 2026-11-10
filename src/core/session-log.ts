@@ -37,14 +37,28 @@ export type SessionEvent =
 /** Where a work item stands: on its way, put aside by the person, finished, or given up. */
 export type ItemStatus = "open" | "held" | "done" | "dropped";
 
-/** A step whose leave requirement is met: when, in which turn, and how a step the person judges was met — their words, or their press. */
-export interface MetStep { step: string; at: string; turn: number; said?: string; pressed?: boolean }
+/**
+ * A step whose leave requirement is met: when, in which turn, and how — a step the person judges by their words or
+ * their press (`said` then holds the button's words); a fact step by what proves it as the model gave it
+ * (`evidence`), and the run this session saw that matches it (`seen`).
+ */
+export interface MetStep { step: string; at: string; turn: number; said?: string; pressed?: boolean; evidence?: string; seen?: SeenRun }
+
+/** A command this session ran and how it ended: what a fact step's evidence is checked against. */
+export interface SeenRun { command: string; exit: number; at: string }
+
+const isSeenRun = (v: unknown): v is SeenRun => {
+  if (typeof v !== "object" || v === null) return false;
+  const r = v as Record<string, unknown>;
+  return typeof r["command"] === "string" && typeof r["exit"] === "number" && typeof r["at"] === "string";
+};
 
 const isMetStep = (v: unknown): v is MetStep => {
   if (typeof v !== "object" || v === null) return false;
   const m = v as Record<string, unknown>;
+  const text = (k: string): boolean => m[k] === undefined || typeof m[k] === "string";
   return typeof m["step"] === "string" && typeof m["at"] === "string" && typeof m["turn"] === "number"
-    && (m["said"] === undefined || typeof m["said"] === "string") && (m["pressed"] === undefined || typeof m["pressed"] === "boolean");
+    && text("said") && (m["pressed"] === undefined || typeof m["pressed"] === "boolean") && text("evidence") && (m["seen"] === undefined || isSeenRun(m["seen"]));
 };
 
 const safe = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, "-");

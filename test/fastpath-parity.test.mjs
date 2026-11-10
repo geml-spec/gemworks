@@ -30,7 +30,7 @@ function project() {
   const root = mkdtempSync(join(tmpdir(), "gemworks-parity-"));
   mkdirSync(join(root, ".geml", "workflows"), { recursive: true });
   cpSync(FX, join(root, ".geml", "workflows", "par"), { recursive: true });
-  writeFileSync(join(root, ".geml", "gemflow.geml"), '=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "par"\n===\n');
+  writeFileSync(join(root, ".geml", "project.geml"), '=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "par"\n===\n');
   return root;
 }
 const open = (root) => {
@@ -218,7 +218,7 @@ test("elsewhere: every call the hooks module keeps on the session's policy, the 
   const g = (cwd, ...a) => { const r = spawnSync("git", ["-C", cwd, ...a], { encoding: "utf8" }); assert.equal(r.status, 0, r.stderr); };
   mkdirSync(join(root, ".geml", "workflows"), { recursive: true });
   cpSync(FX, join(root, ".geml", "workflows", "par"), { recursive: true });
-  writeFileSync(join(root, ".geml", "gemflow.geml"), '=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "par"\n===\n');
+  writeFileSync(join(root, ".geml", "project.geml"), '=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "par"\n===\n');
   g(root, "add", ".geml");
   g(root, "commit", "-q", "-m", "workflow");
   const wt = join(root, ".claude", "worktrees", "w");

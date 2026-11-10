@@ -8,52 +8,60 @@
 
 ```text
 /plugin marketplace add geml-spec/geml
-/plugin marketplace add geml-spec/gemworks
-/plugin install gemworks@gemworks
+/plugin install gemworks --marketplace geml-spec/gemworks
 ```
 
-在会话的输入框里逐行输入，最后一行装的时候选范围。第一行加的是 GEML 自己的插件市场：
-gemworks 依赖 geml 插件，加了这个市场，装 gemworks 时会一并装上 geml；没加的话
-gemworks 能装上，但加载不起来。gemworks 市场里的条目从 npm 装已发布的 `gemworks` 包。
-在命令行里用 `claude plugin marketplace add …` 和 `claude plugin install gemworks@gemworks`
-也一样。
+在会话的输入框里逐行输入（Claude Code 2.1.275 以上），装的时候选范围。第一行加的是
+GEML 自己的插件市场：gemworks 依赖 geml 插件，加了这个市场，装 gemworks 时会一并装上
+geml；没加的话 gemworks 能装上，但加载不起来。第二行加上 gemworks 的市场并安装，这个市场
+里的条目从 npm 装已发布的 `gemworks` 包。在命令行里依次用
+`claude plugin marketplace add geml-spec/geml`、
+`claude plugin marketplace add geml-spec/gemworks`、
+`claude plugin install gemworks@gemworks` 也一样。
 
 装上之后：
 
-- **输入框上方常驻一行**，终端和桌面 app 都有：
-  `G · ⧗ feat/rate-limit · review · ci-pass ✓ · pr-merged ✓ · → #deploy 需批准  [批准] [打回 build] [待处理 3]`
-  ——GEML 的 G 标、工作项、阶段、下一道通行要求读的变量、下一步以及它在等什么；然后是
-  此刻最紧要的一两个动作（批准或打回、勾上、放行一次、继续、重试）和红色的待处理计数，
-  点它打开看板的待处理页；有流程时这一行末尾总有一个「看板」按钮。问不了 gh 时有一段黄色说明；工作项的流程不是默认流程时点名
-  它；暂停了会说。在默认分支上显示 `⧗ main · not tracked (work items are branches)`；
-  项目里没有流程时写"没有流程"，并按目录里有什么建议一个内置流程（有 geml-media 文档或
-  `episodes/` 建议 video；有 wrangler、fly、vercel、Dockerfile 一类部署配置建议 dev；有
-  package.json、Cargo.toml 一类构建清单建议 coding；都没有建议 dev），一个按钮加上它，
-  另一个打开设置选别的；桥接还没应答时写"启动中"。文字跟着偏好语言或系统语言走：
-  中文、English、日本語。
-- **`/gemworks`**：当前状态；`/gemworks board [标签]` 打开看板；`/gemworks pause`、
-  `/gemworks resume` 暂停、继续工作项；`/gemworks use <流程>` 改默认流程；`/gemworks add`
-  列出内置流程，`/gemworks add <流程>` 把一份复制进 `.geml/workflows/`——项目还没有流程
-  时同时设为默认流程，否则提示用 `/gemworks use`。
-- **看板**，六个标签页，打开停在待处理：待处理（只有你能做的事——通行要求已满足的
-  批准、要勾的变量、模型在同一个键上反复被拒、桥接坏了——每项带按钮）、
-  工作项（先是当前工作项的产物——`#result` 一节、写过的文件、提交——再是按结局分组的
-  工作项：在做、已合并、已收尾、放下，各带 worktree、提交数和 PR；已合并但 worktree
-  或分支还在的，出一张收尾卡片，确认后由模型在提交都进了 main 时删掉两者；然后是
-  backlog）、记录（顶部"自上次之后"的
-  摘要，然后是最新在前的 journal，可筛选；一条展开能看凭什么、哪次调用、在哪份内容上、
-  还算不算数）、流程（从模型画出的流程图，叠着运行时：一层一行状态盒子，当前阶段强调色，阶段里的工作项数做角标；每层下面一行一条出边，标着条件成不成立，现在能走的边是带数字热键的按钮——桌面、编辑器、手机、终端都一样；然后是时钟、人勾选的变量）、工具（词典每一行
-  在当前状态的处境，能就地改的都有按钮，输入框加一行）、会话（你发过的 prompt 按当时阶段
-  分组，附这一轮做了什么；勾中一条可以定位到对话里那一处，或交给模型用随附的
-  `split-session` skill 把它和之后的轮次、或只它这一轮拆成单独的会话，原会话先备份；
-  每个会话标题旁的「导出」把记录导出为 GEML，先问存到哪：下载、桌面、本项目的
-  `.geml/exports/`，或自己填的文件夹、文件）。头部常驻分享（现在在哪、记录、
-  本会话、流程——复制文字、写到 `.geml/exports/`、或发 PR 评论）、设置（桌面提醒、状态带
-  显示什么、默认流程、添加内置流程或从路径导入、偏好语言）、升级、关于。
-- **模型可调的三个工具**：`status`、`move`、`set`，列为 `mcp__gemworks__status`、
-  `mcp__gemworks__move`、`mcp__gemworks__set`。它们的 schema 不随状态变，prompt 缓存不会
-  因此失效。调用它们从不被闸拒；动词自己的规矩——三种判断者、带 source 的变量——
-  照样生效。
+- **输入框上方常驻一行**，终端和桌面 app 都有：Gemworks 的标志，然后是此刻轮到你的
+  那一件事——回答末尾提的问题、只有你能判的一步、固化流程里要批准或要勾的变量、模型在
+  一次被拒的调用上卡住、桥接坏了——带至多三个选项按钮，主选项在前；不点，直接打字回答
+  也行。还有别的事在等时，`还有 N 件` 点开看板。没有事等你时，写模型在做什么（`我在做`）
+  和工作项走到哪一步；暂停了的工作项只给「继续」。右边是今天新学到几条做法、有几条提议
+  在等（点了都打开流程页），然后是「看板」按钮，桌面 app 上旁边还有截图按钮。第一次读
+  这个项目以前的会话时，这一行显示读到第几个。项目里没有自己的流程时用轻流程，所以这一行
+  从不说缺流程；桥接还没应答时写"启动中"。文字跟着偏好语言或系统语言走：中文、English、
+  日本語。
+- **`/gemworks`**：当前状态；`/gemworks board [标签]` 打开看板（`sessions`、`items`、
+  `made`、`flow`、`tools`）；`/gemworks pause`、`/gemworks resume` 暂停、继续工作项；
+  `/gemworks use <流程>` 改默认的固化流程；`/gemworks add` 列出内置的固化流程，
+  `/gemworks add <流程>` 把一份复制进 `.geml/workflows/`——项目还没有固化流程时同时设为
+  默认流程，否则提示用 `/gemworks use`；`/gemworks trace on|off` 把点击和画面记到
+  `.geml/trace.log`，排查看板问题时用。项目里没有固化流程时，`/gemworks` 说明它在用轻流程，
+  并按目录里有什么建议一个内置的固化流程（有 geml-media 文档或 `episodes/` 建议 video；
+  有 wrangler、fly、vercel、Dockerfile 一类部署配置建议 dev；有 package.json、Cargo.toml
+  一类构建清单建议 coding；都没有建议 dev）。
+- **看板**，五个页签，打开停在「工作项」。**会话**：本会话的每一轮，问了什么、做了什么；
+  一轮可以定位到对话里那一处，「整理」里勾中的轮次可以用随附的 `split-session` skill 拆成
+  单独的会话或删掉，原会话先备份；然后是这个项目的其他会话、项目的 Claude Code 记忆、
+  各会话定下的事。每个会话标题旁的「导出」把记录导出为 GEML，先问存到哪：下载、桌面、
+  本项目的 `.geml/exports/`，或自己填的文件夹、文件。**工作项**：最上面是等你的事，
+  每项带按钮（一个问题、只有你能判的一步、通行要求已满足的批准、要勾的变量、模型在一次
+  被拒的调用上卡住、桥接坏了）；然后是进行中的工作项，各走到哪一步、还差什么；再是固化
+  流程按结局分组的工作项——在做、已合并、已收尾、放下，各带 worktree、提交和 PR；已合并
+  但 worktree 或分支还在的，出一张收尾卡片——以及 backlog。**产物**：项目里做出来的一切，
+  不论哪个工作项做的——文件、提交、页面、链接——按版本列着，点开就看。**流程**：每条
+  流程有哪几步、每一步防什么坑、上面挂着哪些做法、有哪些提议在等；「固化流程」下面是从
+  模型画出的流程图，叠着运行时——现在能走的出边是带数字热键的按钮，桌面、编辑器、手机、
+  终端都一样——标题旁可以展开添加内置的固化流程，或从路径导入一份。**工具**：词典每一行
+  在当前状态的处境，能就地改的都有按钮，输入框加一行。头部常驻分享（现在在哪、一条流程、
+  本会话、或固化流程里这个工作项的记录——复制文字、写到 `.geml/exports/`、或发 PR 评论）、
+  设置（偏好语言、打字回答状态带上的问题、从你的纠正里学、桌面提醒）、升级、关于。
+- **模型可调的工具**，列为 `mcp__gemworks__<名字>`：`work`（这一轮涉及的工作项）、`note`
+  （这一轮定下的事，给项目的其他会话看）、`practice`（学到的做法，挂在它所属的那一步上）、
+  `propose`（提议加一步或一类新活，由你在流程页上同意）、`ask`（这一轮末尾的问题，挂到
+  状态带上）、`artifact`（gemworks 自己看不到的链接或生成的文件）、`rule`（你在一条做法上
+  点了「改成规定」之后才用）；固化流程还有 `status`、`move`、`set`。它们的 schema 不随
+  状态变，prompt 缓存不会因此失效。调用 `status`、`move`、`set` 从不被闸拒；动词自己的
+  规矩——三种判断者、带 source 的变量——照样生效。
 - **词典里没有行的工具照常放行，不问人**：它安不安全，由宿主自己的权限系统按实际参数判断。
   词典只回答"这是哪个用途"，从而决定它在哪些阶段能用；要拒绝或绑定，在看板或
   `.geml/tools.geml` 里写一行。绑到某个用途、但该用途的首选是另一个工具（`default` = `yes`）
@@ -64,7 +72,7 @@ gemworks 能装上，但加载不起来。gemworks 市场里的条目从 npm 装
   带上。在另一个检出（子 agent 的 worktree）里的工具调用按那个检出的工作项裁决，它的
   阶段交给在那里干活的子 agent。`/clear` 之后的下一次提交重新带上。
 
-在仓库里开始用：`/gemworks add dev`（或 `npx -y gemworks init --template dev`），
+要加一条固化流程，从 `/gemworks add dev`（或 `npx -y gemworks init --template dev`）开始，
 再把 `.geml/tools.geml` 改成项目的测试与部署命令、把 `.geml/workflows/dev.geml` 里各阶段的文字改成项目自己的约定——
 [开发流程](workflows.zh.md#开发流程)一节把它走一遍。
 
@@ -86,8 +94,8 @@ gemworks 能装上，但加载不起来。gemworks 市场里的条目从 npm 装
 
 **这里的用途是什么。** Claude Code 不能把工具从模型的工具表里拿掉，所以阶段的文字
 写明本状态声明了哪些用途、每个绑到哪个工具（`Tools here:` 之后每个用途一行：
-`edit: Edit`、`test: Bash(npm test)`）——模型看得见的告示牌；调用绑到本状态没声明的
-用途的工具，在调用时、执行之前被拒
+`edit: Edit`、`test: Bash(npm test)`）——模型看得见的告示牌；调用绑到封路用途（写在
+状态的 `rules` 里的用途）、而本状态没声明这个用途的工具，在调用时、执行之前被拒
 （`gemworks: Edit is edit, which is used only in #implement; the workflow is in
 #explore`），并记为 `#refused-N`。拒绝时会点出每个状态都允许的那条出路：切换工作项
 （`git switch`、`git checkout -b`、`git worktree add`、`cd`）。只许人做的命令
@@ -106,21 +114,22 @@ glob——插件只在调用可能被拒或被记时才在调用前问 CLI，只
 在本仓库里开发这个插件：
 
 ```sh
-cd integrations/gemworks && npm install && npm run build
-cd ../.. && claude --plugin-dir integrations/gemworks
-cd integrations/gemworks && npm run test:claude   # claude plugin validate + claude plugin test
+npm install && npm run build
+claude --plugin-dir .
+npm run test:claude   # 构建，再 claude plugin validate + claude plugin test
 ```
 
 ### 其他宿主（MCP）
 
-`gemworks mcp` 用 stdio MCP 提供同样的三个工具；在宿主的 MCP 配置里登记为
-`npx -y gemworks mcp --host <宿主>`（宿主在项目之外启动服务时加 `--root <目录>`）。
-skill `skills/gemworks-mcp/SKILL.md` 要求模型每轮先读阶段（`status`，或
-`.geml/context.geml` 的 `#current`）——这类宿主没有把它交给模型的通道。这类宿主
-没有的：
+`gemworks mcp` 用 stdio MCP 提供模型可调的工具：工作循环的 `work`、`practice`、
+`propose`、`answer`（照你对一条提议的回答去做）、`ask`、`artifact`，`note`，以及固化流程的
+`status`、`move`、`set`。在宿主的 MCP 配置里登记为 `npx -y gemworks mcp --host <宿主>`
+（宿主在项目之外启动服务时加 `--root <目录>`）。skill `skills/gemworks-mcp/SKILL.md`
+要求模型每轮先调用 `status`——阶段、进行中的工作项、这一步的做法都在里面——这类宿主
+没有把它们交给模型的通道。这类宿主没有的：
 
-- 没有输入框上方那一行，也没有看板；人在终端里用 `gemworks advance` 与 `gemworks mark`
-  推进流程、勾变量。
+- 没有输入框上方那一行，也没有看板面板：看板是下面那一页 GEML，上面没有按钮，所以人在
+  终端里用 `gemworks advance` 与 `gemworks mark` 推进固化流程、勾变量。
 - Gemworks 看不到宿主的任何工具调用，所以 `tool` 证据永远写不了、什么都不拒——封路的
   用途与只许人做的命令都一样。通行要求不论谁推进都生效，`gemworks advance` 也一样，所以
   通行要求要读 `tool` 证据的转换，只有在它也接受一个人勾的变量时才走得了：开发流程的
@@ -130,22 +139,50 @@ skill `skills/gemworks-mcp/SKILL.md` 要求模型每轮先读阶段（`status`�
   结果后面。
 - 模型走标了 `approval` 的转换会被拒，与 Claude Code 上一样。
 
+**一页 GEML 看板。** 没有自己面板的宿主拿到项目主检出里的 `.geml/board.geml`：等你定的事、
+工作项、产物、流程，还有别的会话定下的事。模型每次用这些工具记下东西都会重写它（Codex 和
+Antigravity 上每条提示词、每轮结束时也重写），每个会话打开一次：会话开始时有进行中的
+工作项就打开，否则在第一次记下东西时打开；`GEMWORKS_OPEN_BOARD=0` 只写不打开。语言按
+`GEMWORKS_LANG`（`zh`、`en` 或 `ja`），没设就按系统语言。在 VS Code 一类的编辑器里装上
+GEML 扩展，侧边打开就能看，文件一改自动刷新；也可以用 Chrome 的 GEML Viewer 看，不过要
+手动刷新。这页上没有按钮，要你定的事直接在对话里回答。
+
 ### Codex
 
-Codex 照上面拿到三个 MCP 工具，hooks 信任之后还拿到闸：插件的
-`.codex-plugin/plugin.json` 指向同一份 `skills/`、`codex/mcp.json`
-（`gemworks mcp --host codex`）和 `codex/hooks.json`——SessionStart、UserPromptSubmit、
-PreToolUse、PostToolUse、Stop 都跑 `node "${PLUGIN_ROOT}/dist/gemworks.mjs" codex`。从本仓库的
-Codex marketplace（`.agents/plugins/marketplace.json`，本地来源，先在
-`integrations/gemworks` 里 `npm run build`）装：Codex 里 `/plugins` 安装，再 `/hooks`
+Codex 照上面拿到 MCP 工具和那一页 GEML 看板，hooks 信任之后还拿到每条提示词旁的工作循环
+和闸：插件的 `.codex-plugin/plugin.json` 指向 `host-skills/`、`codex/mcp.json`
+（`node ./dist/gemworks.mjs mcp --host codex`）和 `codex/hooks.json`——SessionStart、
+UserPromptSubmit、PreToolUse、PostToolUse、Stop 都跑 `node "${PLUGIN_ROOT}/dist/gemworks.mjs" codex`。
+从本仓库的 Codex marketplace（`.agents/plugins/marketplace.json`，本地来源，就是仓库本身，
+先在仓库里 `npm install`、`npm run build`）装：Codex 里 `/plugins` 安装，再 `/hooks`
 逐条审阅、信任这五个 hook——装插件不等于信任，没信任的 hook 一声不响地跳过。
 
-hooks 信任之后，Codex 上有的就是 Claude Code 上的减去状态带和看板：阶段文字在会话开始、
-变化之后的下一条 prompt、以及改变了它的那次调用的结果里交给模型；封路用途或只许人做的命令
+hooks 信任之后，Codex 上有的就是 Claude Code 上的减去状态带和看板面板：会话开始时告诉
+模型工作循环的工具和各条流程的步骤，有进行中的工作项就打开那一页看板；每条提示词带上
+进行中的工作项、当前这一步的做法和别的会话新定下的事；改了东西却没报工作项的一轮，在
+结束时被打回一次；阶段文字在会话开始、变化之后的下一条 prompt、以及改变了它的那次调用的
+结果里交给模型；封路用途或只许人做的命令
 被拒并说明原因；词典里没有行的工具照常放行；工具的默认参数补齐；补丁写的文件，以及回合结束时的回答和这一轮的提交，记进项目的会话记录；退出码是证据的 shell 命令被包一层、把退出码打印在输出末尾
 （`[gemworks exit N]`，调用后读回来——Codex 的结果不带退出码；命令自己的退出状态照样到
 Codex；Windows 上不包）。这里的编辑器是 `apply_patch`：内置词典把它绑到 `edit`，补丁
 只按路径判断，不扫它的文本。
+
+### Antigravity
+
+```sh
+npm install -g gemworks
+gemworks antigravity install
+```
+
+第二行把 gemworks 的 hooks 写进 `~/.gemini/config/hooks.json`，把 gemworks 的 MCP server 写进
+`~/.gemini/config/mcp_config.json`，两处都指向刚装的这份 `gemworks`；它会打印这两个文件的路径。
+Antigravity 的 App、CLI 和 IDE 共用这套 hooks。
+
+装上之后，模型用 MCP 工具记工作项、做法、提议、产物和定下的事；会话开始时 hook 交代这些工具和
+流程的步骤，每条提示词旁边带上进行中的工作项、这一步的做法和别的会话新定下的事。工作台是上面那页
+GEML 看板（`.geml/board.geml`），每条提示词和每轮结束时重写。和 Codex 一样，没有状态带和看板按钮，
+要你定的事在对话里回答；「改成规定」和从纠正里学的纠正账本这里都没有。geml 插件目前没有 Antigravity
+版，看这页看板要用 VS Code 一类编辑器（Antigravity IDE 也行）的 GEML 扩展，或者 Chrome 的 GEML Viewer。
 
 ### DeepSeek Harness
 
@@ -160,19 +197,21 @@ dsh --profile web --dump-config   # 应能看到 "# == gemworks" 这一层
 dsh --profile web
 ```
 
-bundle 贡献三行：**监督器**（适配器模块 `dist/hosts/dsh/plugin.js`，按路径命名，dsh 才会
-连同这个包的浏览器半边一起找到；按 agent 挂载；会话的工作目录里找不到流程时它什么都不做——
-这就是 `onMissing: skip`）、**GEML MCP server**
+bundle 贡献三行：**适配器**（模块 `dist/hosts/dsh/plugin.js`，按路径命名，dsh 才会
+连同这个包的浏览器半边一起找到；在 `agent/created` 时按 agent 挂载）、**GEML MCP server**
 （`npx -y @geml/geml mcp --root .`，限定在会话自己的项目目录内，于是模型一次改一个块
-而不是重写整个文件），以及 `skills/` 下的四个**技能**——写作、代码图谱、gemworks 与
-split-session（只用于 Claude Code 的会话，它自己写明了）。
+而不是重写整个文件），以及 `host-skills/` 下的四个**技能**——`geml`、`geml-code-graph`、
+`gemworks-mcp` 与 `split-session`（只用于 Claude Code 的会话，它自己写明了）。
 要覆盖哪一行，在你 profile 的 `cordis.patch.yml` 里按 `id` 重写，注意把该行需要的每个键
 都写全。
 
-监督器那一行不设 `statechart`，于是流程按 `gemworks` 的方式、从会话的工作目录找；
-要钉死一个文件，就在这一行里设 `statechart: <路径>`。没有流程的项目被安静地放过。有好几个
-流程却没选、名字找不到、或者流程有 error 时，会记日志，这个 agent 不受监督——
-`onMissing: fail` 则让它启动失败。
+每个会话都有工作循环，有没有流程都一样：会话记进项目共用的记录（提示词、回答、写过的
+文件、做的提交），模型拿到工作循环的工具和 `note` 工具，名字是 `gemworks_<名字>`，每一步的
+上下文都带上进行中的工作项、当前这一步的做法和别的会话定下的事。**监督器**——固化流程的
+闸和动词——只在会话的工作目录里找得到流程时才挂上。这一行不设 `statechart`，于是流程按
+`gemworks` 的方式找；要钉死一个文件，就在这一行里设 `statechart: <路径>`。没有流程的项目
+不挂监督器，也不出声（`onMissing: skip`）。有好几个流程却没选、名字找不到、或者流程有
+error 时，会记日志，这个 agent 不受监督——`onMissing: fail` 则让它启动失败。
 
 这个宿主上 `move` 与 `set` 在每次通过的动作之后重注册，所以 `move` 的枚举恰好是模型
 能走的转换、`set` 的参数恰好是它能写的变量；类型不对的值在动词之前就被 dsh 自己的
@@ -182,14 +221,15 @@ split-session（只用于 Claude Code 的会话，它自己写明了）。
 用途名下。
 
 web GUI（`dsh --profile web`）里，**看板**是右侧栏的一个标签页：引导页列出「Gemworks」，
-点开画的就是 Claude Code 看板的那些行——六个标签页里的五个（待处理、工作项、记录、
-流程、工具；会话页是人的 prompt 列表与 Claude Code 记录文件上的动作，dsh 的会话是它
-自己的）。按键在宿主上跑：人的转换、勾变量、暂停与继续，以及写进 `.geml/tools.geml` 的学习——
+点开画的就是 Claude Code 看板的那些行。在固化流程下的会话有四个页签（工作项、记录、
+流程、工具）；没有固化流程的会话有两个（工作项、流程），问题、步骤和提议都在对话里回答。
+这里没有会话页：在 Claude Code 上它是人的 prompt 列表与 Claude Code 记录文件上的动作，
+dsh 的会话是它自己的，所以这里留着记录页，看会话里发生了什么。按键在宿主上跑：人的转换、勾变量、暂停与继续，以及写进 `.geml/tools.geml` 的学习——
 「设为首选」「在这个阶段也允许」与「加一行」输入框——监督器下一次判定就重读到。这个宿主
 做不了的（导出、对话框、切换流程）不画按钮。文件链接经 dsh 自己的会话接口打开文件，
 没有应用认领的就在文件管理器里显示。流程页的图在这里是同一份数据画成的 SVG：现在能走的转换用强调色画，点一下就走。两半分别是 `src/hosts/dsh/board.ts`（路由在
-`/api/gemworks` 下）与 `client.js`（包的 `dsh.client` bundle）；监督器那一行按路径命名，
-正是为了浏览器半边（见上）。journal 仍按会话记在 `journalDir` 下，会话恢复时读回。
+`/api/gemworks` 下）与 `client.js`（包的 `dsh.client` bundle）；适配器那一行按路径命名，
+正是为了浏览器半边（见上）。journal 按会话记在 `journalDir` 下，会话恢复时读回。
 
 ### pi agent
 
@@ -197,10 +237,18 @@ web GUI（`dsh --profile web`）里，**看板**是右侧栏的一个标签页�
 pi install npm:gemworks
 ```
 
-同一个包就是一个 pi package：`pi.extensions` 指向监督器，`pi.skills` 指向同样那
-四个技能——它们本来就是一个技能一个 `SKILL.md` 文件夹，正是 pi agent 自己的约定。
+同一个 npm 包就是一个 pi package：`pi.extensions` 指向扩展，`pi.skills` 指向
+`host-skills/`，同样那四个技能——它们本来就是一个技能一个 `SKILL.md` 文件夹，正是 pi agent
+自己的约定。
 
-流程在**扩展加载时**读一次，因为三个动词必须在第一个会话开始之前注册好，而它们
+工作循环不需要流程。在每个项目里，扩展都注册工作循环的工具和 `note` 工具，名字是
+`gemworks_<名字>`，把每条提示词和回答记进项目共用的记录，并在每次运行的系统提示词里
+带上进行中的工作项、当前这一步的做法和别的会话定下的事。编辑框上方有一到三行：本会话的
+工作项走到哪、等你的第一件事和还有几件、这一步的第一条做法。`/gemworks` 以浮层打开看板
+（Esc 或 q 关掉）。模型登记的问题在这次运行结束时带着选项问你；改了东西却没报工作项的
+运行会被打回一次；你打的每条提示词由本会话自己的模型归类，记进你的纠正账本。
+
+固化流程在**扩展加载时**读一次，因为三个动词必须在第一个会话开始之前注册好，而它们
 的 schema 来自流程。它按 `gemworks` 的方式从 pi 启动时所在的目录找；要换别的，用环境
 变量说——那个时刻命令行 flag 还没解析：
 
@@ -209,15 +257,15 @@ GEMWORKS_STATECHART=path/to/workflow.geml pi   # 用这个流程，而不是项�
 GEMWORKS_JOURNAL_DIR=/var/journals pi      # 默认 <会话目录>/gemworks
 ```
 
-没有流程时：不注册、不监听，`pi` 的行为和没装这个包完全一样。有好几个流程却没选、
+没有流程时：没有动词也没有闸，不出声；工作循环照上面那样跑。有好几个流程却没选、
 名字找不到、或者流程有 error 时：每个会话都会说明，并且不受监督。
 
 pi agent 这边有一件事只读过它发布的类型与随包文档、没有实测，接真模型跑的时候正是要看
 它们：fork 之后 `getBranch()` 给的是分支还是整棵树（`hash`/`parent` 是按它
 返回的东西算的，出问题由 `gemworks verify` 抓）。
 
-不装 harness、只用 CLI，就是[在一个项目上开始用](advanced.zh.md#在一个项目上开始用)第 2 步装上的
-`gemworks` 命令：
+不装 harness、只用 CLI，就是[在一个项目上开始用](advanced.zh.md#在一个项目上开始用)第 1 步装上的
+`gemworks` 命令（`npm install -g gemworks`）：
 
 ```sh
 gemworks init

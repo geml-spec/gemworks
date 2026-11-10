@@ -1,0 +1,24 @@
+=== meta
+title   = "文档"
+profile = "geml-statechart/v1"
+===
+
+=== diagram {#flow format=geml-statechart caption="文档"}
+{
+  "initial": "kind",
+  "states": {
+    "kind":    { "title": "定类型", "description": "读者是谁；教程、操作指南、参考、讲解选定一种", "judge": "model", "prevents": "几种写法混在一篇，谁读都不顺" },
+    "write":   { "title": "写", "description": "按那一种的写法写", "judge": "model", "prevents": "教程里大段讲原理，读者跟不下去" },
+    "tryout":  { "title": "照着做一遍", "description": "按文档从头做一遍，每一步都走得通", "judge": "model", "prevents": "文档里的步骤，写的人自己都没跑过" },
+    "confirm": { "title": "你确认", "description": "你读过说行", "judge": "you", "prevents": "没人读过就发出去了", "answers": ["行", "要改"] },
+    "done":    { "title": "完成", "final": true }
+  },
+  "transitions": [
+    { "from": "kind",    "to": "write" },
+    { "from": "write",   "to": "tryout" },
+    { "from": "tryout",  "to": "confirm" },
+    { "from": "confirm", "to": "done", "approval": true },
+    { "from": "confirm", "to": "write", "guard": "你要改" }
+  ]
+}
+===

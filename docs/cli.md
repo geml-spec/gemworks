@@ -20,7 +20,13 @@ usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmar
   rollback [<rev>|checkpoint]             a person restores an earlier revision's state and variables
   run [--profile name] <task>             add the bundle to a dsh profile and run the task there
   hook                                    the Claude Code bridge: one JSON request on stdin, one answer on stdout
-  mcp [--host h] [--root dir]             the three model tools over stdio MCP (host default: mcp)
+  codex                                   the Codex hook: one event on stdin, its answer on stdout (exit 0 always)
+  antigravity <Event> | install           the Antigravity editor's hook (one event on stdin), or put its hooks and MCP server in place
+  mcp [--host h] [--root dir]             the model's tools over stdio MCP (host default: mcp)
+  corrections [--baseline a..b] [--trial a..b] [--since day] [--by work] [--json]
+                                          how often you corrected the agent, per 100 prompts, by kind and by week
+  corrections guide | pending [--limit n] | label [file] [--import]
+                                          the labelling guide; your prompts not labelled yet (JSONL); labels written back
 ```
 
 - `check` runs `geml check`, then the statechart's checks (`statechart-*`: no
@@ -65,13 +71,28 @@ usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmar
   the refusal is in the journal.
 - `hook` is the Claude Code plugin's bridge: the hooks module sends it one
   JSON request on stdin and reads one answer line from stdout.
-- `mcp` serves the three tools `status`, `move` and `set` over stdio MCP, for
-  hosts with no Gemworks shell of their own (`--host` names whose tool names the
-  dictionary's `Bash(…)` keys apply to; `mcp` by default, which runs no
-  commands). On such a host no tool call is seen: `tool` evidence is never
-  written and nothing is refused. `status` reads git and the file variables
-  afresh before it answers and carries the stage's text; a `move` that changes
-  the stage appends the new text to its result.
+- `codex` is the Codex plugin's hook ([Codex](hosts.md#codex)): one event on
+  stdin, its answer on stdout, and exit 0 whatever happens.
+- `antigravity <Event>` is the Antigravity editor's hook, one event on stdin;
+  `antigravity install` writes its hooks into `~/.gemini/config/hooks.json` and
+  the MCP server into `~/.gemini/config/mcp_config.json`.
+- `mcp` serves the model's tools over stdio MCP — a strict flow's `status`,
+  `move` and `set`, the `note` tool, and the work loop's `work`, `practice`,
+  `propose`, `answer`, `ask` and `artifact` — for hosts with no Gemworks shell
+  of their own (`--host` names whose tool names the dictionary's `Bash(…)` keys
+  apply to; `mcp` by default, which runs no commands). On such a host no tool
+  call is seen: `tool` evidence is never written and nothing is refused.
+  `status` reads git and the file variables afresh before it answers and
+  carries the stage's text, the work items on the way and the step's
+  practices; a `move` that changes the stage appends the new text to its
+  result. What the model records rewrites the GEML board page
+  `.geml/board.geml` ([The GEML board page](hosts.md#other-hosts-mcp)).
+- `corrections` is your ledger of corrections: with no subcommand, how often
+  you corrected the agent per 100 prompts, a baseline period against a trial
+  one (by default the eight weeks before this one, and this one), by kind and
+  by week, and with `--by work` by kind of work. `guide` prints the labelling
+  guide, `pending` the prompts not labelled yet as JSON lines, and `label`
+  takes those lines back with their labels filled in.
 - `run` is the one verb that reaches outside this package: it finds `dsh` on
   PATH (falling back to `npx -y @deepseek-ai/dsh`), adds the bundle to the
   profile — `headless` unless you name another — and hands the task over,
@@ -132,8 +153,9 @@ never on a session's.
 
 `gemworks use <name>` changes the default: the workflow a **new** work item
 starts under. A work item with a journal keeps the workflow its journal was
-started under, so `use` warns about nothing, and the band, the board and
-`gemworks status` name an item's workflow when it is not the default:
+started under, so `use` warns about nothing; `gemworks status` and
+`/gemworks` name an item's workflow when it is not the default, and the board's
+flow tab shows the item's own:
 
 ```
 $ gemworks use dev

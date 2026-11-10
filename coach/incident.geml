@@ -1,0 +1,26 @@
+=== meta
+title   = "线上事故"
+profile = "geml-statechart/v1"
+===
+
+=== diagram {#flow format=geml-statechart caption="线上事故"}
+{
+  "initial": "triage",
+  "states": {
+    "triage":    { "title": "定级", "description": "影响范围和级别写下了", "judge": "model", "prevents": "不知道多严重，该叫人的没叫，不该慌的乱改" },
+    "mitigate":  { "title": "止血", "description": "先恢复：回滚、重启、切流量都行", "judge": "model", "prevents": "先追根因，服务停得更久" },
+    "recovered": { "title": "确认恢复", "description": "你看过说恢复了", "judge": "you", "prevents": "以为好了，其实还在出错", "answers": ["恢复了", "还没"] },
+    "postmortem": { "title": "复盘", "description": "时间线、原因、下次怎么防都写下了，只谈事不追人", "judge": "model", "prevents": "复盘变成追责，下次没人说实话" },
+    "followup":  { "title": "跟进", "description": "改进项都记成了工作项", "judge": "model", "prevents": "复盘写完就放着，同样的事再来一次" },
+    "done":      { "title": "完成", "final": true }
+  },
+  "transitions": [
+    { "from": "triage",     "to": "mitigate" },
+    { "from": "mitigate",   "to": "recovered" },
+    { "from": "recovered",  "to": "postmortem" },
+    { "from": "recovered",  "to": "mitigate", "guard": "你说还没" },
+    { "from": "postmortem", "to": "followup" },
+    { "from": "followup",   "to": "done" }
+  ]
+}
+===

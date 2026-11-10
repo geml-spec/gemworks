@@ -62,8 +62,8 @@ test("/gemworks prints where the work stands: the stage with its uses, each vari
     "git evidence unavailable: gh is not installed",
     "1 refusals",
   ].join("\n"), "the words follow the language; the workflow's own title stays");
-  assert.equal(statusText({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here: run `gemworks init`", quiet: true } }), "这个项目用四条轻流程（新设计、新功能、bugfix、优化）。要按顺序走的固化流程，用 /gemworks add 添加一类活。");
-  assert.equal(statusText({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here", quiet: true }, suggest: { workflow: "coding", by: "code", file: "Cargo.toml" } }), "这个项目用四条轻流程（新设计、新功能、bugfix、优化）。要按顺序走的固化流程，建议添加 coding（Cargo.toml）：/gemworks add coding；/gemworks add 列出全部。");
+  assert.equal(statusText({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here: run `gemworks init`", quiet: true } }), "这个项目用起步流程，十条都在看板的流程页。要按顺序走的固化流程，用 /gemworks add 添加一类活。");
+  assert.equal(statusText({ status: null, policy: null, contextKey: null, problem: { text: "no workflow here", quiet: true }, suggest: { workflow: "coding", by: "code", file: "Cargo.toml" } }), "这个项目用起步流程，十条都在看板的流程页。要按顺序走的固化流程，建议添加 coding（Cargo.toml）：/gemworks add coding；/gemworks add 列出全部。");
   assert.equal(statusText({ ...shell, status: { ...status, item: { kind: "inactive", reason: "main · not tracked (work items are branches)" } } }), "流程 dev（开发流程）\nmain · not tracked (work items are branches)");
   const bare = { ...status, state: { id: "done", title: "done", rev: 9, uses: [] }, vars: {}, sources: {}, next: [], gh: { available: true } };
   assert.equal(statusText({ ...shell, status: bare }).split("\n").slice(2).join("\n"), "工具：没有声明用途\n变量：无\n下一步：无（终点）\n1 次拒绝");

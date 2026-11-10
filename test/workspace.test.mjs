@@ -34,7 +34,7 @@ function project({ branch = "feat/x", pr, flow, tools, getPrompt = GUIDE, git, h
   cpSync(FIX, dir, { recursive: true });
   if (flow !== undefined) writeFileSync(join(dir, "flow.geml"), flow);
   if (tools !== undefined || flow !== undefined) writeFileSync(join(dir, "tools.geml"), tools ?? SMALL_TOOLS);
-  writeFileSync(join(root, ".geml", "gemflow.geml"), '=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "dev"\n===\n');
+  writeFileSync(join(root, ".geml", "project.geml"), '=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "dev"\n===\n');
   let now = 0;
   const open = (extra = {}) => openWorkspace({
     root, tools: hostTools,
@@ -731,7 +731,7 @@ test("a work item keeps the workflow its journal was started under, a new one st
   const p = project();
   p.open();
   cpSync(p.dir, join(p.root, ".geml", "workflows", "other"), { recursive: true });
-  writeFileSync(join(p.root, ".geml", "gemflow.geml"), '=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "other"\n===\n');
+  writeFileSync(join(p.root, ".geml", "project.geml"), '=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "other"\n===\n');
   assert.deepEqual(p.open().ws.status().workflow, { name: "dev", path: ".geml/workflows/dev/flow.geml", title: "开发流程", default: "other" });
   const y = p.open({ git: () => ({ branch: "feat/y", defaultBranch: "main", committed: true }) }).ws;
   assert.deepEqual(y.status().workflow, { name: "other", path: ".geml/workflows/other/flow.geml", title: "开发流程" });
@@ -762,7 +762,7 @@ function bare() {
   const root = mkdtempSync(join(tmpdir(), "gemworks-wf-"));
   made.push(root);
   const add = (name) => { mkdirSync(join(root, ".geml", "workflows", name), { recursive: true }); cpSync(FIX, join(root, ".geml", "workflows", name), { recursive: true }); };
-  const config = (text) => writeFileSync(join(root, ".geml", "gemflow.geml"), text);
+  const config = (text) => writeFileSync(join(root, ".geml", "project.geml"), text);
   return { root, add, config };
 }
 
@@ -776,9 +776,9 @@ test("resolveWorkflow: the environment, then the config document, then the only 
   w.config('=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "film"\n===\n');
   assert.deepEqual(resolveWorkflow(w.root, {}), { name: "film", path: join(w.root, ".geml", "workflows", "film", "flow.geml") });
   w.config('=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "gone"\n===\n');
-  assert.deepEqual(resolveWorkflow(w.root, {}), { error: ".geml/gemflow.geml names workflow \"gone\", but .geml/workflows has no gone.geml", kind: "invalid" });
+  assert.deepEqual(resolveWorkflow(w.root, {}), { error: ".geml/project.geml names workflow \"gone\", but .geml/workflows has no gone.geml", kind: "invalid" });
   w.config('=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "../dev"\n===\n');
-  assert.deepEqual(resolveWorkflow(w.root, {}), { error: ".geml/gemflow.geml names workflow \"../dev\", which is not the name of a workflow in .geml/workflows", kind: "invalid" });
+  assert.deepEqual(resolveWorkflow(w.root, {}), { error: ".geml/project.geml names workflow \"../dev\", which is not the name of a workflow in .geml/workflows", kind: "invalid" });
   const env = { GEMWORKS_STATECHART: ".geml/workflows/dev/flow.geml" };
   assert.deepEqual(resolveWorkflow(w.root, env), { name: ".geml/workflows/dev", path: join(w.root, ".geml", "workflows", "dev", "flow.geml") });
   assert.deepEqual(resolveWorkflow(w.root, { GEMWORKS_STATECHART: "nope.geml" }), { error: "GEMWORKS_STATECHART names nope.geml, which does not exist", kind: "invalid" });

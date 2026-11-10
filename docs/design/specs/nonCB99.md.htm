@@ -1,4 +1,4 @@
-# Gemflow — 设计文档
+# Gemworks — 设计文档
 
 日期：2026-10-11，修订 2026-10-12 · 状态：**草稿，待审** · 分支：`feat/geml-agent-runtime`
 前置阅读：`docs/design/specs/2026-09-14-geml-agent-runtime-design.md`、`spec/profiles/geml-agent/geml-agent-profile.md`、`integrations/geml-agent-runtime/README.md`，以及讲解页《看门人与火车》（Ramadge–Wonham 监督控制）。
@@ -8,17 +8,17 @@
 
 ## 0. 一句话
 
-Gemflow 是一个给别人装的 Claude Code 插件：用户选一个流程（开发、视频，或从市场装的、自己写的），它按流程的阶段替用户管三样东西——**当前该看什么上下文、流程走到哪一步、每一步留下了什么**——并在输入框上方常驻一行状态、在面板里画出流程看板。流程是一份普通的 GEML 文档：章节是状态，一张表是边，一张表是变量，守卫是 `data` 块，词汇表只多定义一个 meta 键（`geml-flow/v1`）。每个阶段能用哪些工具、同类工具首选哪个、参数默认取什么，在使用中由你的选择记进工具词典；流程作者只在真正要紧的岔口封路（只在某些阶段能跑的命令、要人批准的边）。
+Gemworks 是一个给别人装的 Claude Code 插件：用户选一个流程（开发、视频，或从市场装的、自己写的），它按流程的阶段替用户管三样东西——**当前该看什么上下文、流程走到哪一步、每一步留下了什么**——并在输入框上方常驻一行状态、在面板里画出流程看板。流程是一份普通的 GEML 文档：章节是状态，一张表是边，一张表是变量，守卫是 `data` 块，词汇表只多定义一个 meta 键（`geml-flow/v1`）。每个阶段能用哪些工具、同类工具首选哪个、参数默认取什么，在使用中由你的选择记进工具词典；流程作者只在真正要紧的岔口封路（只在某些阶段能跑的命令、要人批准的边）。
 
 ## 1. 出发点
 
 ### 1.1 为什么是这个形态
 
-effortless 的成功模式是：装上就自动工作，眼前天天有一个证明它有用的东西。Gemflow 照这个路子，但管的是**流程**而不是 effort：开发者用 Claude 做一个功能，从写代码、测试、PR、CI 到部署，每一步发生了什么、下一步是什么、这一步该带哪些上下文，插件都替他记着、摆在眼前。
+effortless 的成功模式是：装上就自动工作，眼前天天有一个证明它有用的东西。Gemworks 照这个路子，但管的是**流程**而不是 effort：开发者用 Claude 做一个功能，从写代码、测试、PR、CI 到部署，每一步发生了什么、下一步是什么、这一步该带哪些上下文，插件都替他记着、摆在眼前。
 
 ### 1.2 为什么建在 geml-agent runtime 上
 
-| Gemflow 需要的 | runtime 已有的 |
+| Gemworks 需要的 | runtime 已有的 |
 |---|---|
 | 流程定义 | GEML 状态图：状态、转换、变量 |
 | 阶段完成的条件 | 转换上的 `requires`（对变量的 JSON Schema 守卫） |
@@ -84,12 +84,12 @@ effortless 的成功模式是：装上就自动工作，眼前天天有一个证
   journals/<工作项>.geml        每个工作项一本：分支名或剧集文件的相对路径，其中的 / 直接成为子目录；默认 gitignore。
                                branch 单位的 journal 放在仓库主工作树的这个目录里，所有检出共用（§5.7）
   backlog.geml                 待办项表，提交进仓库
-  gemflow.geml                 项目配置：一个 data 块 #gemflow，default 指定新工作项用的流程；提交进仓库
+  gemworks.geml                 项目配置：一个 data 块 #gemworks，default 指定新工作项用的流程；提交进仓库
   context.geml                 当前阶段的说明（text 块 #current）、阶段信息（data 块 #stage）与当前变量值（data 块 #vars），Stagehand 重新生成；按检出各一份；默认 gitignore
   codemap/                     代码地图（已有）
 ```
 
-**包与目录**：`integrations/geml-agent-runtime/` 改名为 `integrations/gemflow/`，npm 包 `@geml/gemflow`，CLI `gemflow`。同一个包带全部宿主入口：Claude Code 插件清单与 hooks 模块（新增）、DeepSeek Harness 的 `cordis.patch.yml`、pi agent 扩展。插件根目录就是 `integrations/gemflow/`，发布在仓库根的 geml marketplace，条目以 npm 包 `@geml/gemflow` 为来源，安装一行：`/plugin install gemflow --marketplace geml-spec/geml`（包发布到 npm 之后可用；开发时 `npm run build` 后 `claude --plugin-dir integrations/gemflow`）。hooks 模块要用的 Node 一侧打成单文件 `dist/gemflow.mjs`（`@geml/geml` 内联），装上不需要再装依赖；它需要 Node ≥ 22。其他宿主用同一个包里的 `gemflow mcp`（§8.5）。profile 目录改为 `spec/profiles/geml-flow/`。
+**包与目录**：`integrations/geml-agent-runtime/` 改名为 `integrations/gemworks/`，npm 包 `@geml/gemworks`，CLI `gemworks`。同一个包带全部宿主入口：Claude Code 插件清单与 hooks 模块（新增）、DeepSeek Harness 的 `cordis.patch.yml`、pi agent 扩展。插件根目录就是 `integrations/gemworks/`，发布在仓库根的 geml marketplace，条目以 npm 包 `@geml/gemworks` 为来源，安装一行：`/plugin install gemworks --marketplace geml-spec/geml`（包发布到 npm 之后可用；开发时 `npm run build` 后 `claude --plugin-dir integrations/gemworks`）。hooks 模块要用的 Node 一侧打成单文件 `dist/gemworks.mjs`（`@geml/geml` 内联），装上不需要再装依赖；它需要 Node ≥ 22。其他宿主用同一个包里的 `gemworks mcp`（§8.5）。profile 目录改为 `spec/profiles/geml-flow/`。
 
 ## 4. 流程文档
 
@@ -179,7 +179,7 @@ PR 已开。处理 review 意见；CI 的结果自动记录。
 ===
 ```
 
-`#build` 不会卡住：PR 在 Gemflow 看到它开着之前就合并了，或者测试只在 CI 里跑、本地从不出现测试信号，守卫的另外两个分支（PR 已合并、人勾选 ready）都能放行。两条部署正则是示意；内置的 dev 流程（`integrations/gemflow/workflows/dev/flow.geml`）读得出常见写法：`npx`、`pnpm`、`yarn`、`bunx` 前缀，`--env` 前后的其他参数，`wrangler versions deploy`；不带 `--env` 的部署按 production 算，带 `--dry-run` 的什么也不部署，哪个阶段都能跑，也不记成已部署。`match` 列与章节里的 `embed` 在安装时由 Claude 按项目实际情况填写。
+`#build` 不会卡住：PR 在 Gemworks 看到它开着之前就合并了，或者测试只在 CI 里跑、本地从不出现测试信号，守卫的另外两个分支（PR 已合并、人勾选 ready）都能放行。两条部署正则是示意；内置的 dev 流程（`integrations/gemworks/workflows/dev/flow.geml`）读得出常见写法：`npx`、`pnpm`、`yarn`、`bunx` 前缀，`--env` 前后的其他参数，`wrangler versions deploy`；不带 `--env` 的部署按 production 算，带 `--dry-run` 的什么也不部署，哪个阶段都能跑，也不记成已部署。`match` 列与章节里的 `embed` 在安装时由 Claude 按项目实际情况填写。
 
 ### 4.2 构件
 
@@ -189,7 +189,7 @@ PR 已开。处理 review 意见；CI 的结果自动记录。
 | 变量 | `#vars` 表，一行一个 | 见下 |
 | 守卫 | `data` 块（`format=json`），内容是对变量的 JSON Schema | 边表的 `requires` 引用它 |
 | 边 | `#transitions` 表，一行一条 | 见下 |
-| 流程图 | `diagram` 块，`format=mermaid`，内容是 Mermaid `stateDiagram` | 给人看，HTML 渲染、viewer 与 `--to md`（GitHub 上渲染成图）都直接画它，运行时不读；`gemflow check` 拿它对照边表 |
+| 流程图 | `diagram` 块，`format=mermaid`，内容是 Mermaid `stateDiagram` | 给人看，HTML 渲染、viewer 与 `--to md`（GitHub 上渲染成图）都直接画它，运行时不读；`gemworks check` 拿它对照边表 |
 | 工作项单位 | meta `flow-unit` | `branch`（默认，每个分支一个工作项）或 `file:<glob>`（每个匹配的文件一个，如 `file:episodes/*.geml`） |
 
 核心构件带内部单元，坐标能直接寻址到一个值：`geml get flow.geml '#vars[1]["default"]'`、`'#transitions[2]["approval"]'`，`geml set` 经坐标只改那一个值。
@@ -200,7 +200,7 @@ PR 已开。处理 review 意见；CI 的结果自动记录。
 
 - `var`：变量名，GEML NAME（Unicode 字母、数字、`_`、`-`），表内不重复。
 - `default`：一个 JSON 字面量（`false`、`""`、`0`……），同时决定变量的类型：写入的值必须与它是同一种 JSON 类型。返工的 `resets` 与证据作废都把变量还原成它。
-- `on`：值从哪里来。空：由模型用 `set` 写（§8.5）；`command`：一条匹配 `match` 的命令的退出码；`file`：是否有文件匹配 `match`；`manual`：人在看板上或用 `gemflow mark` 勾选；`committed`、`pr-open`、`pr-merged`、`ci-success`：git 与 CI 的事实（§5.2）。`on` 不为空的变量模型写不了，默认值必须是 `false`。
+- `on`：值从哪里来。空：由模型用 `set` 写（§8.5）；`command`：一条匹配 `match` 的命令的退出码；`file`：是否有文件匹配 `match`；`manual`：人在看板上或用 `gemworks mark` 勾选；`committed`、`pr-open`、`pr-merged`、`ci-success`：git 与 CI 的事实（§5.2）。`on` 不为空的变量模型写不了，默认值必须是 `false`。
 - `match`：`command` 行是正则，`file` 行是 glob；`ci-success` 行可选，按名字筛 CI workflow。
 - `only-in`：只用于 `command` 行，写成 `#状态` 的列表：匹配的命令只能在这些状态里运行（§5.3）。
 - `note`：由模型写的变量是给模型的说明（这个变量写什么）；`manual` 行是看板上勾选框的文字。
@@ -217,7 +217,7 @@ PR 已开。处理 review 意见；CI 的结果自动记录。
 
 - 有守卫、不要批准的边，在任何一次改动（信号写入、模型的动作、人的推进、证据作废、回滚、进入起点）之后守卫成立就自动走；一个状态至多一条这样的出边。
 - 没有守卫的边由模型（`move`）或人走。
-- `approval = yes` 的边只由人走（看板上点，或 `gemflow advance`），写了守卫就必须成立，从不自动走。
+- `approval = yes` 的边只由人走（看板上点，或 `gemworks advance`），写了守卫就必须成立，从不自动走。
 
 **流程图**：图里的边与边表按 `起点→终点` 对照；状态直接用状态 id，Mermaid 认不了的 id（比如带 `-` 的）用 `state "wait-human" as waitHuman` 起别名；`[*] -->` 指向起点，`--> [*]` 从终点出发。标签是约定、不检查：有守卫的边写守卫 id，要批准的写 `approval`，其余写一句话；标签里不写 `#`（Mermaid 会当成实体编码的开头）。只读 `A --> B`（可带 ` : 标签`）、`[*] --> A`、`A --> [*]`、`state "名字" as 别名` 这几种行，其余行忽略。
 
@@ -247,7 +247,7 @@ PR 已开。处理 review 意见；CI 的结果自动记录。
 | 谁 | 怎么发生 | `by` |
 |---|---|---|
 | 模型 | `move` 走一条出边：守卫写了就必须成立；要批准的边不行 | `model` |
-| 人 | 在看板上点一条边，或在自己终端运行 `gemflow advance <state>`；这本身就是批准 | `human` |
+| 人 | 在看板上点一条边，或在自己终端运行 `gemworks advance <state>`；这本身就是批准 | `human` |
 | 自动 | 一次改动之后，当前状态那条有守卫、不要批准的出边守卫成立，立即走 | 记那次改动的来源：信号写入后 `signal`（带 `signal=<变量>`），模型动作后 `model`，人推进后 `human` |
 
 一次写入了几个信号时，自动走的边记在它的守卫所读变量对应的那个信号名下（守卫的 `properties` 或 `required` 里出现的第一个），没有则记最后写入的信号。
@@ -266,7 +266,7 @@ PR 已开。处理 review 意见；CI 的结果自动记录。
 | `command` | 一次运行命令的调用结束时，命令行匹配 `match`（正则） | 退出码为 0 时 true，否则 false |
 | `file` | 写文件或运行命令的调用结束时（构建、渲染产生文件，和编辑一样确定；指明的路径在项目之外或在 `.geml`、`.git`、`node_modules` 里时不算）、会话开始时、看板刷新时 | 有文件匹配 `match`（glob）时 true |
 | `committed` `pr-open` `pr-merged` `ci-success` | 会话开始时、命令行在任一命令位置运行了 `git` 或 `gh`（任意路径；经启动器运行的如 `sudo git switch main`、`timeout 30 git pull`，交给 shell 的字符串里的如 `bash -c "git checkout -b x"` 也算；只当别的命令的参数写出来不算）的调用结束时、看板刷新时 | 按当前分支查询；`ci-success` 取分支 head 上每个 CI workflow 最近一次运行的结论 |
-| `manual` | 只来自人：看板上的勾选框，或用户在自己终端运行 `gemflow mark <变量>`（`gemflow unmark <变量>` 取消） | 勾上 true，取消 false |
+| `manual` | 只来自人：看板上的勾选框，或用户在自己终端运行 `gemworks mark <变量>`（`gemworks unmark <变量>` 取消） | 勾上 true，取消 false |
 
 - **命令证据会过期**：`on = command` 的变量写下非默认值时，那条修订记下工作项内容的指纹（`tree`）。之后每次对该工作项的操作开始时（持锁），指纹若已变，就在一条修订里把这些变量还原成默认值（`cause=expire`，`signal=` 记第一个），随后照常评估自动边。指纹：`branch` 单位是检出里工作内容的 git tree（git 不忽略的每个已跟踪、未跟踪文件在磁盘上的样子，从 index 的副本 `git add -A` 后 `git write-tree` 写出，真实的 index 不动，只给变了的文件算哈希；`.geml` 与 `node_modules` 不算）；`file:` 单位是那一集文件内容的哈希。所以测试通过之后改了代码、rebase、pull 都要重跑，只是提交了不用。`file` 与 git 的事实本来就按当下重读；`manual` 是人的判断，不过期。
 - **退出码怎么判定**（Claude Code，已实测）：调用以错误结束时 `isError` 为 true，`text` 以 `Exit code <n>` 开头，取这个 `n`；未以错误结束且结果里没有 `returnCodeInterpretation` 时退出码为 0。Claude Code 把少数非零码当作正常结束（`grep` 无匹配是 `No matches found`，`diff` 有差异是 `Files differ`），这类结果按非零处理，所以 `exit-zero` 不会把"测试命令里 grep 没找到"误判成通过。
@@ -275,7 +275,7 @@ PR 已开。处理 review 意见；CI 的结果自动记录。
 - 后台运行的命令（结果里有 `backgroundTaskId`）在 `tool.call` 结束时还没有退出码，不触发命令信号。
 - 子 agent 的工具调用同样经过主会话的 `tool.call`（已实测），由子 agent 跑的测试照样记入信号——记进它所在检出的工作项（§5.7）。
 - `committed` 只问 git（当前分支有默认分支没有的提交）；`pr-open`、`pr-merged`、`ci-success` 问 `gh`，`#vars` 里有这三种来源时才问。没有 `gh`、未登录或没有可问的 GitHub remote 时，这三种信号不写入、保持原值，标为"不可用"，状态带显示原因。Claude Code 的 `Bash` 结果自带 `gitOperation`（commit、push、合并、PR 创建与合并），由它触发的 `git` 信号不必再查一次 `gh`。
-- 人在终端推进用 `gemflow advance <state>`；模型通过 `run` 调用 `gemflow mark|unmark|advance`（命令位置上的一次调用，经 `npx`、`npm exec`、`pnpm dlx` 等启动器也算）一律被拒绝并记一条 `refused`：手动信号与人推进的转换不能由模型触发。判定看命令位置：命令行按 `;`、`&`、`|`、换行、括号与反引号拆开（双引号里的 `$(…)` 也拆），每条命令取命令字——跳过赋值、重定向和 `builtin`、`command`、`time`、`env`、`sudo` 这类接着执行下一个词的前缀，引号与转义去掉之后。命令字是 `gemflow`（取路径末段，不分大小写，`./node_modules/.bin/gemflow` 也算），或是 `npx`、`bunx`、`npm exec`、`pnpm dlx`、`pnpm exec`、`yarn dlx`、`node` 之类的启动器而参数里有 `@geml/gemflow`（可带 `@版本`）或它的 `cli` 脚本，并且其后第一个非选项参数是 `mark`、`unmark` 或 `advance`（不分大小写，或由展开拼成）时拒绝；`bash -c "…"`、`pwsh -c "…"`、`eval` 的参数，以及启动器交给 shell 的字符串（`sudo sh -c "…"`、`timeout 5 bash -c "…"`、`npx -c "…"`、`npm exec --call=…`、`env -S "…"`）照此再查一遍；PowerShell 的字符串按同样的规则读，另外再按词查找一遍，作为兜底。命令字由展开拼成（含 `$`）或命令行引号不闭合时退而求其次：去掉引号后的命令行里同时有 `gemflow` 和这三个词之一就拒绝。只是提到（`echo gemflow mark`、提交信息里写到 `gemflow` 与 `advance`）不拒绝。
+- 人在终端推进用 `gemworks advance <state>`；模型通过 `run` 调用 `gemworks mark|unmark|advance`（命令位置上的一次调用，经 `npx`、`npm exec`、`pnpm dlx` 等启动器也算）一律被拒绝并记一条 `refused`：手动信号与人推进的转换不能由模型触发。判定看命令位置：命令行按 `;`、`&`、`|`、换行、括号与反引号拆开（双引号里的 `$(…)` 也拆），每条命令取命令字——跳过赋值、重定向和 `builtin`、`command`、`time`、`env`、`sudo` 这类接着执行下一个词的前缀，引号与转义去掉之后。命令字是 `gemworks`（取路径末段，不分大小写，`./node_modules/.bin/gemworks` 也算），或是 `npx`、`bunx`、`npm exec`、`pnpm dlx`、`pnpm exec`、`yarn dlx`、`node` 之类的启动器而参数里有 `@geml/gemworks`（可带 `@版本`）或它的 `cli` 脚本，并且其后第一个非选项参数是 `mark`、`unmark` 或 `advance`（不分大小写，或由展开拼成）时拒绝；`bash -c "…"`、`pwsh -c "…"`、`eval` 的参数，以及启动器交给 shell 的字符串（`sudo sh -c "…"`、`timeout 5 bash -c "…"`、`npx -c "…"`、`npm exec --call=…`、`env -S "…"`）照此再查一遍；PowerShell 的字符串按同样的规则读，另外再按词查找一遍，作为兜底。命令字由展开拼成（含 `$`）或命令行引号不闭合时退而求其次：去掉引号后的命令行里同时有 `gemworks` 和这三个词之一就拒绝。只是提到（`echo gemworks mark`、提交信息里写到 `gemworks` 与 `advance`）不拒绝。
 
 ### 5.3 工具：词典、询问与偏好
 
@@ -301,7 +301,7 @@ PR 已开。处理 review 意见；CI 的结果自动记录。
 
 **一次调用怎么判**（在调用所属工作项的当前状态 S 里，§5.7）：
 
-1. 先判任何状态都生效的规则：人专属命令拒绝（§5.2）；`only-in` 列出的状态之外运行匹配的命令拒绝；只切换工作项的命令行放行（§5.7）；Gemflow 自己的三个工具（§8.5）放行。
+1. 先判任何状态都生效的规则：人专属命令拒绝（§5.2）；`only-in` 列出的状态之外运行匹配的命令拒绝；只切换工作项的命令行放行（§5.7）；Gemworks 自己的三个工具（§8.5）放行。
 2. 取这次调用的键：工具名；运行命令的工具再按命令行里每条命令的命令字取 `Bash(<命令字>)`。
 3. 有一个键在 S 或 `*` 上被拒过：拒绝，理由写明"你在 #S 拒绝过它"，记一条 `refused`。
 4. 所有键都允许过：放行，宿主自己的权限规则照常生效。
@@ -311,11 +311,11 @@ PR 已开。处理 review 意见；CI 的结果自动记录。
 **偏好**：
 
 - 阶段说明列出本阶段的工具：每个用途的首选和它的默认参数，以及本阶段拒绝的工具（§5.4）。模型一般照着用。
-- 调用带 `params` 的工具时，模型没给的参数由 Gemflow 补上（改写这次调用的输入），模型给了的不覆盖。只对输入是结构化数据的工具做（MCP 工具、内置工具），命令行不改写。
+- 调用带 `params` 的工具时，模型没给的参数由 Gemworks 补上（改写这次调用的输入），模型给了的不覆盖。只对输入是结构化数据的工具做（MCP 工具、内置工具），命令行不改写。
 - 模型用了一个有用途却不是首选的工具时问你：这次允许 / 以后默认用它 / 拒绝（让模型改用首选）。选择写回词典。与第 5 步同时发生时合成一个问题。
 - 用途在看板上打标签，或在问你时从已有的用途里选；默认参数在看板上编辑，或在一次调用上"设为默认"，把那次的参数存下来。
 
-**起步词典**：`gemflow init`、`/gemflow add` 复制内置流程时带上它的起步词典：`*` 行预先允许宿主的只读工具（`Read`、`Grep`、`Glob`），要严格的流程预先写好拒绝（coding 流程在 `#explore` 拒绝 `Edit`、`Write`），其余在使用中问。
+**起步词典**：`gemworks init`、`/gemworks add` 复制内置流程时带上它的起步词典：`*` 行预先允许宿主的只读工具（`Read`、`Grep`、`Glob`），要严格的流程预先写好拒绝（coding 流程在 `#explore` 拒绝 `Edit`、`Write`），其余在使用中问。
 
 **为什么由插件自己问**：实测（§12），桌面会话里插件挂在 `classic.PreToolUse` 上的钩子不被调用，借不到宿主的权限框；auto 权限模式下宿主自己的权限提示由分类模型代答，人看不到，学到的就不是你的选择。插件的问题框（`$.ui.ask`）总问到人，返回所选选项的原文，还能给出偏好需要的几个选项。宿主的权限机制照常独立工作；宿主本来也要问的工具，第一次用时会被问两次。
 
@@ -356,11 +356,11 @@ Stagehand 分两层：核心只写文件，宿主负责把文件交给模型。
 ```
 
 - 修订的字段：`cause` 是做了什么（`enter`、`transition`、`patch`、`rollback`、`expire`），`by` 是谁（`model`、`human`、`signal`），`signal` 是触发的信号变量，`from` 是转换前的状态，`restores` 是回滚恢复的修订，`call` 是触发它的工具调用，`tree` 是命令证据的内容指纹；`hash` 是这一块去掉 `hash` 之后规范 JSON 的 sha256，`parent` 是上一条修订的 `hash`。拒绝（`#refused-N`）记下它发生在哪个修订之后。坐标能读到任何一个值：`geml get .geml/journals/feat/a.geml '#rev-3["vars"]["tests-pass"]'`。
-- 第一次在某个工作项上有 Gemflow 事件时创建，`rev=0` 的修订 `cause=enter`；归到别的检出的观察只在真要记录时才建那本 journal。
-- 工作项记住自己的流程：`#journal` 的 `workflow` 记着它开始时的流程文件，之后一直按它推进；新工作项用项目的默认流程（`.geml/gemflow.geml` 里 `=== data {#gemflow}` 的 `default`）。那个流程文件不存在时报错，出路是恢复它，或把 journal 挪开从默认流程重新开始。
+- 第一次在某个工作项上有 Gemworks 事件时创建，`rev=0` 的修订 `cause=enter`；归到别的检出的观察只在真要记录时才建那本 journal。
+- 工作项记住自己的流程：`#journal` 的 `workflow` 记着它开始时的流程文件，之后一直按它推进；新工作项用项目的默认流程（`.geml/gemworks.geml` 里 `=== data {#gemworks}` 的 `default`）。那个流程文件不存在时报错，出路是恢复它，或把 journal 挪开从默认流程重新开始。
 - 同一工作项的多次会话、多个会话追加到同一本，哈希链连续；写入持文件锁（`<journal>.lock`），拿不到锁时等待后重试，超时则这次写入失败并在状态带报错，不静默丢弃。
-- 人用 `gemflow rollback <修订|checkpoint>` 回滚：恢复那个修订的状态与变量（`checkpoint` 是进入当前阶段的修订），不撤销已经发生的副作用。
-- `gemflow verify` 校验一本 journal：链、`cause` 与 `from`/`restores` 一致、每次记录的转换都是边表里的一条边、`by=signal` 时 `signal` 是有来源的变量。
+- 人用 `gemworks rollback <修订|checkpoint>` 回滚：恢复那个修订的状态与变量（`checkpoint` 是进入当前阶段的修订），不撤销已经发生的副作用。
+- `gemworks verify` 校验一本 journal：链、`cause` 与 `from`/`restores` 一致、每次记录的转换都是边表里的一条边、`by=signal` 时 `signal` 是有来源的变量。
 
 ### 5.6 backlog
 
@@ -381,7 +381,7 @@ Stagehand 分两层：核心只写文件，宿主负责把文件交给模型。
 
 ### 5.7 工作项的边界：岔出去再回来
 
-做 A 的途中常会插进一件无关的事：agent 顺手发现 B 文档没修订、C 有个 bug，用户要 rebase、开 PR。做完要回到 A 原来的状态，并且 A 的状态与变量不被那件事改动。Gemflow 以工作项为隔离单位，每个工作项一本 journal、一份变量；那件事落在另一个工作项上（另一个分支、另一个检出、另一集），就回得来、不串。本节的规则保证每次调用归到它真正作用的工作项上。
+做 A 的途中常会插进一件无关的事：agent 顺手发现 B 文档没修订、C 有个 bug，用户要 rebase、开 PR。做完要回到 A 原来的状态，并且 A 的状态与变量不被那件事改动。Gemworks 以工作项为隔离单位，每个工作项一本 journal、一份变量；那件事落在另一个工作项上（另一个分支、另一个检出、另一集），就回得来、不串。本节的规则保证每次调用归到它真正作用的工作项上。
 
 **调用从哪里开始、每条命令在哪里跑。** 宿主报告每次调用的起始目录（Claude Code：钩子里读 `$.session.cwd()`，按发起调用的循环作答，§12）。每条简单命令的目录是起始目录，加上 `&&` 链里它之前的 `cd`、`pushd`、`chdir`；目标写不定（含 `$`、`~`、反引号，`-`，缺省）时目录未知。写文件的工具（Edit、Write、NotebookEdit）按目标文件所在的目录。目录属于哪个检出，看它的 git 顶层。
 
@@ -393,9 +393,9 @@ Stagehand 分两层：核心只写文件，宿主负责把文件交给模型。
 | 另一个检出，它有流程、有活跃的工作项 | 那个检出的当前工作项（它的分支、它那份流程） |
 | 别处，或目录未知 | 不写信号 |
 
-**拦截从严。** 人专属命令（`gemflow mark|unmark|advance`）在哪里跑都拒；journal 与上下文文档的写入在哪里都拒。写文件的工具按目标文件所属工作项的闸。命令只有在整行每条命令都确定落在同一个、有活跃工作项的另一个检出里时，才用那个工作项的闸；其余情况（别处、目录未知、混合、对方工作项不活跃、流程载入失败）一律按会话当前工作项的闸——命令从哪里开始跑不等于它作用在哪里，`cd /tmp && rm -rf <项目>/src` 照样被拒。
+**拦截从严。** 人专属命令（`gemworks mark|unmark|advance`）在哪里跑都拒；journal 与上下文文档的写入在哪里都拒。写文件的工具按目标文件所属工作项的闸。命令只有在整行每条命令都确定落在同一个、有活跃工作项的另一个检出里时，才用那个工作项的闸；其余情况（别处、目录未知、混合、对方工作项不活跃、流程载入失败）一律按会话当前工作项的闸——命令从哪里开始跑不等于它作用在哪里，`cd /tmp && rm -rf <项目>/src` 照样被拒。
 
-**重读事实跟会话走。** git 事实重读、文件信号重读、出错回滚，在调用不确定属于另一个检出时作用于会话的工作项：重读的是真实事实，总是对的。文件信号的遍历不进入嵌套的检出（含 `.git` 的目录）。另一个检出用它自己的 `.geml/` 找流程，`GEMFLOW_STATECHART` 只指定会话的流程。
+**重读事实跟会话走。** git 事实重读、文件信号重读、出错回滚，在调用不确定属于另一个检出时作用于会话的工作项：重读的是真实事实，总是对的。文件信号的遍历不进入嵌套的检出（含 `.git` 的目录）。另一个检出用它自己的 `.geml/` 找流程，`GEMWORKS_STATECHART` 只指定会话的流程。
 
 **动词。** 调用方循环的目录确定落在另一个检出（有活跃工作项）时，五个动词作用于那个检出的工作项——隔离 worktree 里的子 agent 推进的是它自己的分支；否则作用于会话的工作项。
 
@@ -404,17 +404,17 @@ Stagehand 分两层：核心只写文件，宿主负责把文件交给模型。
 **换工作项当场交接。** 一次应答所在的工作项，与上次交给主循环的上下文（`item@rev` 记号）不是同一个时，新工作项的阶段说明随这次工具结果交给模型，前面加一行：
 
 ```
-[gemflow] now on fix/doc-b · #build (new work item)
-[gemflow] back on feat/a · #build · rev 3 · tests ✓ · pr ✗
+[gemworks] now on fix/doc-b · #build (new work item)
+[gemworks] back on feat/a · #build · rev 3 · tests ✓ · pr ✗
 ```
 
 子 agent 的调用拿到它自己工作项的说明，不记为已交给主循环。
 
-**每个工作项记住自己的流程**（§5.5）。`gemflow use` 只改项目的默认流程，已开始的工作项不受影响；所以岔出去的那件事可以用另一种流程（比如一个文档流程），回来时 A 仍按它的流程。当前工作项按默认流程的单位解析。
+**每个工作项记住自己的流程**（§5.5）。`gemworks use` 只改项目的默认流程，已开始的工作项不受影响；所以岔出去的那件事可以用另一种流程（比如一个文档流程），回来时 A 仍按它的流程。当前工作项按默认流程的单位解析。
 
 **只切换工作项的命令行在任何状态都放行**：不拒、不问，在工具词典之前判（§5.3），监督器判断，快路径用同一个函数。`&&` 链里每条简单命令都是下列之一：`git switch <分支>`、`git switch -c|-C|--create|--force-create <分支> [<起点>]`；`git checkout -b|-B <分支> [<起点>]`，`git checkout <分支>`（`<分支>` 是已有的本地分支时）；`git worktree add [-b|-B <分支>] [--detach] <路径> [<起点>]`；`cd <路径>`。带其他选项（`-f`、`--force`、`--discard-changes`、`--merge`、`--`、路径参数）的不算。所以即使你在某个阶段拒绝过 `Bash(git)`，也总能离开去做别的事。`git switch` 会把未提交的改动带过去，这是 git 的行为。拒绝的理由里提示这个出口。
 
-**引导。** 内置流程的 guide 与 `skills/gemflow/SKILL.md` 写明：和当前工作项无关的改动，另开分支或 worktree 做（子 agent 可用隔离 worktree），做完切回来。
+**引导。** 内置流程的 guide 与 `skills/gemworks/SKILL.md` 写明：和当前工作项无关的改动，另开分支或 worktree 做（子 agent 可用隔离 worktree），做完切回来。
 
 **局限。** 目录按命令文字判断：变量、脚本，`npm --prefix`、`git -C` 这类参数里的目录都不跟踪；经符号链接的路径，快路径与 CLI 的判断可能不一致。
 
@@ -429,13 +429,13 @@ Stagehand 分两层：核心只写文件，宿主负责把文件交给模型。
 1. 把 `main` 合进本分支，解决冲突，现有测试全绿。
 2. 机械改名（§4.2），一个独立提交。
 3. `src/core/`：`signals.ts`、`stagehand.ts`、`backlog.ts`、`unit.ts`（按 `flow-unit` 定位当前工作项）；`journal.ts` 按工作项定位；`statechart.ts` 读章节与两张表并做 §4.3 的检查；`supervisor.ts` 管守卫、批准、`only-in`、人专属命令、自动边与工具词典的判定；`tools.ts` 读写工具词典。
-4. `src/hosts/dsh/`、`src/hosts/pi/`：接工具词典的判定；按 CLI 的方式找流程（`GEMFLOW_STATECHART`，否则 `.geml/gemflow.geml` 的 `default`，否则唯一的 `.geml/workflows/<name>/flow.geml`）；把调用的输入交给第 3 道门（`only-in` 与只许人做的命令）。它们仍按会话记 journal，不求值信号、不写 `.geml/context.geml`（§10）。
+4. `src/hosts/dsh/`、`src/hosts/pi/`：接工具词典的判定；按 CLI 的方式找流程（`GEMWORKS_STATECHART`，否则 `.geml/gemworks.geml` 的 `default`，否则唯一的 `.geml/workflows/<name>/flow.geml`）；把调用的输入交给第 3 道门（`only-in` 与只许人做的命令）。它们仍按会话记 journal，不求值信号、不写 `.geml/context.geml`（§10）。
 5. 新增 `src/hosts/claude-code/`（§8）与插件清单。
 6. `spec/profiles/geml-agent/` → `spec/profiles/geml-flow/`，按 §4 改写（英文与中文两份）；静态检查的用例进 `checks.json`，解析器层的规则进 `conformance.json`。
-7. 内置流程随包发布在 `workflows/` 下，一个流程一个目录，各自带 `flow.geml` 和自己的上下文文档；`gemflow init --template <name>` 整目录复制到项目的 `.geml/workflows/<name>/` 并设为当前流程。现有 `coding`（编码会话的五个阶段）与 `refund`（审批示例）；开发流程 `workflows/dev/`（§4.1）与视频流程 `workflows/video/`（§7.2）随 ② ④ 加入。
+7. 内置流程随包发布在 `workflows/` 下，一个流程一个目录，各自带 `flow.geml` 和自己的上下文文档；`gemworks init --template <name>` 整目录复制到项目的 `.geml/workflows/<name>/` 并设为当前流程。现有 `coding`（编码会话的五个阶段）与 `refund`（审批示例）；开发流程 `workflows/dev/`（§4.1）与视频流程 `workflows/video/`（§7.2）随 ② ④ 加入。
 8. `geml-parser`：`geml media todo` 加 `--check`，有待办时以非零退出（与 `geml check` 一致），供视频流程的命令信号使用；CHANGELOG 同一提交记一条。
-9. 边表与流程图：计划 `docs/design/plans/2026-10-12-gemflow-d-transition-table.md`。
-10. 工作项的边界（§5.7）：计划 `docs/design/plans/2026-10-12-gemflow-e-side-quests.md`。
+9. 边表与流程图：计划 `docs/design/plans/2026-10-12-gemworks-d-transition-table.md`。
+10. 工作项的边界（§5.7）：计划 `docs/design/plans/2026-10-12-gemworks-e-side-quests.md`。
 11. 流程词汇精简（§4）与工具词典（§5.3）：另写计划。
 
 ## 7. 内置流程
@@ -472,7 +472,7 @@ Stagehand 分两层：核心只写文件，宿主负责把文件交给模型。
 | approved | false | manual | | | 审片通过 |
 | published | false | manual | | | 已发布 |
 
-上表的正则是示意；内置的视频流程（`integrations/gemflow/workflows/video/flow.geml`）读得出这些写法：`geml`（任何路径、`@版本`）前面的 `npx`、`bunx`、`pnpm [dlx|exec]`、`yarn [dlx]`、`npm exec`，以及 `node` 带 `-` 开头的选项运行 `geml.js` 或 `cli.js`（任何路径，或不带路径）；`--check` 与 `--severity media-stale-clip=error` 写在动词之后的任何位置。同一条简单命令里带 `--help` 或 `-h` 的，三个正则都不认：它只打印帮助、以 0 退出，什么也没检查、没出片。出片的正则还要求 `--out`（或 `-o`）后面跟着文件：没有它 build 不会运行。`rendered` 的 `only-in` 在整行里查找，`bash -c "…"` 里的、去掉引号之后的出片命令照样被拒绝；它只看文字，`bun`、`tsx` 之类别的启动器、变量与脚本都能绕过它。信号与闸跟随命令行写到的那一集（§5.7），所以流程的 `guide.geml` 要求每条命令都写本集的文件并带 `--root .`。三个命令证据随这一集文件的内容过期：文件改了，待办检查、过期检查与出片都要重新过。
+上表的正则是示意；内置的视频流程（`integrations/gemworks/workflows/video/flow.geml`）读得出这些写法：`geml`（任何路径、`@版本`）前面的 `npx`、`bunx`、`pnpm [dlx|exec]`、`yarn [dlx]`、`npm exec`，以及 `node` 带 `-` 开头的选项运行 `geml.js` 或 `cli.js`（任何路径，或不带路径）；`--check` 与 `--severity media-stale-clip=error` 写在动词之后的任何位置。同一条简单命令里带 `--help` 或 `-h` 的，三个正则都不认：它只打印帮助、以 0 退出，什么也没检查、没出片。出片的正则还要求 `--out`（或 `-o`）后面跟着文件：没有它 build 不会运行。`rendered` 的 `only-in` 在整行里查找，`bash -c "…"` 里的、去掉引号之后的出片命令照样被拒绝；它只看文字，`bun`、`tsx` 之类别的启动器、变量与脚本都能绕过它。信号与闸跟随命令行写到的那一集（§5.7），所以流程的 `guide.geml` 要求每条命令都写本集的文件并带 `--root .`。三个命令证据随这一集文件的内容过期：文件改了，待办检查、过期检查与出片都要重新过。
 
 | 边 | 怎么走 |
 |---|---|
@@ -522,57 +522,57 @@ Stagehand 分两层：核心只写文件，宿主负责把文件交给模型。
 | 工具 | 当前流程的工具词典：每个工具在当前状态是允许、拒绝还是未定，用途、首选与默认参数 | 改允许或拒绝、扩到所有阶段、打用途标签、设首选、编辑默认参数（写进 `tools.geml`，只改那一格，持文件锁） |
 | 记录 | 当前工作项 journal 的时间线：修订（做了什么、谁、哪个信号）、拒绝，按修订号排序，放得下的最后几行 | — |
 
-看板上的操作都经桥接执行，执行完重读看板；操作被拒时弹一条提示说明原因。看板只在用户用 `/gemflow board` 打开时出现，打开与刷新时重读 `git` 信号（含 `gh`）。一次调用、动词或补齐让阶段变了，或者 `/gemflow use`、`/gemflow add` 换了当前流程，已经读过的看板在这次 hook 之后重读。读不到看板（桥接不可用、错误应答、项目没有流程或流程有错）时 `/gemflow board` 不打开面板，回复原因；面板已经开着时显示原因，保留上一份看板。
+看板上的操作都经桥接执行，执行完重读看板；操作被拒时弹一条提示说明原因。看板只在用户用 `/gemworks board` 打开时出现，打开与刷新时重读 `git` 信号（含 `gh`）。一次调用、动词或补齐让阶段变了，或者 `/gemworks use`、`/gemworks add` 换了当前流程，已经读过的看板在这次 hook 之后重读。读不到看板（桥接不可用、错误应答、项目没有流程或流程有错）时 `/gemworks board` 不打开面板，回复原因；面板已经开着时显示原因，保留上一份看板。
 
-### 8.3 `/gemflow` 命令
+### 8.3 `/gemworks` 命令
 
-`/gemflow`（当前工作项、阶段、信号、下一步、拒绝计数）、`/gemflow board`（打开看板）、`/gemflow use <流程>`（切换项目的默认流程：之后新开的工作项用它，已开始的工作项按各自的流程继续）、`/gemflow add [流程]`（+ 菜单：不带参数列出内置流程，带名字时把它复制进 `.geml/workflows/`；项目还没有流程时同时设为当前流程，否则提示 `/gemflow use <流程>`；市场见 ③）。其他参数回一段用法。
+`/gemworks`（当前工作项、阶段、信号、下一步、拒绝计数）、`/gemworks board`（打开看板）、`/gemworks use <流程>`（切换项目的默认流程：之后新开的工作项用它，已开始的工作项按各自的流程继续）、`/gemworks add [流程]`（+ 菜单：不带参数列出内置流程，带名字时把它复制进 `.geml/workflows/`；项目还没有流程时同时设为当前流程，否则提示 `/gemworks use <流程>`；市场见 ③）。其他参数回一段用法。
 
 ### 8.4 hooks 模块接线
 
-hooks 模块运行在没有 Node、没有 DOM 的环境里，`$.fs` 不能追加、改名或加锁，所以它从不写项目里的文件：journal、上下文文档与 backlog 只由 Node 一侧的 CLI 写。两侧之间是一座桥：`node <插件目录>/dist/gemflow.mjs hook`，stdin 一个 JSON 请求，stdout 一行 JSON 应答，不论应答说什么退出码都是 0（op：status、refresh、before、after、verb、learn、mark、advance、bind、use、add、board）。CLI 每个请求都重新打开工作区——打开时读 git 的事实，别的进程也可能在两次请求之间写过 journal——用 `host: "claude"` 执行。请求只带调用的命令与路径，不带文件内容。请求与应答的类型只在不依赖 Node 的 `src/hosts/claude-code/protocol.ts` 里定义一次。`before`、`after` 与 `verb` 请求带上这次调用的起始目录（`cwd`，hooks 模块在调用进入时读 `$.session.cwd()`），CLI 按 §5.7 归属。
+hooks 模块运行在没有 Node、没有 DOM 的环境里，`$.fs` 不能追加、改名或加锁，所以它从不写项目里的文件：journal、上下文文档与 backlog 只由 Node 一侧的 CLI 写。两侧之间是一座桥：`node <插件目录>/dist/gemworks.mjs hook`，stdin 一个 JSON 请求，stdout 一行 JSON 应答，不论应答说什么退出码都是 0（op：status、refresh、before、after、verb、learn、mark、advance、bind、use、add、board）。CLI 每个请求都重新打开工作区——打开时读 git 的事实，别的进程也可能在两次请求之间写过 journal——用 `host: "claude"` 执行。请求只带调用的命令与路径，不带文件内容。请求与应答的类型只在不依赖 Node 的 `src/hosts/claude-code/protocol.ts` 里定义一次。`before`、`after` 与 `verb` 请求带上这次调用的起始目录（`cwd`，hooks 模块在调用进入时读 `$.session.cwd()`），CLI 按 §5.7 归属。
 
 - **快路径**：每个应答都带一份状态与策略快照（读一遍 journal 与工具词典得出）——是否有工作项、单位、当前状态、本状态在词典里允许与拒绝的键、各用途的首选与默认参数、`#vars` 里命令来源的两份正则（`only-in` 在整行里搜的那份、对每条简单命令从开头匹配的那份）及其 `only-in`、文件来源的 glob、出边守卫所读的变量。调用前由纯函数判断：人专属命令与越出 `only-in` 的命令请 CLI 记录并拒绝；只切换工作项的命令行放行；其余按 §5.3——有键被拒过就拒绝（请 CLI 记一条 `refused`），全部允许过就放行（不起子进程），有没见过的键或模型没用首选，hooks 模块就用 `$.ui.ask` 问人，答案经 `learn` 写进词典，再按答案放行或拒绝；带默认参数的工具，hooks 模块补上缺的参数（`next({ ...e, ...缺的参数 })`）。读命令行用的是监督器自己的扫描函数（`src/core/command-line.ts`，不 import 任何东西），快路径与 CLI 判断得完全一样；人专属命令与 `only-in` 读任何输入里带 `command` 的工具调用（Bash、Monitor）。调用后只在这几种情况起 `after`：写了匹配 `file:` 单位 glob 的路径；Bash 结果带 `gitOperation`，或命令行在任一命令位置运行了 `git`、`gh`（切换分支、reset 不带 `gitOperation`，却可能换掉工作项，或带来第一个工作项）——这两种在没有工作项时也起；`before` 刚记过一条；流程有文件来源时的任何运行命令的调用（构建、渲染也会产生文件）；命令来源的正则匹配了带退出码的命令；写文件的调用写了匹配文件来源 glob 的路径。`test/fastpath-parity.test.mjs` 对着工作区钉住这两个判断。调用可能落在别的检出时快路径不按会话的策略放行：hooks 模块从起始目录（写文件的工具用文件所在目录）往上直到项目根，用 `$.fs.stat` 找 `.git`（按目录缓存），找到了、目录在项目根之外，或命令行里有切换目录的命令，就请 CLI 定夺；策略快照按检出各留一份，同一个检出里之后的调用照常走快路径。
-- **git 信号**在会话开始、看板打开与刷新、结果带 `gitOperation` 的调用之后重读，连同 `gh`；命令行运行了 `git` 或 `gh` 而结果不带 `gitOperation` 时只重读 git 自己的事实（当前分支、`committed`），所以 `git status` 之类的命令不会多问一次 `gh`。其余请求沿用上一次应答报告的 `gh` 可用性。`GEMFLOW_GH` 指定 `gh` 程序。
+- **git 信号**在会话开始、看板打开与刷新、结果带 `gitOperation` 的调用之后重读，连同 `gh`；命令行运行了 `git` 或 `gh` 而结果不带 `gitOperation` 时只重读 git 自己的事实（当前分支、`committed`），所以 `git status` 之类的命令不会多问一次 `gh`。其余请求沿用上一次应答报告的 `gh` 可用性。`GEMWORKS_GH` 指定 `gh` 程序。
 - **上下文**：应答报告阶段变化（这次操作进入了新状态，工作区的结果带着新阶段的文字）时，新的 `#current` 放进这次工具结果的 `context`；调用来自主线程时，应答里上下文文档的 `item@rev` 记为已交给模型，子 agent 的调用（事件带 `agentId`）的结果只到子 agent，不记，主线程的下一次提交照样带上。`prompt.submit` 读 `.geml/context.geml`，`item@rev` 与已交的不同、且 `item` 是当前工作项时放进 `context`；`session.end`（含 `/clear`）清掉这个记号。工作区的每次操作（含打开）都会让上下文文档对上当前工作项。应答所在的工作项与已交给主线程的不同（切换了分支、换了一集）时，新工作项的说明连同交接行放进这次工具结果的 `context`（§5.7），并记为已交给模型。
-- **失败放行**：Node 缺失、桥接失败或超时（每次 15 秒；`refresh`、`board`、`use`、`add` 45 秒）、应答无法解析时，调用照常执行、什么都不记，状态带显示原因；词典的拒绝、`only-in` 与人专属命令只在有策略快照时生效；问人在 hooks 模块里，答案要经桥接才记得进词典。CLI 从不把异常抛给 hooks 模块：打不开工作区是一个问题（项目里没有流程时不显示），读不了 journal、锁一直被占、动词反复冲突是不带状态的错误应答——hooks 模块保留上一份状态与策略，状态带显示原因。会话开始时没找到 Node 或没拿到应答，之后的工具调用、提交或 `/gemflow` 再试，至多一分钟一次。每个会拦截的 hook 都带 `.catch`：hook 自己出错时调用照常执行。
+- **失败放行**：Node 缺失、桥接失败或超时（每次 15 秒；`refresh`、`board`、`use`、`add` 45 秒）、应答无法解析时，调用照常执行、什么都不记，状态带显示原因；词典的拒绝、`only-in` 与人专属命令只在有策略快照时生效；问人在 hooks 模块里，答案要经桥接才记得进词典。CLI 从不把异常抛给 hooks 模块：打不开工作区是一个问题（项目里没有流程时不显示），读不了 journal、锁一直被占、动词反复冲突是不带状态的错误应答——hooks 模块保留上一份状态与策略，状态带显示原因。会话开始时没找到 Node 或没拿到应答，之后的工具调用、提交或 `/gemworks` 再试，至多一分钟一次。每个会拦截的 hook 都带 `.catch`：hook 自己出错时调用照常执行。
 
 | 事件 | 做什么 |
 |---|---|
-| `session.start` | 记下会话目录；注册三个模型工具（`$.tool.register`，`isDeferred: false`）与 `/gemflow`，没注册上的记下来由状态带显示，启动照常继续；找 Node（先 `node --version`，主版本 ≥ 22；不行再 `/bin/sh -lc "command -v node"` 取绝对路径，同样检查）；经桥接取一次状态；随后在会话开始之外（`$.clock.after(0, …)`）请 `refresh` 补齐 `git`、`file` 信号 |
+| `session.start` | 记下会话目录；注册三个模型工具（`$.tool.register`，`isDeferred: false`）与 `/gemworks`，没注册上的记下来由状态带显示，启动照常继续；找 Node（先 `node --version`，主版本 ≥ 22；不行再 `/bin/sh -lc "command -v node"` 取绝对路径，同样检查）；经桥接取一次状态；随后在会话开始之外（`$.clock.after(0, …)`）请 `refresh` 补齐 `git`、`file` 信号 |
 | `session.end` | 清掉"已交给模型的上下文"记号：`/clear` 之后的下一次提交重新带上 `#current` |
-| `tool.call` | gemflow 自己的三个工具直接放过。进入时读 `$.session.cwd()` 作为这次调用的起始目录。调用前：按快路径与工具词典放行、拒绝（回 `{ deny }`）或用 `$.ui.ask` 问人，补默认参数；调用后：按快路径只在需要时请 `after` 求值 `command`、`file`、`git` 信号（退出码判定见 §5.2）；`file:` 单位下记下最近写过的匹配文件；若这次调用触发了状态变化或换了工作项，把新的 `#current`（换工作项时连同交接行）放进这次结果的 `context`，模型在同一轮就读到 |
-| `tool.call`（`mcp__gemflow__status`、`move`、`set`） | 经桥接的 `verb` 执行，带上调用方循环的目录；改变了阶段的动词把新的 `#current` 放进结果的 `context` |
+| `tool.call` | gemworks 自己的三个工具直接放过。进入时读 `$.session.cwd()` 作为这次调用的起始目录。调用前：按快路径与工具词典放行、拒绝（回 `{ deny }`）或用 `$.ui.ask` 问人，补默认参数；调用后：按快路径只在需要时请 `after` 求值 `command`、`file`、`git` 信号（退出码判定见 §5.2）；`file:` 单位下记下最近写过的匹配文件；若这次调用触发了状态变化或换了工作项，把新的 `#current`（换工作项时连同交接行）放进这次结果的 `context`，模型在同一轮就读到 |
+| `tool.call`（`mcp__gemworks__status`、`move`、`set`） | 经桥接的 `verb` 执行，带上调用方循环的目录；改变了阶段的动词把新的 `#current` 放进结果的 `context` |
 | `prompt.submit` | `.geml/context.geml` 的 `item@rev` 与已交给模型的不同（人在看板上推进、会话开始时 git 信号补齐、子 agent 推进过），且 `item` 是当前工作项时，把 `#current` 放进 `context` |
-| `command.run` | `/gemflow` 各子命令；`/gemflow board` 先读看板，读到了才调 `$.ui.open({ id: "gemflow-board", title: "Gemflow" })` |
-| `ui.render` `AbovePrompt` / `Pane`（`requestId: "gemflow-board"`） | 状态带、看板 |
+| `command.run` | `/gemworks` 各子命令；`/gemworks board` 先读看板，读到了才调 `$.ui.open({ id: "gemworks-board", title: "Gemworks" })` |
+| `ui.render` `AbovePrompt` / `Pane`（`requestId: "gemworks-board"`） | 状态带、看板 |
 
-`prompt.submit` 的 `context` 与 `tool.call` 结果的 `context` 都只给模型看、不显示给用户（已实测前者到达模型）。看板只由用户的命令打开，所以任何宽度都会摆出来（插件自己打开时终端要 144 列以上）；没摆出来时 `/gemflow board` 说明原因。
+`prompt.submit` 的 `context` 与 `tool.call` 结果的 `context` 都只给模型看、不显示给用户（已实测前者到达模型）。看板只由用户的命令打开，所以任何宽度都会摆出来（插件自己打开时终端要 144 列以上）；没摆出来时 `/gemworks board` 说明原因。
 
 ### 8.5 MCP 工具（跨宿主共用）
 
-三个工具 `status`、`move`、`set`，参数结构固定，不随状态变（免得 prompt 缓存失效）：`status` 只读，给出工作项、阶段、变量、每条出边与守卫是否成立，以及本阶段的说明；`move {to}` 走一条出边；`set {变量: 值, …}` 写由模型写的变量（类型须与默认值相同，有来源的变量写不了）。Claude Code 里由 hooks 模块在会话开始时用 `$.tool.register` 注册，列为 `mcp__gemflow__status` 等；只接 MCP 的宿主经 `gemflow mcp` 看到同样三个名字（宿主按服务名分命名空间）；DeepSeek Harness 与 pi agent 没有命名空间，注册为 `gemflow_status`、`gemflow_move`、`gemflow_set`。它们是 gemflow 自己的工具：不经工具词典、出错也不回滚；动词自己的规则（守卫、批准、变量类型）照样生效。模型对要批准的边调用 `move` 一律被拒绝并记一条 `refused`，回答里提示由人在看板上或用 `gemflow advance <state>` 批准。手动信号与回滚不是模型的工具（回滚是人的 `gemflow rollback`）。
+三个工具 `status`、`move`、`set`，参数结构固定，不随状态变（免得 prompt 缓存失效）：`status` 只读，给出工作项、阶段、变量、每条出边与守卫是否成立，以及本阶段的说明；`move {to}` 走一条出边；`set {变量: 值, …}` 写由模型写的变量（类型须与默认值相同，有来源的变量写不了）。Claude Code 里由 hooks 模块在会话开始时用 `$.tool.register` 注册，列为 `mcp__gemworks__status` 等；只接 MCP 的宿主经 `gemworks mcp` 看到同样三个名字（宿主按服务名分命名空间）；DeepSeek Harness 与 pi agent 没有命名空间，注册为 `gemworks_status`、`gemworks_move`、`gemworks_set`。它们是 gemworks 自己的工具：不经工具词典、出错也不回滚；动词自己的规则（守卫、批准、变量类型）照样生效。模型对要批准的边调用 `move` 一律被拒绝并记一条 `refused`，回答里提示由人在看板上或用 `gemworks advance <state>` 批准。手动信号与回滚不是模型的工具（回滚是人的 `gemworks rollback`）。
 
-其他宿主用 `gemflow mcp [--host <宿主>] [--root <目录>]`（stdio MCP：initialize、ping、tools/list、tools/call）。每次调用都重新打开工作区，用 `--host` 指定宿主（默认 `mcp`）；打不开工作区、读不了 journal、锁一直被占、动词反复冲突都是一条错误结果，服务不会因此退出。改变了阶段的调用把新的 `#current` 附在结果后面。这类宿主不把自己的工具调用交给 Gemflow，所以：
+其他宿主用 `gemworks mcp [--host <宿主>] [--root <目录>]`（stdio MCP：initialize、ping、tools/list、tools/call）。每次调用都重新打开工作区，用 `--host` 指定宿主（默认 `mcp`）；打不开工作区、读不了 journal、锁一直被占、动词反复冲突都是一条错误结果，服务不会因此退出。改变了阶段的调用把新的 `#current` 附在结果后面。这类宿主不把自己的工具调用交给 Gemworks，所以：
 
 - 命令来源观察不到，工具词典不起作用，什么都不拒——`only-in` 与人专属命令也一样。守卫对人的推进同样生效，所以守卫要读命令信号的边，只有守卫也接受一个手动信号时才会走：开发流程的 `ready` 能让 #build 进入 #review，`ship` 等的 production 部署退出码在这类宿主上永远读不到，#release 到不了 #done，除非流程给这条边的守卫加一个手动信号。
 - `git`、`file` 来源只在模型调用 `status` 时重读；读完流程动了，回答后面附上新阶段的文字。
-- 没有状态带和看板；人在终端里用 `gemflow` 推进、勾手动信号。
+- 没有状态带和看板；人在终端里用 `gemworks` 推进、勾手动信号。
 
-skill `skills/gemflow/SKILL.md` 要求只接 MCP 的宿主每轮先读 `.geml/context.geml#current`，推了代码、开了 PR 或写了阶段要的文件之后调用 `status`，不运行人专属命令，运行 `only-in` 命令之前自己先看当前状态。Codex、Grok、Gemini CLI 用 `gemflow mcp` 推进与记录；DeepSeek Harness 与 pi agent 用各自的适配器（§6 第 4 条）。
+skill `skills/gemworks/SKILL.md` 要求只接 MCP 的宿主每轮先读 `.geml/context.geml#current`，推了代码、开了 PR 或写了阶段要的文件之后调用 `status`，不运行人专属命令，运行 `only-in` 命令之前自己先看当前状态。Codex、Grok、Gemini CLI 用 `gemworks mcp` 推进与记录；DeepSeek Harness 与 pi agent 用各自的适配器（§6 第 4 条）。
 
 ## 9. 测试策略
 
 - 核心全是纯函数：每条静态检查、每种信号、三种推进来源、工具词典的判定与学习、`only-in`、journal 加锁与续链，各有单测。
 - `checks.json` 钉住静态检查（运行时的测试逐例重放），`conformance.json` 钉住解析器层的规则。
-- Claude Code 外壳：快路径、结果读取、状态带、看板与 `/gemflow` 的文字都是纯函数，用 node:test 测（含中日韩字符宽度）；`test/fastpath-parity.test.mjs` 对着工作区钉住快路径——工作区会拒绝或记录的调用都请 `before`，`after` 会改变状态、策略或 journal 的调用都请 `after`。桥接经打包后的 `dist/gemflow.mjs` 在临时 git 仓库里逐个 op 测（`gh` 用 `GEMFLOW_GH` 指向的替身），开发流程也这样从头走到尾：信号推进、部署封路与各种部署写法、人批准、退回重做；`gemflow mcp` 逐条消息测。hooks 模块用 `claude plugin test` 按真实事件顺序驱动（会话开始 → Bash 测试命令写信号 → 自动边推进 → 结果里带上新阶段 → 看板推进后的下一次提交带上新阶段；另有失败的测试、切换分支、词典拒绝与问人、桥接坏掉与错误应答与没有 Node 时放行、三个工具、子 agent、注册被拒、没构建的 bundle、至多一分钟一次的重试、各界面上的状态带与看板），桥接由测试脚本应答；`npm run test:claude` 运行，需要 `claude` CLI。另有一个测试沿 hooks 模块的 import 链检查，不允许任何需要 Node 的东西进来。
-- 端到端：用本分支自己的开发当第一个真实用户——Gemflow 记录 Gemflow 的开发。
+- Claude Code 外壳：快路径、结果读取、状态带、看板与 `/gemworks` 的文字都是纯函数，用 node:test 测（含中日韩字符宽度）；`test/fastpath-parity.test.mjs` 对着工作区钉住快路径——工作区会拒绝或记录的调用都请 `before`，`after` 会改变状态、策略或 journal 的调用都请 `after`。桥接经打包后的 `dist/gemworks.mjs` 在临时 git 仓库里逐个 op 测（`gh` 用 `GEMWORKS_GH` 指向的替身），开发流程也这样从头走到尾：信号推进、部署封路与各种部署写法、人批准、退回重做；`gemworks mcp` 逐条消息测。hooks 模块用 `claude plugin test` 按真实事件顺序驱动（会话开始 → Bash 测试命令写信号 → 自动边推进 → 结果里带上新阶段 → 看板推进后的下一次提交带上新阶段；另有失败的测试、切换分支、词典拒绝与问人、桥接坏掉与错误应答与没有 Node 时放行、三个工具、子 agent、注册被拒、没构建的 bundle、至多一分钟一次的重试、各界面上的状态带与看板），桥接由测试脚本应答；`npm run test:claude` 运行，需要 `claude` CLI。另有一个测试沿 hooks 模块的 import 链检查，不允许任何需要 Node 的东西进来。
+- 端到端：用本分支自己的开发当第一个真实用户——Gemworks 记录 Gemworks 的开发。
 
 ## 10. 后续子项目（占位）
 
 | 子项目 | 期 | 要点 |
 |---|---|---|
-| ③ 流程市场 | 第 2 期 | git 仓库作目录，索引为 GEML 文档；`gemflow catalog add owner/repo`；安装前预览（阶段、每个阶段的指令、封路点）+ 静态检查；装进 `.geml/workflows/`，用户目录留缓存；+ 菜单：从市场安装（默认）/ 对话生成 / 复制修改 |
+| ③ 流程市场 | 第 2 期 | git 仓库作目录，索引为 GEML 文档；`gemworks catalog add owner/repo`；安装前预览（阶段、每个阶段的指令、封路点）+ 静态检查；装进 `.geml/workflows/`，用户目录留缓存；+ 菜单：从市场安装（默认）/ 对话生成 / 复制修改 |
 | ⑤ 按块读 + 影响面 + 投影 | 与 ③ 并行 | 大 Markdown 读取改为按块读并计节省；codemap 增量更新与调用者查询（状态带一段、看板一栏）；journal 与代码地图投影到 Obsidian，Logseq 其后 |
 | DeepSeek Harness 界面 | ② 之后 | 右侧栏标签页放看板；状态带需其 0.2.1 alpha 的 mods 桥；工作项 journal 到达 DeepSeek Harness 与 pi agent 之前，这两个宿主仍按会话记 journal（`flow-item = "session:<id>"`），不求值信号、不写 `.geml/context.geml` |
 | Codex 适配器的 hooks | ② 之后 | 插件 hooks 需要用户信任（安装说明里写清）；命令信号的退出码靠改写命令加标记取得（§12 待确认 2）；PreToolUse 拒绝已可用于 `only-in` 与工具词典 |
@@ -589,7 +589,7 @@ skill `skills/gemflow/SKILL.md` 要求只接 MCP 的宿主每轮先读 `.geml/co
 | 状态怎么写 | 章节 | 专门的块类型 | 指令本来就是一段文字；状态的属性或推得出来，或挪进了工具词典 |
 | 边怎么声明 | 普通 `table`，约定的 id `#transitions` | 每条边一个块；meta 指针 | 边没有正文，是平铺记录；整张拓扑一眼看完；用表自己的 id 最轻 |
 | 有守卫的边 | 自动走 | 按边标 `auto` | 内置流程里没有"有守卫却要手动走"的边 |
-| 流程图 | 流程文件里的 `diagram` 块，`gemflow check` 对照边表 | 导出命令 | 打开文件就看得到，GitHub 上直接渲染 |
+| 流程图 | 流程文件里的 `diagram` 块，`gemworks check` 对照边表 | 导出命令 | 打开文件就看得到，GitHub 上直接渲染 |
 | 工具权限 | 工具词典：每个状态第一次用到一个工具时问你，答案记下来 | 流程里按状态写死工具清单；全局 `mode` 开关 | 工具集一直在变（新的 MCP 服务、插件），由使用的人在用的时候决定最准；同时记下首选与默认参数 |
 | 怎么问人 | 插件自己的问题框 | 宿主的权限框 | 实测借不到宿主的权限框，auto 模式下也问不到人（§12）；偏好要几个选项 |
 | 推进来源记在哪 | 新属性 `by` | 扩充 `cause` 取值 | `cause` 说做了什么，`by` 说谁做的，两者正交 |
@@ -629,8 +629,8 @@ skill `skills/gemflow/SKILL.md` 要求只接 MCP 的宿主每轮先读 `.geml/co
 
 ## 13. 已拍板（2026-10-11）
 
-1. 包与目录：`integrations/gemflow/`，`@geml/gemflow`，CLI `gemflow`，发布在 geml marketplace。
-2. journal 默认 gitignore，流程定义、backlog 与 `.geml/gemflow.geml` 提交进仓库。
+1. 包与目录：`integrations/gemworks/`，`@geml/gemworks`，CLI `gemworks`，发布在 geml marketplace。
+2. journal 默认 gitignore，流程定义、backlog 与 `.geml/gemworks.geml` 提交进仓库。
 3. Stagehand 预算默认 16 KB。
 4. 开发流程的五个状态与两个封路点（§7）。
 5. 视频流程与开发流程同期交付（§7.2）；工作项单位由流程的 `flow-unit` 声明。

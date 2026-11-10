@@ -2,7 +2,7 @@
 
 *[English](workflow.md) | 中文*
 
-- 状态：**draft**：仍可能改动。设计依据：[`docs/design/specs/2026-10-11-gemflow-design.md`](../docs/design/specs/2026-10-11-gemflow-design.md)。
+- 状态：**draft**：仍可能改动。设计依据：[`docs/design/specs/2026-10-11-gemworks-design.md`](../docs/design/specs/2026-10-11-gemworks-design.md)。
 - 性质：**Gemworks 自己的格式，不是 GEML 的 profile。** 它不给 GEML 加块类型、属性键或 diagram 格式，所以不需要词汇表：流程只声明 [`geml-statechart/v1`](../../../spec/profiles/geml-statechart/geml-statechart-profile_CN.md)。那个格式——正文的形状、通行要求的三种写法、`reset` 动作、画法、`statechart-*` 检查——属于 GEML；本文加的是挂在那台状态机的状态、变量、转换上、把它接到 Gemworks 的几个键（格式本来就把它们当属性放行），外加一个 `=== meta` 键 `flow-unit`，在 GEML 看来那只是作者的元数据。GEML 的解析器对 Gemworks 一无所知。一份流程就是一份普通的 GEML 文档：一个装着状态机的 `diagram` 块，它引用的提示词文档和通行要求 `data` 块，旁边一份只是一张 `table` 的工具词典。journal 与上下文文档也是普通的 `data`、`text` 块。GEML 不需要读其中任何新语法。解释它们的运行时是 `gemworks`（`integrations/gemworks/`）：Claude Code 插件、`gemworks` CLI 及其 MCP 服务（`gemworks mcp`），以及 DeepSeek Harness 与 pi agent 的适配器。
 - 运行时覆盖：DeepSeek Harness 与 pi agent 适配器按会话记 journal（`item` 是 `session:<id>`），不求值信号，不写上下文文档。只接 MCP 的宿主不把自己的工具调用交给 Gemworks，所以在它上面工具词典、用途封路与只许人做的命令都不起作用（§3.11）。
 
@@ -296,7 +296,7 @@ flow-workflow = "dev"
 
 默认流程按下面的顺序确定：环境变量 `GEMWORKS_STATECHART` 指定的流程文件（它指定的是会话的流程，另一个检出里的项目不理会它，§3.3）；否则是 `flow-workflow` 指定的那个；否则是项目唯一的那个流程。`gemworks init --template <name>` 把一个内置流程写成 `.geml/workflows/<name>.geml`——guide 的各节接在状态机后面——把它的词典行并进 `.geml/tools.geml`，并设为默认流程；`gemworks use <name>` 与 `/gemworks use` 换一个默认流程，已经开始的工作项仍按各自的流程（§3.2）。
 
-检出里的旧布局——`.geml/workflows/<name>/` 目录里放 `flow.geml`、它的提示词文档和 `tools.geml`，加上 `.geml/gemflow.geml`——照样能读，同名时主目录的文件优先。`gemworks migrate` 和 Claude Code 会话的第一次 status 把它搬进主目录；git 跟踪着的只复制、留在原处。名字是这种 `flow.geml` 的 journal，接着在它搬去的那个文件下走。
+检出里的旧布局——`.geml/workflows/<name>/` 目录里放 `flow.geml`、它的提示词文档和 `tools.geml`——照样能读，同名时主目录的文件优先。`gemworks migrate` 和 Claude Code 会话的第一次 status 把它搬进主目录；git 跟踪着的只复制、留在原处。名字是这种 `flow.geml` 的 journal，接着在它搬去的那个文件下走。
 
 ### 3.2 工作项
 

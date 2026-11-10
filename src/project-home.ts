@@ -5,8 +5,8 @@
 // `.geml/workflows/<name>.geml`, its stages' texts in it; one dictionary,
 // `.geml/tools.geml`, for all of them; `.geml/project.geml` naming the
 // default. The earlier layout — a directory per workflow (flow.geml, guide.geml,
-// tools.geml) and `.geml/gemflow.geml`, in the checkout, often in git — is
-// still read, and `migrateLayout` moves it into the home.
+// tools.geml), in the checkout, often in git — is still read, and
+// `migrateLayout` moves it into the home.
 import { cpSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { unitSpans } from "@geml/geml";
@@ -14,7 +14,7 @@ import { exists, readText, withLock, writeAtomic } from "./host-fs.js";
 import { journalBaseOf, trackedUnder } from "./host-git.js";
 import { TOOLS_FILE, type DictRow } from "./core/dictionary.js";
 import { readDictionary, withToolsTable } from "./core/dictionary-file.js";
-import { FLOW_FILE, GEML_DIR, LEGACY_CONFIG_DOC, PROJECT_DOC, TOOLS_DOC, WORKFLOWS_DIR } from "./core/layout.js";
+import { FLOW_FILE, GEML_DIR, PROJECT_DOC, TOOLS_DOC, WORKFLOWS_DIR } from "./core/layout.js";
 
 const slashed = (p: string): string => p.split(sep).join("/");
 const lf = (s: string): string => s.replace(/\r\n?/g, "\n");
@@ -81,9 +81,10 @@ export function installedWorkflows(root: string, home = homeOf(root)): Installed
   return [...found.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
-/** The project document: the home's, else the earlier `.geml/gemflow.geml` (the checkout's, then the home's); undefined when there is none. */
+/** The project document, the home's; undefined when there is none. */
 export function projectDocOf(root: string, home = homeOf(root)): string | undefined {
-  return [join(home, PROJECT_DOC), join(root, LEGACY_CONFIG_DOC), join(home, LEGACY_CONFIG_DOC)].find(exists);
+  const doc = join(home, PROJECT_DOC);
+  return exists(doc) ? doc : undefined;
 }
 
 /** How a journal names a workflow file: relative to the home when it lies there, else to the checkout; `/`-separated. */
@@ -250,9 +251,8 @@ export interface Moved { from: string; to: string; kept: boolean; trashed?: stri
 /**
  * Move the earlier layout into the home (the checkout's, then the home's own):
  * each workflow directory becomes `.geml/workflows/<name>.geml`, its guide
- * taken in; its dictionary's rows join `.geml/tools.geml`; `.geml/gemflow.geml`
- * becomes `.geml/project.geml`. A file the home has already is kept, never
- * overwritten. What git tracks is copied and stays; the rest goes to `trash`.
+ * taken in; its dictionary's rows join `.geml/tools.geml`. A file the home has
+ * already is kept, never overwritten. What git tracks is copied and stays; the rest goes to `trash`.
  * The home's `.geml/` gets its .gitignore. Answers what moved; nothing when
  * there is nothing of the earlier layout.
  */
@@ -280,13 +280,6 @@ export function migrateLayout(root: string, trash: string, home = homeOf(root)):
       if (tools !== undefined) dictionaries.push({ text: tools, at: statSync(join(from, TOOLS_FILE)).mtimeMs });
       const keep = kept(from);
       out.push({ from, to, kept: keep, ...(keep ? {} : { trashed: toTrash(from, trash, label(from)) }) });
-    }
-    const config = join(base, LEGACY_CONFIG_DOC);
-    if (exists(config)) {
-      const to = join(home, PROJECT_DOC);
-      if (!exists(to)) { mkdirSync(dirname(to), { recursive: true }); writeAtomic(to, readText(config)); }
-      const keep = kept(config);
-      out.push({ from: config, to, kept: keep, ...(keep ? {} : { trashed: toTrash(config, trash, label(config)) }) });
     }
     if (exists(join(geml, ".gitignore"))) ensureGitignore(geml);
   }

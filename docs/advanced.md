@@ -6,8 +6,8 @@ A **workflow written in GEML** — one statechart — decides, at every moment,
 which transitions an agent may take, which variables it may write, and which
 tools belong to the stage it is in. A state declares **uses** (`edit`, `test`,
 `deploy-prod`: words the author picks); a **tool dictionary** beside the
-workflow binds each use to this project's tools, and a use is usable only in the
-states that declare it. **Evidence** — a test's exit status, a pull request,
+workflow binds each use to this project's tools, and a use the workflow
+declares as a **rule** is usable only in the states that declare it. **Evidence** — a test's exit status, a pull request,
 a file on disk, a person's tick — is written from what the host observed, never
 from the model's word. Every change is validated before it lands and appended
 to a **hash-chained journal** — itself an ordinary GEML document you can read,
@@ -69,26 +69,26 @@ in the bundled CLI, which the plugin asks over a bridge:
 
 The supervisor's state is `σ = (state, vars)`, and the allowed set is one line:
 
-> `A(σ)` = every tool but those bound to a use this state does not declare and
+> `A(σ)` = every tool but those bound to a rule this state does not declare and
 > those the dictionary denies in this state, ⋃ the transitions out whose guard
 > the model judges or that have none, ⋃ the variables without a source.
 
-A tool bound to a use this state does not declare is refused, and so is one the
-dictionary denies in this state; every other tool runs as usual.
+A tool bound to a rule this state does not declare is refused, and so is one
+the dictionary denies in this state; every other tool runs as usual.
 
 ## Status
 
 | | |
 |---|---|
-| Shipping now | The workflow format, on `geml-statechart/v1` (no vocabulary of its own); the core library (workflow loading and static checks, the tool dictionary, evidence by source, hash-chained revisions, journal render/read/verify, the supervisor, Stagehand, work items, the backlog table); the workspace, which runs one locked operation at a time against a project; the `gemworks` CLI; four bundled workflows (`coding`, `dev`, `matter`, `video`), each with its dictionary; a Claude Code plugin (the band above the prompt, the board, `/gemworks`, the three tools `status`, `move`, `set`); `gemworks mcp` for hosts that speak only MCP; and both host adapters — a Cordis plugin for DeepSeek Harness `0.1.5-rc.1` with the board as a tab in its web GUI, and an extension for pi agent `0.85.x`. |
+| Shipping now | The workflow format, on `geml-statechart/v1` (no vocabulary of its own); the core library (workflow loading and static checks, the tool dictionary, evidence by source, hash-chained revisions, journal render/read/verify, the supervisor, Stagehand, work items, the backlog table); the workspace, which runs one locked operation at a time against a project; the `gemworks` CLI; four bundled strict flows (`coding`, `dev`, `matter`, `video`), each with its dictionary; a Claude Code plugin (the band above the prompt, the board, `/gemworks`, and the model's tools: `status`, `move`, `set` for a strict flow, `work`, `note`, `practice`, `propose`, `ask`, `artifact` and `rule` for the work loop); `gemworks mcp` for hosts that speak only MCP; Codex and Antigravity hooks, with the GEML board page `.geml/board.geml`; and both host adapters — a Cordis plugin for DeepSeek Harness `0.2.0-rc.2` with the board as a tab in its web GUI, and an extension for pi agent `1.x`. |
 | Tested without a model | Every gate, on both adapter hosts: the DSH adapter against a real agent from `dsh-agent-loop-testkit`, the pi agent adapter against a double that runs its own pipeline order and its own argument validator. The Claude Code plugin: its hooks module under `claude plugin test`, in real event order, with a scripted bridge; the bridge through the bundled CLI in throwaway git repositories, with a stand-in for `gh`; the fast path held to what the workspace would refuse, record and ask about. A run against a live model is a manual step, below. |
-| Not on every host yet | Evidence from files, git and a person, and the stage's context document (`.geml/context.geml`), run through the workspace. The Claude Code plugin hands it every tool call, and so do Codex's hooks once trusted, so all four sources are read there. On MCP-only hosts (`gemworks mcp`: Gemini CLI, Grok, Codex with its hooks untrusted, …) no tool call is seen: `tool` evidence is never written, nothing is refused, and `status` reads git and the file variables afresh when the model calls it. The two host adapters keep one journal per session and write `tool` evidence only; a transition marked `approval` has no one to take it there yet. |
+| Not on every host yet | Evidence from files, git and a person, and the stage's context document (`.geml/context.geml`), run through the workspace. The Claude Code plugin hands it every tool call, and so do Codex's hooks once trusted, so all four sources are read there. On MCP-only hosts (`gemworks mcp`: Gemini CLI, Grok, Codex with its hooks untrusted, …) no tool call is seen: `tool` evidence is never written, nothing is refused, and `status` reads git and the file variables afresh when the model calls it. The two host adapters keep one journal per session and write `tool` evidence only; on pi agent a transition marked `approval` has no one to take it yet. |
 | Not yet measured | What re-registering `move` and `set` per state costs DeepSeek Harness's prompt cache. |
-| Also in this bundle | The GEML MCP server and four skills — authoring, code-graph, gemworks and split-session (see [Install](hosts.md#install)). |
+| Also in this bundle | The GEML MCP server and four skills under `host-skills/` — `geml`, `geml-code-graph`, `gemworks-mcp` and `split-session` (see [Install](hosts.md#install)). |
 
-Design: [`docs/design/specs/2026-10-11-gemflow-design.md`](../docs/design/specs/2026-10-11-gemflow-design.md).
+Design: [`docs/design/specs/2026-10-11-gemworks-design.md`](../docs/design/specs/2026-10-11-gemworks-design.md).
 The workflow format and runtime rules: [`spec/workflow.md`](../spec/workflow.md);
-the statechart format: [`spec/profiles/geml-statechart/`](../../../spec/profiles/geml-statechart/geml-statechart-profile.md).
+the statechart format: [`spec/profiles/geml-statechart/`](https://github.com/geml-spec/geml/blob/main/spec/profiles/geml-statechart/geml-statechart-profile.md) in the GEML repository.
 
 ## A workflow
 
@@ -107,8 +107,8 @@ profile = "geml-statechart/v1"
   "states": {
     "explore":   { "title": "Explore",   "description": "Read the code before proposing anything; record goal and touched, then move to plan.", "prompt": "#explore" },
     "plan":      { "title": "Plan",      "description": "Write the plan down before touching a file.", "prompt": "#plan" },
-    "implement": { "title": "Implement", "description": "Make the change. Editing is possible here and nowhere else.", "prompt": "#implement", "tools": ["edit"] },
-    "verify":    { "title": "Verify",    "description": "Run the command; its exit status is the evidence.", "prompt": "#verify", "tools": ["test"] },
+    "implement": { "title": "Implement", "description": "Make the change. Editing is possible here and nowhere else.", "prompt": "#implement", "rules": ["edit"] },
+    "verify":    { "title": "Verify",    "description": "Run the command; its exit status is the evidence.", "prompt": "#verify", "rules": ["test"] },
     "review":    { "title": "Review",    "description": "Hand back to the person.", "prompt": "#review" },
     "done":      { "title": "Done", "final": true }
   },
@@ -167,7 +167,9 @@ that long, so a guard on it is a timeout. `done`
 is marked `final`: a work item that enters it is closed — no transition out,
 no evidence expiring — and a person's `gemworks rollback` reopens it.
 
-A use is usable only in the states that declare it. `#implement` declares
+A use a state declares under `rules` is usable only in the states that declare
+it; one a state lists under `tools` runs anywhere, and its evidence counts only
+where it is declared. `#implement` declares the rule
 `edit`, so `Edit` and `Write` run there and are refused everywhere else
 (`Write is edit, which is used only in #implement; the workflow is in
 #explore`); `#verify` declares `test`, so `npm test` runs there and nowhere
@@ -227,8 +229,9 @@ a state.
 
 ## Start on a repository
 
-What it looks like to use this on a project, end to end. Five minutes, and
-nothing here is published yet, so step 1 builds the package from this checkout.
+What it looks like to use a strict flow on a project with pi agent, end to
+end. Five minutes: `gemworks` and the parser it depends on, `@geml/geml`, both
+install from npm.
 
 **Dependencies.** Node 22 or newer, and a harness: [pi agent](https://pi.dev)
 (`npm install -g @earendil-works/pi-coding-agent`) or DeepSeek Harness. Plus an
@@ -242,13 +245,11 @@ sees it.
 path>` puts it right.
 
 ```sh
-# 1. build an installable tarball (bundles the parser, which is not on npm yet)
-cd integrations/gemworks && npm install && npm run pack:local
+# 1. the CLI, from npm
+npm install -g gemworks                           # the gemworks command (short: gwx)
 
-# 2. install it — the two installers take different things, and pack:local
-#    prints both paths when it finishes
-npm install -g ./geml-gemworks-0.2.85.tgz     # the CLI: a tarball
-pi install /absolute/path/to/gemworks-pkg    # pi agent: a DIRECTORY
+# 2. the same package into pi agent: its extension and its skills
+pi install npm:gemworks
 
 # 3. in the repository you want to work on, on a branch of its own
 cd ~/code/my-project
@@ -263,12 +264,15 @@ pi "make the failing test in test/user.test.ts pass"
 
 From step 4 on it is an ordinary session, except that the model is told, state
 by state, what the stage is for and which tools it has. The bundled dictionary
-names Claude Code's tools (`Edit`, `Write`, `Bash(npm test)`); pi agent's are
-`edit`, `write` and `bash`, which no row takes, and a tool no row takes runs as
-usual. So write the rows first: `edit | edit | | | yes`, `write | edit`,
+names Claude Code's file tools (`Edit`, `Write`) and Codex's `apply_patch`;
+pi agent's are `edit` and `write`, which no row takes, and a tool no row takes
+runs as usual. (pi's `bash` is read through the `Bash(…)` keys, so
+`Bash(npm test)` counts as `test` there already.) So write the rows first:
+`edit | edit`, `write | edit`, and your test command if no row has it,
 `Bash(node test.mjs) | test` — after which an edit in `#explore` is refused
 before it runs, with the reason, and the refusal is in the journal. Without
-them, pi's edits are not fenced.
+them, pi's edits are not fenced. (`Edit` is already the use's preferred tool:
+a second `default` = `yes` for `edit` is an error.)
 
 pi agent writes that journal per session, to `<session dir>/gemworks/<session>.geml`.
 Read it with `gemworks export <journal> --to md`, check it with `gemworks verify`.
@@ -281,14 +285,17 @@ declares, the variables with where each reads from, the guards; and which of
 your tools is which use. The shipped workflow makes four claims: no edit before
 a plan, no command while editing, no "done" without a recorded test result, and
 a human on the last step. All four are enforced: the first two because `edit`
-is `#implement`'s use and `test` is `#verify`'s, the third by a machine-judged
+is a rule of `#implement` and `test` one of `#verify`, the third by a machine-judged
 guard over evidence the model cannot write, the fourth by a transition marked
 `approval`. If your project wants a different order, that is a text edit, not a
 code change.
 
 ### See the whole thing run, without an API key
 
+In a checkout of this repository:
+
 ```sh
+npm install && npm run build
 npm run walkthrough
 ```
 

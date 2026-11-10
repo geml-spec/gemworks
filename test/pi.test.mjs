@@ -269,7 +269,7 @@ test("the workflow is resolved like the CLI resolves it, from the directory pi w
   assert.deepEqual(readSettings({}, bare).workflow, { error: "no workflow here: run `gemworks init`", kind: "none" });
 });
 
-test("several workflows: .geml/gemflow.geml names the one in force", async () => {
+test("several workflows: .geml/project.geml names the one in force", async () => {
   const dir = workdir();
   putWorkflow(dir, "other");
   const unchosen = await loaded({ dir });
@@ -277,7 +277,7 @@ test("several workflows: .geml/gemflow.geml names the one in force", async () =>
   assert.equal(unchosen.has("tool_call"), false);
   assert.deepEqual(unchosen.notices(), [{ message: "gemworks: several workflows (other, refund): choose one with `gemworks use <name>`; this session is not supervised", type: "warning" }], "a choice left unmade is said, once per session");
 
-  writeFileSync(join(dir, ".geml", "gemflow.geml"), '=== meta\nflow-workflow = "refund"\n===\n');
+  writeFileSync(join(dir, ".geml", "project.geml"), '=== meta\nflow-workflow = "refund"\n===\n');
   const w = await loaded({ dir });
   assert.ok(w.registered().includes("gemworks_move"));
   assert.match(readJournal(readFileSync(w.journalPath, "utf8")).meta.workflow.replace(/\\/g, "/"), /\.geml\/workflows\/refund\/flow\.geml$/);

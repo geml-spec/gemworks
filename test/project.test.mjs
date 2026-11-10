@@ -70,7 +70,7 @@ function devWorkspace(branch, pr) {
   const root = tmp();
   mkdirSync(join(root, ".geml", "workflows"), { recursive: true });
   cpSync(new URL("./fixtures/ws-dev/", import.meta.url), join(root, ".geml", "workflows", "dev"), { recursive: true });
-  writeFileSync(join(root, ".geml", "gemflow.geml"), configText("dev"));
+  writeFileSync(join(root, ".geml", "project.geml"), configText("dev"));
   return openWorkspace({
     root, tools: CLAUDE_CODE_TOOLS,
     git: () => ({ branch, defaultBranch: "main", committed: false }),

@@ -25,7 +25,7 @@ test("this version's notes are its CHANGELOG section, an entry a line, its first
     "",
     "## [0.2.1] — 2026-10-16",
     "",
-    "- **gemflow**: an older entry.",
+    "- **gemworks**: an older entry.",
   ].join("\r\n");
   assert.deepEqual(releaseNotesOf(md, "0.2.112"), [
     "the settings dialog keeps what works on the light flows.",

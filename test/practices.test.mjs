@@ -48,8 +48,8 @@ test("practices given are checked: a text, a flow and a step the flows have; one
   ], kept, "2026-10-26T10:00:00Z", "model", (n) => `n${n}`, steps);
   assert.deepEqual(r.added.map((x) => [x.id, x.flow, x.step, x.layer, x.from]), [["n0", "bugfix", "reproduce", "project", undefined], ["n1", "*", "*", "personal", "memory:reply-in-chinese.md"]]);
   assert.deepEqual(r.errors, [
-    "practice 3: already kept", "practice 4: the person took it out; not again", "practice 5: flow must be * or one of design, feature, bugfix, optimize",
-    "practice 6: bugfix has no step \"nowhere\" (reproduce, fix, verify, confirm, done)", "practice 7: a step needs its flow", "practice 8 has no text",
+    "practice 3: already kept", "practice 4: the person took it out; not again", "practice 5: flow must be * or one of design, feature, bugfix, optimize, incident, review, research, refactor, docs, analysis",
+    "practice 6: bugfix has no step \"nowhere\" (reproduce, rootcause, failtest, fix, verify, confirm, done)", "practice 7: a step needs its flow", "practice 8 has no text",
   ]);
   assert.equal(isNew(p({}), "2026-10-26T00:00:00Z"), true);
   assert.equal(isNew(p({ by: "memory" }), "2026-10-26T00:00:00Z"), false);
@@ -83,7 +83,7 @@ test("the bridge answers the practices with no workflow in the project, and writ
 });
 
 test("beside a prompt: the practices of the step this session's work item stands at; on first start, the ask to move the memory notes", () => {
-  const item = { id: "a1", flow: "bugfix", title: "导出跳过不留", state: "fix", needs: "", goal: "", status: "open", at: "x", session: "s1", met: [{ step: "reproduce", at: "x", turn: 1 }], next: "" };
+  const item = { id: "a1", flow: "bugfix", title: "导出跳过不留", state: "fix", needs: "", goal: "", status: "open", at: "x", session: "s1", met: ["reproduce", "rootcause", "failtest"].map((step) => ({ step, at: "x", turn: 1 })), next: "" };
   assert.deepEqual(practiceContext([item], flows, [p({}), p({ id: "r", text: "改动先升小版本", ref: "CLAUDE.md#versions" })], "s1"), [
     "[gemworks] at bugfix fix 修 for «导出跳过不留», the practices: (1) 同一现象再现，先回头读引擎契约 (2) 改动先升小版本 [CLAUDE.md#versions]",
   ]);

@@ -1,5 +1,6 @@
 // The work items and their light flows, for every host: the flows a work item
-// goes through — 新设计, 新功能, bugfix, 优化, and the ones a project adds — each
+// goes through — the ten shipped ones (新设计, 新功能, bugfix, 优化, 线上事故,
+// 代码审查, 调研选型, 重构, 文档, 数据分析) and the ones a project adds — each
 // its own statechart whose steps say who judges their leave requirement and what
 // they prevent; the work items the model reports with the work tool (the steps
 // met), merged from every session's log; where each stands, worked out from the
@@ -7,10 +8,10 @@
 // a `geml-statechart/v1` document; its diagram block's JSON is read here as it
 // stands. Pure: the hosts draw them (the Claude Code board, the GEML board).
 import { progressOf, type Judge, type Progress } from "./progress.js";
-import type { ItemStatus, MetStep, SessionEvent, SessionSummary } from "./session-log.js";
+import type { ItemStatus, MetStep, SeenRun, SessionEvent, SessionSummary } from "./session-log.js";
 
 /** The light flows, by file name: the bundled `coach/<name>.geml`, or the project's own `.geml/coach/<name>.geml`. */
-export const COACH_FLOWS = ["design", "feature", "bugfix", "optimize"] as const;
+export const COACH_FLOWS = ["design", "feature", "bugfix", "optimize", "incident", "review", "research", "refactor", "docs", "analysis"] as const;
 
 /**
  * A state: its words, what it needs to be left (its `description`), who judges that, what the step prevents, and for a
@@ -121,9 +122,10 @@ export const WORK_TOOL = {
           properties: {
             id: { type: "string", description: "An item already on the way, by its id; leave it out for a new one." },
             title: { type: "string", description: "What the item is, in a few words of the person's language." },
-            flow: { type: "string", description: "The flow it belongs to, by its name: design 新设计, feature 新功能, bugfix, optimize 优化, or one the project added (the flows are listed once)." },
+            flow: { type: "string", description: "The flow it belongs to, by its name: design 新设计, feature 新功能, bugfix, optimize 优化, incident 线上事故, review 代码审查, research 调研选型, refactor 重构, docs 文档, analysis 数据分析, or one the project added (the flows are listed once)." },
             met: { type: "array", items: { type: "string" }, description: "Every step whose leave requirement is met now, by the id or title the flow lists; a way back is the same list with the later steps left out. Leave it out on an update to keep what was met." },
             said: { type: "string", description: "The person's own words, this turn, that meet a step they judge (marked you), e.g. 「好了」. Needed when met newly names such a step; without their words leave the step for their press." },
+            evidence: { type: "string", description: "What proves a step marked (fact) that met newly names: the check as it ran — the command in backticks and its result (`npm test` exit 0), the CI run, the numbers measured. It goes on the item's sign-off sheet beside the run gemworks saw." },
             next: { type: "string", description: "What you will do next for it: one short sentence in the person's language, as it would follow 「接下来我去」." },
             needs: { type: "string", description: "What it still needs to leave the step it stands at: one short phrase, in the person's language." },
             goal: { type: "string", description: "What it should be at the end: one short sentence, in the person's language." },
@@ -145,7 +147,7 @@ export const WORK_REMINDER = "Gemworks: this turn changed things but reported no
 /** What the model is told once about the work tool, with the flows' states. */
 export function workPrompt(flows: readonly CoachFlow[]): string {
   const listed = flows.map((f) => `${f.name} ${f.title}: ${f.states.filter((s) => !s.final).map((s) => `${s.id} ${s.title} (${s.judge})`).join(" → ")}`).join("; ");
-  return `Gemworks: before a turn ends, report the work items it was about with the gemworks \`work\` tool: the flow each belongs to, every step whose leave requirement is met now (\`met\`), what it still needs, what you will do next, what it should be at the end; update one on the way by its id. A step marked (you) is the person's to judge: name it in \`met\` only with their own words in \`said\`, else leave it for their press. The flows: ${listed}.`;
+  return `Gemworks: before a turn ends, report the work items it was about with the gemworks \`work\` tool: the flow each belongs to, every step whose leave requirement is met now (\`met\`), what it still needs, what you will do next, what it should be at the end; update one on the way by its id. A step marked (you) is the person's to judge: name it in \`met\` only with their own words in \`said\`, else leave it for their press. A step marked (fact) is met with what proves it in \`evidence\`: the command as it ran and its result. The flows: ${listed}.`;
 }
 
 /** The line beside a prompt: the work items on the way, by id, so the model updates them rather than reporting them anew. */
@@ -168,9 +170,10 @@ export function workContext(items: readonly WorkItem[], flows: readonly CoachFlo
  * what was met; an older caller's `state` meets every step before it). A step
  * the person judges, newly met, needs their words in `said`. Every step met, or
  * a final one named, finishes the item; an id must be one on the way. `newId`
- * names a new item.
+ * names a new item. A fact step newly met keeps the item's `evidence` and the
+ * run of `runs` (this session's, oldest first) it names.
  */
-export function workEvents(args: Record<string, unknown>, flows: readonly CoachFlow[], items: readonly WorkItem[], at: string, turn: number, newId: (n: number) => string): { events: ItemEvent[]; errors: string[] } {
+export function workEvents(args: Record<string, unknown>, flows: readonly CoachFlow[], items: readonly WorkItem[], at: string, turn: number, newId: (n: number) => string, runs: readonly SeenRun[] = []): { events: ItemEvent[]; errors: string[] } {
   const given = Array.isArray(args["items"]) ? args["items"] : [];
   const events: ItemEvent[] = [];
   const errors: string[] = [];
@@ -202,7 +205,14 @@ export function workEvents(args: Record<string, unknown>, flows: readonly CoachF
     const said = str(x["said"]).trim();
     const theirs = metIds.map((s) => stepNamed(s) as CoachState).filter((s) => s.judge === "you" && !before.some((m) => m.step === s.id));
     if (theirs.length > 0 && said === "") { errors.push(`item ${n + 1}: ${theirs.map((s) => s.title).join("、")} is the person's to meet: put what they said in \`said\`, or leave it for their press`); return; }
-    const met = metIds.map((s) => before.find((m) => m.step === s) ?? { step: s, at, turn, ...(theirs.some((t) => t.id === s) ? { said } : {}) });
+    const evidence = str(x["evidence"]).trim();
+    const facts = metIds.filter((s) => (stepNamed(s) as CoachState).judge === "fact" && !before.some((m) => m.step === s));
+    const seen = evidence !== "" ? seenIn(evidence, runs) : undefined;
+    const met = metIds.map((s) => before.find((m) => m.step === s) ?? {
+      step: s, at, turn,
+      ...(theirs.some((t) => t.id === s) ? { said } : {}),
+      ...(facts.includes(s) && evidence !== "" ? { evidence, ...(seen !== undefined ? { seen } : {}) } : {}),
+    });
     const p = itemProgress({ met }, flow);
     const status = p.whose === "done" ? "done" : x["status"] === "done" || x["status"] === "dropped" ? x["status"] : was?.status === "held" ? "held" : "open";
     const next = typeof x["next"] === "string" ? x["next"].trim() : was?.next ?? "";
@@ -216,15 +226,28 @@ export function workEvents(args: Record<string, unknown>, flows: readonly CoachF
 }
 
 /**
- * A press on a step the person judges: `yes` meets it; no takes the item back
- * the way the step's first way back goes (every step from there on unmet), or
- * unmeets the step itself where it has none.
+ * The run evidence names: the newest of `runs` whose command the evidence
+ * holds, or that holds a backticked command of the evidence; undefined for none.
  */
-export function pressEvent(item: WorkItem, flow: CoachFlow, step: string, yes: boolean, at: string, turn: number): ItemEvent {
+export function seenIn(evidence: string, runs: readonly SeenRun[]): SeenRun | undefined {
+  const quoted = [...evidence.matchAll(/`([^`]+)`/g)].map((m) => (m[1] as string).trim()).filter((q) => q !== "");
+  const named = (r: SeenRun): boolean => {
+    const command = r.command.trim();
+    return command !== "" && (evidence.includes(command) || quoted.some((q) => command.includes(q)));
+  };
+  return [...runs].reverse().find(named);
+}
+
+/**
+ * A press on a step the person judges: `yes` meets it, with the button's words
+ * when given; no takes the item back the way the step's first way back goes
+ * (every step from there on unmet), or unmeets the step itself where it has none.
+ */
+export function pressEvent(item: WorkItem, flow: CoachFlow, step: string, yes: boolean, at: string, turn: number, label?: string): ItemEvent {
   const order = flow.states.map((s) => s.id);
   const back = flow.edges.find((e) => e.from === step && e.back);
   const from = order.indexOf(back?.to ?? step);
-  const met = yes ? [...item.met.filter((m) => m.step !== step), { step, at, turn, pressed: true }] : item.met.filter((m) => order.indexOf(m.step) < from);
+  const met = yes ? [...item.met.filter((m) => m.step !== step), { step, at, turn, pressed: true, ...(label !== undefined && label !== "" ? { said: label } : {}) }] : item.met.filter((m) => order.indexOf(m.step) < from);
   const p = itemProgress({ met }, flow);
   return {
     t: "item", turn, at, id: item.id, flow: item.flow, title: item.title, state: p.here ?? finalOf(flow), needs: item.needs, goal: item.goal,

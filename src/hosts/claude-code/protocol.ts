@@ -101,6 +101,8 @@ export type BridgeOp =
    * writes — the turns come back for it to put before the log's own.
    */
   | { op: "backfill-one"; file: string; own?: boolean; transcripts?: string }
+  /** The sign-off sheets of these work items, written again from the record; a done one's goes among its artifacts. */
+  | { op: "signoff"; ids: string[]; lang?: string }
   /** The prompt rows the host's transcript of `session` still holds, by uuid: what the sessions tab and the record keep after turns were removed or split away. */
   | { op: "turn-ids"; session: string; transcripts?: string }
   /** The project's Claude Code memory (memory-store.ts), as the sessions tab shows it. */
@@ -384,7 +386,7 @@ export function unreadableText(exitCode: number, stderr: string, pluginRoot: str
   return `gemworks：桥接的应答无法解析（退出码 ${exitCode}${said ? `：${said}` : ""}）`;
 }
 
-const OPS = new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss"]);
+const OPS = new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "signoff", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss"]);
 const EXPORT_KINDS = new Set(["journal", "workflow", "text"]);
 const EXPORT_FORMATS = new Set(["geml", "md", "json"]);
 const VERBS = new Set(["status", "move", "set"]);
@@ -443,6 +445,7 @@ export function decodeRequest(text: string): BridgeRequest | { error: string } {
     attention: () => v["session"] === undefined || (str("session") && v["session"] !== ""),
     "backfill-list": () => v["transcripts"] === undefined || str("transcripts"),
     "backfill-one": () => str("file") && v["file"] !== "" && (v["own"] === undefined || typeof v["own"] === "boolean") && (v["transcripts"] === undefined || str("transcripts")),
+    signoff: () => Array.isArray(v["ids"]) && (v["ids"] as unknown[]).every((x) => typeof x === "string") && (v["lang"] === undefined || v["lang"] === "zh" || v["lang"] === "en" || v["lang"] === "ja"),
     "turn-ids": () => str("session") && v["session"] !== "" && (v["transcripts"] === undefined || str("transcripts")),
     memory: () => v["transcripts"] === undefined || str("transcripts"),
     "memory-set": () => str("file") && v["file"] !== "" && str("hook") && (v["transcripts"] === undefined || str("transcripts")),

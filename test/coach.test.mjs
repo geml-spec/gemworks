@@ -9,11 +9,17 @@ const t = wordsFor("zh");
 const flows = COACH_FLOWS.map((name) => readCoachFlow(name, readFileSync(new URL(`../coach/${name}.geml`, import.meta.url), "utf8")));
 const flow = (name) => flows.find((f) => f.name === name);
 const m = (step, over = {}) => ({ step, at: "2026-10-23T09:00:00Z", turn: 1, ...over });
-const item = (over) => ({ id: "a1", flow: "bugfix", title: "导出跳过不留", state: "confirm", needs: "你按一次跳过", goal: "跳过不留文件", status: "open", at: "2026-10-23T10:00:00Z", session: "s1", met: [m("reproduce"), m("fix"), m("verify")], next: "", ...over });
+const item = (over) => ({ id: "a1", flow: "bugfix", title: "导出跳过不留", state: "confirm", needs: "你按一次跳过", goal: "跳过不留文件", status: "open", at: "2026-10-23T10:00:00Z", session: "s1", met: [m("reproduce"), m("rootcause"), m("failtest"), m("fix"), m("verify")], next: "", ...over });
 
-test("the flows the plugin ships: 新设计, 新功能, bugfix, 优化, each its states in order, each a requirement, the way back dashed", () => {
-  assert.deepEqual(flows.map((f) => [f.name, f.title]), [["design", "新设计"], ["feature", "新功能"], ["bugfix", "bugfix"], ["optimize", "优化"]]);
-  assert.deepEqual(flow("bugfix").states.map((s) => [s.title, s.need, s.final]), [["复现", "版本已确认", false], ["修", "一个猜测一版", false], ["验证", "测试通过", false], ["你确认", "你按过说对", false], ["完成", "", true]]);
+test("the flows the plugin ships: 新设计, 新功能, bugfix, 优化, 线上事故, 代码审查, 调研选型, 重构, 文档, 数据分析, each its states in order, each a requirement, the way back dashed", () => {
+  assert.deepEqual(flows.map((f) => [f.name, f.title]), [["design", "新设计"], ["feature", "新功能"], ["bugfix", "bugfix"], ["optimize", "优化"], ["incident", "线上事故"], ["review", "代码审查"], ["research", "调研选型"], ["refactor", "重构"], ["docs", "文档"], ["analysis", "数据分析"]]);
+  assert.deepEqual(flow("bugfix").states.map((s) => [s.title, s.need, s.final]), [["复现", "版本已确认", false], ["找根因", "说得出为什么坏", false], ["先写会失败的测试", "有一个现在会失败、能复现问题的测试", false], ["修", "一个猜测一版", false], ["验证", "测试通过", false], ["你确认", "你按过说对", false], ["完成", "", true]]);
+  for (const f of flows) assert.ok(f.states.at(-1).final && f.states.slice(0, -1).every((s) => !s.final && s.need !== "" && s.prevents !== ""), `${f.name}: every step a requirement and a pitfall, the last one final`);
+  const added = ["incident", "review", "research", "refactor", "docs", "analysis"];
+  for (const n of added) assert.ok(flow(n).states.filter((s) => s.judge === "you").every((s) => s.answers?.length === 2), `${n}: a step the person judges names its two answers`);
+  assert.deepEqual(added.map((n) => flow(n).edges.filter((e) => e.back).map((e) => [e.from, e.to])), [
+    [["recovered", "mitigate"]], [["approve", "rest"]], [["decide", "options"]], [["confirm", "steps"]], [["confirm", "write"]], [["confirm", "question"]],
+  ], "each new flow's way back from the person's step");
   assert.deepEqual(flow("bugfix").edges.filter((e) => e.back).map((e) => [e.from, e.to, e.label]), [["confirm", "reproduce", "你说没好"]]);
   assert.deepEqual(flow("design").states.map((s) => s.title), ["讨论", "出样稿", "你点头", "完成"]);
   assert.equal(readCoachFlow("x", "=== meta\ntitle = \"x\"\n===\n"), undefined, "no diagram: no flow");
@@ -28,7 +34,7 @@ test("every step says who judges it and what it prevents; a step the person judg
   assert.deepEqual(flow("feature").edges.filter((e) => e.back).map((e) => [e.to, e.label]), [["build", "你说不对"], ["mockup", "方向不对"]]);
   assert.deepEqual(flow("optimize").states.map((s) => [s.id, s.judge]).slice(0, 4), [["baseline", "fact"], ["change", "model"], ["measure", "fact"], ["confirm", "you"]]);
   assert.equal(flow("optimize").states[2].need, "数字比基线好，测试照样通过");
-  assert.deepEqual([flow("design").states[2].answers, flow("bugfix").states[3].answers], [["行", "要改"], null]);
+  assert.deepEqual([flow("design").states[2].answers, flow("bugfix").states[5].answers], [["行", "要改"], null]);
 });
 
 test("a project's own flow takes who judges a step, what it prevents and its words from the shipped step of the same id; a step of its own is the model's", () => {
@@ -43,8 +49,8 @@ test("a project's own flow takes who judges a step, what it prevents and its wor
 
 test("an older event names only the state it stood in: every step before it is met; at a final state every step is", () => {
   const bug = flow("bugfix");
-  assert.deepEqual(metOf({ state: "confirm", at: "2026-10-01T00:00:00Z", turn: 3 }, bug).map((x) => x.step), ["reproduce", "fix", "verify"]);
-  assert.deepEqual(metOf({ state: "done", at: "2026-10-01T00:00:00Z", turn: 3 }, bug).map((x) => x.step), ["reproduce", "fix", "verify", "confirm"]);
+  assert.deepEqual(metOf({ state: "confirm", at: "2026-10-01T00:00:00Z", turn: 3 }, bug).map((x) => x.step), ["reproduce", "rootcause", "failtest", "fix", "verify"]);
+  assert.deepEqual(metOf({ state: "done", at: "2026-10-01T00:00:00Z", turn: 3 }, bug).map((x) => x.step), ["reproduce", "rootcause", "failtest", "fix", "verify", "confirm"]);
   assert.deepEqual(metOf({ state: "nowhere", at: "2026-10-01T00:00:00Z", turn: 3 }, bug), []);
   assert.deepEqual(metOf({ state: "confirm", at: "2026-10-01T00:00:00Z", turn: 3 }, undefined), [], "its flow unread: nothing met");
   const log = [{ t: "session", id: "s1", host: "claude-code", at: "2026-10-01T00:00:00Z" }, { t: "item", turn: 3, at: "2026-10-01T00:00:00Z", id: "ozl", flow: "bugfix", title: "旧的", state: "confirm", needs: "", goal: "", status: "open" }];
@@ -67,30 +73,30 @@ test("the work tool's items: steps met by id or title, where it stands follows f
   const on = [item({})];
   const r = workEvents({ items: [
     { title: "新的", flow: "feature", met: ["实现"], needs: "一个模块", goal: "能用", next: "跑测试" },
-    { id: "#a1", title: "", flow: "bugfix", met: ["reproduce", "fix", "verify", "confirm"], said: "好了" },
+    { id: "#a1", title: "", flow: "bugfix", met: ["reproduce", "rootcause", "failtest", "fix", "verify", "confirm"], said: "好了" },
     { title: "x", flow: "release", met: [] },
     { title: "x", flow: "bugfix", met: ["nowhere"] },
     { id: "zz", title: "x", flow: "bugfix", met: [] },
     { title: " ", flow: "bugfix", met: [] },
-    { id: "a1", title: "", flow: "bugfix", met: ["reproduce", "fix", "verify", "confirm"] },
+    { id: "a1", title: "", flow: "bugfix", met: ["reproduce", "rootcause", "failtest", "fix", "verify", "confirm"] },
   ] }, flows, on, "2026-10-23T11:00:00Z", 4, (n) => `new${n}`);
   assert.deepEqual(r.events.map((e) => [e.id, e.flow, e.title, e.state, e.needs, e.goal, e.status, e.turn, e.next]), [
     ["new0", "feature", "新的", "verify", "一个模块", "能用", "open", 4, "跑测试"],
     ["a1", "bugfix", "导出跳过不留", "done", "你按一次跳过", "跳过不留文件", "done", 4, undefined],
   ]);
   assert.deepEqual(r.events[0].met, [{ step: "build", at: "2026-10-23T11:00:00Z", turn: 4 }], "the mockup skipped: not met");
-  assert.deepEqual(r.events[1].met.map((x) => [x.step, x.turn, x.said]), [["reproduce", 1, undefined], ["fix", 1, undefined], ["verify", 1, undefined], ["confirm", 4, "好了"]], "a step kept keeps when it was met; the person's step keeps their words");
+  assert.deepEqual(r.events[1].met.map((x) => [x.step, x.turn, x.said]), [["reproduce", 1, undefined], ["rootcause", 1, undefined], ["failtest", 1, undefined], ["fix", 1, undefined], ["verify", 1, undefined], ["confirm", 4, "好了"]], "a step kept keeps when it was met; the person's step keeps their words");
   assert.deepEqual(r.errors, [
-    "item 3: flow must be one of design, feature, bugfix, optimize",
-    "item 4: bugfix has no step \"nowhere\" (reproduce, fix, verify, confirm, done)",
+    "item 3: flow must be one of design, feature, bugfix, optimize, incident, review, research, refactor, docs, analysis",
+    "item 4: bugfix has no step \"nowhere\" (reproduce, rootcause, failtest, fix, verify, confirm, done)",
     "item 5: no work item #zz is on the way",
     "item 6 has no title",
     "item 7: 你确认 is the person's to meet: put what they said in `said`, or leave it for their press",
   ]);
   const kept = workEvents({ items: [{ id: "a1", title: "", flow: "bugfix", needs: "再看一眼" }] }, flows, on, "2026-10-23T12:00:00Z", 5, () => "x").events[0];
-  assert.deepEqual([kept.met.map((x) => x.step), kept.state, kept.needs], [["reproduce", "fix", "verify"], "confirm", "再看一眼"], "met left out: kept");
+  assert.deepEqual([kept.met.map((x) => x.step), kept.state, kept.needs], [["reproduce", "rootcause", "failtest", "fix", "verify"], "confirm", "再看一眼"], "met left out: kept");
   const back = workEvents({ items: [{ id: "a1", title: "", flow: "bugfix", met: ["reproduce"] }] }, flows, on, "2026-10-23T12:00:00Z", 5, () => "x").events[0];
-  assert.equal(back.state, "fix", "a way back is fewer steps met");
+  assert.equal(back.state, "rootcause", "a way back is fewer steps met");
 });
 
 test("a press on a step the person judges: yes meets it; no goes the step's first way back, every step from there unmet; holding keeps the steps", () => {
@@ -102,14 +108,15 @@ test("a press on a step the person judges: yes meets it; no goes the step's firs
   const feat = pressEvent(item({ flow: "feature", met: [m("mockup"), m("build"), m("verify")] }), flow("feature"), "confirm", false, "x", 7);
   assert.deepEqual([feat.state, feat.met.map((x) => x.step)], ["build", ["mockup"]], "its first way back: 你说不对, to 实现");
   const held = holdEvent(item({}), true, "x", 7);
-  assert.deepEqual([held.status, held.met.length, holdEvent(item({ status: "held" }), false, "x", 7).status], ["held", 3, "open"]);
+  assert.deepEqual([held.status, held.met.length, holdEvent(item({ status: "held" }), false, "x", 7).status], ["held", 5, "open"]);
 });
 
 test("what the model is told: the flows once, with their steps and who judges each; beside each prompt the items on the way, by id, with the steps met", () => {
   assert.match(workPrompt(flows), /`work` tool/);
-  assert.match(workPrompt(flows), /bugfix bugfix: reproduce 复现 \(model\) → fix 修 \(model\) → verify 验证 \(fact\) → confirm 你确认 \(you\);/);
+  assert.match(workPrompt(flows), /bugfix bugfix: reproduce 复现 \(model\) → rootcause 找根因 \(model\) → failtest 先写会失败的测试 \(model\) → fix 修 \(model\) → verify 验证 \(fact\) → confirm 你确认 \(you\);/);
+  assert.match(workPrompt(flows), /incident 线上事故: triage 定级 \(model\) → mitigate 止血 \(model\) → recovered 确认恢复 \(you\) → postmortem 复盘 \(model\) → followup 跟进 \(model\);/);
   assert.match(workPrompt(flows), /only with their own words in `said`/);
-  assert.deepEqual(workContext([item({}), item({ id: "b2", status: "done" })], flows), ["[gemworks] work items on the way: #a1 «导出跳过不留» (bugfix: met reproduce, fix, verify; at confirm 你确认, needs 你按一次跳过)"]);
+  assert.deepEqual(workContext([item({}), item({ id: "b2", status: "done" })], flows), ["[gemworks] work items on the way: #a1 «导出跳过不留» (bugfix: met reproduce, rootcause, failtest, fix, verify; at confirm 你确认, needs 你按一次跳过)"]);
   assert.deepEqual(workContext([], flows), []);
 });
 
@@ -124,7 +131,7 @@ test("the work items tab: items by whose turn it is, each its steps as cells; th
   ], flows, t, { own: "s1" });
   assert.deepEqual(rows.filter((r) => r.kind === "section").map((r) => [r.text, r.count, r.fold?.label]), [["等你", 2, undefined], ["我来", 2, undefined], ["已暂缓", 1, "展开"]]);
   const a1 = rows.find((r) => r.key === "work-a1");
-  assert.deepEqual(a1.cells.map((c) => `${c.title}:${c.cell}`), ["复现:met", "修:met", "验证:met", "你确认:here", "完成:ahead"]);
+  assert.deepEqual(a1.cells.map((c) => `${c.title}:${c.cell}`), ["复现:met", "找根因:met", "先写会失败的测试:met", "修:met", "验证:met", "你确认:here", "完成:ahead"]);
   assert.deepEqual([a1.detail, a1.actions.map((b) => [b.label, b.action])], ["还差：你按一次跳过", [
     ["好了", { op: "work-meet", id: "a1", step: "confirm", yes: true, label: "好了" }], ["没好", { op: "work-meet", id: "a1", step: "confirm", yes: false, label: "没好" }],
   ]]);
@@ -137,7 +144,7 @@ test("the work items tab: items by whose turn it is, each its steps as cells; th
   assert.equal(rows.find((r) => r.key === "work-h5"), undefined, "the held group folded");
   const opened = workRows([item({ id: "h5", status: "held" })], flows, t, { open: ["held"] });
   assert.deepEqual(opened.at(-1).actions.map((b) => [b.label, b.action]), [["取消暂缓", { op: "work-hold", id: "h5", held: false }]]);
-  assert.equal(stripText(a1.cells), "✓复现 ✓修 ✓验证 ▸你确认 ·完成");
+  assert.equal(stripText(a1.cells), "✓复现 ✓找根因 ✓先写会失败的测试 ✓修 ✓验证 ▸你确认 ·完成");
 });
 
 test("the work items tab: an item whose flow cannot be read still shows, with no cells; many items list the first few of a group until its heading's press", () => {
@@ -157,10 +164,14 @@ test("the flow tab's manual: each flow with items on the way, the focused first;
   assert.equal(rows[1].text, "从「工具页对齐」过来 · 卡在「你确认」");
   assert.deepEqual(rows.filter((r) => r.kind === "section").map((r) => [r.text, r.note]), [["bugfix", "2 件在走"], ["新设计", "1 件在走"], ["现在没有事项在走", undefined]]);
   const bug = rows.filter((r) => r.kind === "step" && r.key.startsWith("step-bugfix-"));
-  assert.deepEqual(bug.map((r) => [r.title, r.need, r.judge, r.here]), [["复现", "版本已确认", "模型", false], ["修", "一个猜测一版", "模型", false], ["验证", "测试通过", "事实", false], ["你确认", "你按过说对", "你", true], ["完成", "", "", false]]);
+  assert.deepEqual(bug.map((r) => [r.title, r.need, r.judge, r.here]), [["复现", "版本已确认", "模型", false], ["找根因", "说得出为什么坏", "模型", false], ["先写会失败的测试", "有一个现在会失败、能复现问题的测试", "模型", false], ["修", "一个猜测一版", "模型", false], ["验证", "测试通过", "事实", false], ["你确认", "你按过说对", "你", true], ["完成", "", "", false]]);
   assert.equal(bug[0].prevents, "防：修的不是真正出问题的那个版本或现象");
   assert.ok(rows.some((r) => r.kind === "text" && r.text === "↩ 你说没好，回到复现"));
-  assert.deepEqual(rows.filter((r) => (r.key ?? "").startsWith("manual-idle-")).map((r) => [r.title, r.action]), [["新功能", { op: "manual-open", flow: "feature", open: true }], ["优化", { op: "manual-open", flow: "optimize", open: true }]]);
+  assert.deepEqual(rows.filter((r) => (r.key ?? "").startsWith("manual-idle-")).map((r) => [r.title, r.action]), [
+    ["新功能", { op: "manual-open", flow: "feature", open: true }], ["优化", { op: "manual-open", flow: "optimize", open: true }],
+    ["线上事故", { op: "manual-open", flow: "incident", open: true }], ["代码审查", { op: "manual-open", flow: "review", open: true }], ["调研选型", { op: "manual-open", flow: "research", open: true }],
+    ["重构", { op: "manual-open", flow: "refactor", open: true }], ["文档", { op: "manual-open", flow: "docs", open: true }], ["数据分析", { op: "manual-open", flow: "analysis", open: true }],
+  ]);
   assert.deepEqual(manualRows([], flows, [], t, { focus: null, expanded: null }).filter((r) => r.kind === "section").map((r) => r.text), ["现在没有事项在走"], "nothing on the way: every flow a press");
   assert.equal(manualRows([], flows, [], t, { focus: null, expanded: ["optimize"] }).filter((r) => r.kind === "step").length, 5, "a flow opened shows whole");
 });
@@ -193,7 +204,7 @@ test("the band's line: what the last turn moved that waits on the person, with i
   const line = coachBand(items, flows, "s1", t);
   assert.deepEqual([line.verb, line.title, line.note, line.actions.map((b) => [b.label, b.action.op])], ["等你 · bugfix", "导出跳过不留", "你按一次跳过", [["好了", "work-meet"], ["没好", "work-meet"], ["暂缓处理", "work-hold"]]]);
   assert.deepEqual(line.more, { count: 1, detail: "别处的" }, "the others waiting on the person, any session");
-  assert.equal(line.detail, "✓复现 ✓修 ✓验证 ▸你确认 ·完成 · 最后：跳过不留文件", "hovered: its cells and what it ends as");
+  assert.equal(line.detail, "✓复现 ✓找根因 ✓先写会失败的测试 ✓修 ✓验证 ▸你确认 ·完成 · 最后：跳过不留文件", "hovered: its cells and what it ends as");
   assert.equal(coachBand(items, flows, "nobody", t), undefined);
   assert.equal(coachBand([item({ needs: "" })], flows, "s1", t).note, "你按过说对", "no needs: the step's own requirement");
   const next = coachBand([item({ met: [m("reproduce")], next: "改一处" })], flows, "s1", t);
@@ -305,7 +316,7 @@ test("an item of a session that ended is the person's to move: taken over it is 
   }
 });
 
-test("the four light flows speak the person's language: every title, need, pitfall and answer has its English and Japanese, ids stay", () => {
+test("the starter flows speak the person's language: every title, need, pitfall and answer has its English and Japanese, ids stay", () => {
   for (const lang of ["en", "ja"]) {
     const shown = flowsIn(flows, wordsFor(lang));
     const cjk = /[一-鿿]/;

@@ -60,7 +60,7 @@ function copyTree(from, to) {
 export function withWorkflow(root, dir, name) {
   mkdirSync(join(root, ".geml", "workflows"), { recursive: true });
   cpSync(dir, join(root, ".geml", "workflows", name), { recursive: true });
-  writeFileSync(join(root, ".geml", "gemflow.geml"), `=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "${name}"\n===\n`);
+  writeFileSync(join(root, ".geml", "project.geml"), `=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "${name}"\n===\n`);
 }
 
 // What host-git.ts asks gh: `pr list --head <branch> --state all --json state,number`
