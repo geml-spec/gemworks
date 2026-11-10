@@ -102,6 +102,7 @@ You don't need Claude Code to use it. What each host gets differs:
 | Codex | A GEML board page | Yes | Yes | No; the model records practices itself |
 | Antigravity | A GEML board page | Yes | Yes | No; the model records practices itself |
 | Cursor | A GEML board page | Yes | Yes, with the turn's first tool result | No; the model records practices itself |
+| Qwen Code | A GEML board page | Yes | Yes | No; the model records practices itself |
 | Other MCP hosts | A GEML board page | Yes | Only when the model calls its tools | No; the model records practices itself |
 
 "Make it a rule", proposals to take a step out, and importing a reference are only on Claude Code for now.

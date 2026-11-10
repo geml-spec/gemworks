@@ -295,6 +295,33 @@ writes for the one that ran a hook last. As on Codex there is no band and no boa
 corrections ledger are not here. View the board page with the GEML extension, which Cursor runs as a VS Code
 extension.
 
+### Qwen Code
+
+```sh
+npm install -g @geml/gemworks
+gemworks qwen install
+```
+
+The second line writes gemworks' hooks and its MCP server into `~/.qwen/settings.json`, both pointing at the
+`gemworks` you just installed, and prints the file's path. Your own hooks, MCP servers and settings are kept; running
+it again replaces the earlier install. A settings file with comments in it is left alone: the command says so, and the
+hooks go in by hand. Start Qwen Code again afterwards.
+
+Qwen Code's hooks are Claude Code's, so it gets what Codex gets, prompt included: the work loop's tools and the flows'
+steps at the session's start; the work items on the way, the step's practices, other sessions' decisions and a new
+stage text beside each prompt; the GEML board page above; and the gate. A command a fenced use or a person owns is
+refused with the reason; a tool's default parameters are filled in; a shell command whose exit status is evidence is
+wrapped to print it last (`[gemworks exit N]`, not on Windows), and the shell tool's own `Exit Code:` line is read when
+it is not wrapped; the files the agent writes, the turn's answer and the commits it made go into the project's session
+record; a turn that changed things and reported no work item is sent back once, and the reminder is not counted as
+your words. Qwen Code still asks you to approve a call the gate lets through, as it would without gemworks.
+
+Qwen Code names its tools `run_shell_command`, `write_file`, `edit`, `notebook_edit`, `read_file`, `grep_search`,
+`glob` and `mcp__<server>__<tool>`. The gate reads them by Claude Code's names (`Bash`, `Write`, `Edit`,
+`NotebookEdit`, `Read`, `Grep`, `Glob`, and an MCP tool by its own name), so the bundled dictionaries need nothing
+more. The project is `QWEN_PROJECT_DIR`, the folder Qwen Code was started in; the MCP server starts there too. As on
+Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here.
+
 ### DeepSeek Harness
 
 ```sh

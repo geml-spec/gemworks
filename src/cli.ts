@@ -21,6 +21,7 @@ import { handleRequest } from "./bridge.js";
 import { runCodex } from "./codex.js";
 import { installAntigravity, runAntigravity } from "./antigravity.js";
 import { installCursor, runCursor } from "./cursor.js";
+import { installQwen, runQwen } from "./qwen.js";
 import { serveMcp } from "./mcp.js";
 import { decodeRequest, type BridgeResponse } from "./hosts/claude-code/protocol.js";
 import { docReader, openWorkspace, resolvePromptRef, resolveWorkflow, type Workspace } from "./workspace.js";
@@ -48,6 +49,7 @@ const USAGE = [
   "  codex                                   the Codex hook: one event on stdin, its answer on stdout (exit 0 always)",
   "  antigravity <Event> | install           the Antigravity editor's hook (one event on stdin), or put its hooks and MCP server in place",
   "  cursor [install]                        Cursor's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place",
+  "  qwen [install]                          Qwen Code's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place",
   "  mcp [--host h] [--root dir]             the model's tools over stdio MCP (host default: mcp)",
   "  corrections [--baseline a..b] [--trial a..b] [--since day] [--by work] [--json]",
   "                                          how often you corrected the agent, per 100 prompts, by kind and by week",
@@ -184,12 +186,34 @@ async function runCodexHook(): Promise<number> {
   }
 }
 
+/** An install: the files written, one a line; a settings file it could not read, said on stderr, and nothing written. */
+function installed(host: string, install: () => string[]): number {
+  try {
+    for (const f of install()) process.stdout.write(`${f}\n`);
+    return 0;
+  } catch (e) {
+    process.stderr.write(`gemworks ${host} install: ${e instanceof Error ? e.message : String(e)}\n`);
+    return 1;
+  }
+}
+
+/** `gemworks qwen`: one Qwen Code hook event in, its answer out (nothing when there is nothing to say); exit 0 whatever failed. `install` puts the hooks and the MCP server in place. */
+async function runQwenHook(arg: string | undefined): Promise<number> {
+  if (arg === "install") return installed("qwen", () => installQwen(resolve(process.argv[1] ?? "gemworks.mjs")));
+  try {
+    process.stdin.setEncoding("utf8");
+    let text = "";
+    for await (const chunk of process.stdin) text += chunk;
+    process.stdout.write((await runQwen(text, process.env)).stdout);
+  } catch (e) {
+    process.stderr.write(`gemworks qwen: ${e instanceof Error ? e.message : String(e)}\n`);
+  }
+  return 0;
+}
+
 /** `gemworks cursor`: one Cursor hook event in, its answer out; exit 0 and `{}` whatever failed, since Cursor blocks a permission hook whose output is no JSON. `install` puts the hooks and the MCP server in place. */
 async function runCursorHook(arg: string | undefined): Promise<number> {
-  if (arg === "install") {
-    for (const f of installCursor(resolve(process.argv[1] ?? "gemworks.mjs"))) process.stdout.write(`${f}\n`);
-    return 0;
-  }
+  if (arg === "install") return installed("cursor", () => installCursor(resolve(process.argv[1] ?? "gemworks.mjs")));
   try {
     process.stdin.setEncoding("utf8");
     let text = "";
@@ -469,6 +493,7 @@ if (argv[0] === "hook") void runHook().then((code) => { process.exitCode = code;
 else if (argv[0] === "codex") void runCodexHook().then((code) => { process.exitCode = code; });
 else if (argv[0] === "antigravity") void runAntigravityHook(argv[1]).then((code) => { process.exitCode = code; });
 else if (argv[0] === "cursor") void runCursorHook(argv[1]).then((code) => { process.exitCode = code; });
+else if (argv[0] === "qwen") void runQwenHook(argv[1]).then((code) => { process.exitCode = code; });
 else if (argv[0] === "mcp") {
   const rest = argv.slice(1);
   if (positionals("mcp", rest, [], ["--host", "--root"]).length > 0) fail(USAGE, 2);

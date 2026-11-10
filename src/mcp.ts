@@ -23,6 +23,7 @@ import { boardHasWork, openBoardOnce } from "./board-file.js";
 import { decisionsFor, hostLabel, latestSessionOf, recordDecisions } from "./session-store.js";
 import { activeOf, ANTIGRAVITY_HOST } from "./antigravity.js";
 import { activeOf as cursorActiveOf, CURSOR_HOST } from "./cursor.js";
+import { QWEN_HOST } from "./qwen.js";
 import { ghOncePerBranch } from "./host-git.js";
 import { runVerb } from "./verbs.js";
 import { openWorkspace } from "./workspace.js";
@@ -42,7 +43,7 @@ export interface McpState { decisionsSeen: string | null }
 export interface McpOptions { root: string; host: string; state?: McpState }
 
 /** The hosts whose hooks say beside each prompt what an MCP-only host reads in this server's results. */
-const HOOKED: ReadonlySet<string> = new Set(["codex", ANTIGRAVITY_HOST, CURSOR_HOST]);
+const HOOKED: ReadonlySet<string> = new Set(["codex", ANTIGRAVITY_HOST, CURSOR_HOST, QWEN_HOST]);
 type Reply = Record<string, unknown>;
 
 const result = (id: unknown, value: unknown): Reply => ({ jsonrpc: "2.0", id, result: value });

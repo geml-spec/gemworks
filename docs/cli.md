@@ -23,6 +23,7 @@ usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmar
   codex                                   the Codex hook: one event on stdin, its answer on stdout (exit 0 always)
   antigravity <Event> | install           the Antigravity editor's hook (one event on stdin), or put its hooks and MCP server in place
   cursor [install]                        Cursor's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place
+  qwen [install]                          Qwen Code's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place
   mcp [--host h] [--root dir]             the model's tools over stdio MCP (host default: mcp)
   corrections [--baseline a..b] [--trial a..b] [--since day] [--by work] [--json]
                                           how often you corrected the agent, per 100 prompts, by kind and by week
@@ -81,6 +82,11 @@ usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmar
   its answer on stdout — `{}` when there is nothing to say or something
   failed — and exit 0 whatever happens. `cursor install` writes its hooks into
   `~/.cursor/hooks.json` and the MCP server into `~/.cursor/mcp.json`.
+- `qwen` is Qwen Code's hook ([Qwen Code](hosts.md#qwen-code)): one event on
+  stdin, its answer on stdout — nothing when there is nothing to say — and exit
+  0 whatever happens. `qwen install` writes its hooks and the MCP server into
+  `~/.qwen/settings.json`, and exits 1 without writing when that file is not
+  plain JSON. `cursor install` does the same with its two files.
 - `mcp` serves the model's tools over stdio MCP — a strict flow's `status`,
   `move` and `set`, the `note` tool, and the work loop's `work`, `practice`,
   `propose`, `answer`, `ask` and `artifact` — for hosts with no Gemworks shell

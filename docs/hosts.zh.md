@@ -212,6 +212,29 @@ hooks 在 `~/.cursor` 下运行，所以项目是工作区里带 `.geml/` 的那
 一样，从 hooks 那里得知当前对话和项目：同时开着两个 Cursor 窗口时，它写给最后跑过 hook 的那个。和 Codex 一样，没有
 状态带和看板按钮；「改成规定」和纠正账本这里都没有。看板页用 GEML 扩展看，Cursor 能跑 VS Code 扩展。
 
+### Qwen Code
+
+```sh
+npm install -g @geml/gemworks
+gemworks qwen install
+```
+
+第二行把 gemworks 的 hooks 和 MCP 服务写进 `~/.qwen/settings.json`，都指向刚装的这份 `gemworks`；它会打印这个文件的
+路径。你自己的 hooks、MCP 服务和其他设置都保留，再跑一次会替换上一次装的。设置文件里有注释的话不会动它：命令会说明，
+hooks 要手工加。装完重新启动 Qwen Code。
+
+Qwen Code 的 hooks 就是 Claude Code 那一套，所以它拿到的和 Codex 一样，提示词旁边的内容也有：会话开始时交代工作循环的
+工具和流程的步骤；每条提示词旁边带上进行中的工作项、这一步的做法、别的会话定下的事和新的阶段文本；上面那页 GEML
+看板；还有闸门。围起来的用途和只归人的命令会被拒并说明原因；工具的默认参数会补上；退出码算证据的 shell 命令会包一层，
+最后打印 `[gemworks exit N]`（Windows 上不包），没包的时候读 shell 工具自己的 `Exit Code:` 一行；agent 写的文件、
+这一轮的回答和它做的提交进项目的会话记录；一轮改了东西却没报工作项，会送回去一次，这条提醒不算你说的话。闸门放行的
+调用，Qwen Code 照样会请你批准，跟没装 gemworks 时一样。
+
+Qwen Code 的工具叫 `run_shell_command`、`write_file`、`edit`、`notebook_edit`、`read_file`、`grep_search`、`glob`
+和 `mcp__<服务>__<工具>`。闸门按 Claude Code 的名字读（`Bash`、`Write`、`Edit`、`NotebookEdit`、`Read`、`Grep`、
+`Glob`，MCP 工具按它自己的名字），所以自带的词典不用改。项目是 `QWEN_PROJECT_DIR`，也就是启动 Qwen Code 的那个
+文件夹；MCP 服务也在那里启动。和 Codex 一样，没有状态带和看板按钮；「改成规定」和纠正账本这里都没有。
+
 ### DeepSeek Harness
 
 ```sh

@@ -294,6 +294,17 @@ export function hooksWith(file: Record<string, unknown>, command: string): Recor
   return { ...file, version: typeof file["version"] === "number" ? file["version"] : 1, hooks };
 }
 
+/** A settings file as an object: none when it is not there; an error when it is there and is not a JSON object, since writing it again would lose it. */
+export function readSettings(file: string): Record<string, unknown> {
+  if (!existsSync(file)) return {};
+  const text = readFileSync(file, "utf8");
+  if (text.trim() === "") return {};
+  let v: unknown;
+  try { v = JSON.parse(text); } catch { throw new Error(`${file} is not plain JSON (comments?): add the hooks and the MCP server by hand, or remove what keeps it from parsing`); }
+  if (typeof v !== "object" || v === null || Array.isArray(v)) throw new Error(`${file} is not a JSON object`);
+  return v as Record<string, unknown>;
+}
+
 /**
  * `gemworks cursor install`: the adapter's hooks into Cursor's user hooks file and the MCP server into its user MCP
  * config, both running `bundle`. Returns the two files written.
@@ -305,8 +316,9 @@ export function installCursor(bundle: string, home: string = homedir()): string[
   mkdirSync(dir, { recursive: true });
   // Cursor runs a hook command through the shell: the path with forward slashes, quoted.
   const path = bundle.split("\\").join("/");
-  writeFileSync(hooksFile, `${JSON.stringify(hooksWith(readJson<Record<string, unknown>>(hooksFile, {}), `node "${path}" cursor`), null, 2)}\n`, "utf8");
-  const mcp = readJson<{ mcpServers?: Record<string, unknown> }>(mcpFile, {});
+  const hooks = readSettings(hooksFile);
+  const mcp = readSettings(mcpFile) as { mcpServers?: Record<string, unknown> };
+  writeFileSync(hooksFile, `${JSON.stringify(hooksWith(hooks, `node "${path}" cursor`), null, 2)}\n`, "utf8");
   mcp.mcpServers = { ...(mcp.mcpServers ?? {}), gemworks: { command: "node", args: [bundle, "mcp", "--host", CURSOR_HOST] } };
   writeFileSync(mcpFile, `${JSON.stringify(mcp, null, 2)}\n`, "utf8");
   return [hooksFile, mcpFile];
