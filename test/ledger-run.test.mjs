@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { labelPrompt } from "../dist/ledger-run.js";
+import { checkLedger, labelPrompt } from "../dist/ledger-run.js";
+import { handleRequest } from "../dist/bridge.js";
 import { readLedger, recordedUnlabelled } from "../dist/corrections-store.js";
 import { readSessions, recordAnswer, recordPrompt } from "../dist/session-store.js";
 import { fakePi } from "./helpers/pi.mjs";
@@ -35,6 +36,27 @@ test("a typed prompt labelled by the borrowed model into the ledger; a correctio
   const none = model("我不知道");
   assert.equal(await labelPrompt(root, { text: "再来", before: "", at: "2026-11-09T08:10:00.000Z", session: "s2" }, none.complete), false);
   assert.equal(readLedger().prompts.some((p) => p.session === "s2"), false);
+});
+
+test("the corrections a 失效 card would count are read against their rule by the borrowed model: one that does not hold leaves its theme", async () => {
+  const root = gitRepo();
+  const req = (op) => handleRequest({ v: 1, root, ...op });
+  const rule = "他报现象就按确切条件去验";
+  assert.equal((await req({ op: "practice-add", practices: [{ id: "pRun", flow: "*", step: "*", text: rule, why: "", at: "2026-11-01T00:00:00.000Z", by: "person", layer: "personal" }] })).ok, true);
+  const fixes = ["我用chrome打开也是一样", "我说的是窄屏下，你在宽屏上验的不算"].map((text, i) => ({ id: `run@${i}`, at: `2026-11-0${5 + i}T00:00:00.000Z`, session: "run", text, kind: "correct", sub: "verify", by: "model" }));
+  await req({ op: "corrections-add", prompts: fixes });
+  // The session that themed last holds the claim (the first test's): the check is that session's to make.
+  await req({ op: "corrections-themes", answer: { assign: fixes.map((f) => ({ id: f.id, theme: { rule } })), links: [{ theme: { rule }, practices: ["pRun"] }] }, linked: "" });
+  const m = model("q1 no\nq2 yes");
+  await checkLedger(root, "s1", m.complete);
+  assert.equal(m.asked.length, 1);
+  assert.match(m.asked[0].prompt, /q1\. rule: 他报现象就按确切条件去验\n {4}message: 我用chrome打开也是一样/);
+  const kept = readLedger().prompts.filter((p) => p.session === "run").map((p) => [p.id, p.theme === "" ? "taken out" : "kept", p.checked]);
+  assert.deepEqual(kept, [["run@0", "taken out", true], ["run@1", "kept", true]]);
+  // Nothing is left to read: no model is asked again.
+  const again = model("q1 yes");
+  await checkLedger(root, "s1", again.complete);
+  assert.equal(again.asked.length, 0);
 });
 
 test("pending: the prompts other hosts recorded, the answer before each as its context, none of Claude Code's and none labelled", () => {

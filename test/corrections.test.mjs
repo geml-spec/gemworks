@@ -5,8 +5,8 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  addPrompts, applyThemes, claimThemes, defaultPeriods, dismiss, EMPTY_LEDGER, flowless, ledgerCards, ledgerText, linkKey, parseLedger, parsePeriod,
-  practiceCounts, promptId, readFlowDraft, readLabels, readThemes, report, reportText, tally, themeRequest, typedWords, unthemed,
+  addPrompts, applyChecks, applyThemes, checkRequest, claimThemes, defaultPeriods, dismiss, EMPTY_LEDGER, flowless, ledgerCards, ledgerText, linkKey, parseLedger, parsePeriod,
+  practiceCounts, promptId, readChecks, readFlowDraft, readLabels, readThemes, report, reportText, tally, themeRequest, typedWords, unchecked, unthemed,
 } from "../dist/core/corrections.js";
 import { addLabelled, correctionsPath, labelledRows, readLedger, unlabelledPrompts, updateLedger } from "../dist/corrections-store.js";
 import { cellWidth } from "../dist/hosts/claude-code/band.js";
@@ -21,7 +21,7 @@ const fix = (id, at, sub, over = {}) => row(id, at, "correct", { sub, ...over })
 const practice = (id, at, over = {}) => ({ id, flow: "*", step: "*", text: `rule ${id}`, why: "", at, by: "model", layer: "personal", ...over });
 
 test("the ledger's file holds its prompts, themes, cards put away, links and claim; a line that is no record is left out", () => {
-  const l = { prompts: [fix("a", "2026-10-28T02:00:00Z", "verify", { work: "ui", flow: "feature", step: "mockup", theme: "t1" })], themes: [{ id: "t1", rule: "改完附上路径", at: "x", practices: ["p1"] }], dismissed: [{ key: "repeat:t1", n: 3, at: "x" }], linked: "p1", claim: "s1@2026-10-30T00:00:00Z" };
+  const l = { prompts: [fix("a", "2026-10-28T02:00:00Z", "verify", { work: "ui", flow: "feature", step: "mockup", theme: "t1", checked: true })], themes: [{ id: "t1", rule: "改完附上路径", at: "x", practices: ["p1"] }], dismissed: [{ key: "repeat:t1", n: 3, at: "x" }], linked: "p1", claim: "s1@2026-10-30T00:00:00Z" };
   const text = ledgerText(l);
   assert.deepEqual(parseLedger(text), l);
   assert.deepEqual(parseLedger(text.replace("=== data {#prompts format=jsonl}\n", "=== data {#prompts format=jsonl}\nnot json\n{\"id\":1}\n")), l);
@@ -76,8 +76,9 @@ test("a practice holds while its theme's corrections stop: before it was written
     ...EMPTY_LEDGER,
     themes: [theme("write", ["pOld", "pNew"]), theme("link", ["pMock"]), theme("held", ["pHeld"]), theme("bare", [])],
     prompts: [
-      fix("w1", "2026-10-29T10:29:00Z", "judgment", { theme: "write" }), fix("w2", "2026-10-29T11:26:00Z", "judgment", { theme: "write" }), fix("w3", "2026-10-30T04:51:00Z", "judgment", { theme: "write" }),
-      fix("l1", "2026-10-28T02:16:00Z", "verify", { theme: "link", flow: "design", step: "draft" }), fix("l2", "2026-10-28T03:15:00Z", "verify", { theme: "link" }), fix("l3", "2026-10-30T05:35:00Z", "show", { theme: "link", flow: "feature", step: "mockup" }),
+      // A correction counts against a practice once it was read against the rule and held (checked).
+      fix("w1", "2026-10-29T10:29:00Z", "judgment", { theme: "write" }), fix("w2", "2026-10-29T11:26:00Z", "judgment", { theme: "write", checked: true }), fix("w3", "2026-10-30T04:51:00Z", "judgment", { theme: "write", checked: true }),
+      fix("l1", "2026-10-28T02:16:00Z", "verify", { theme: "link", flow: "design", step: "draft" }), fix("l2", "2026-10-28T03:15:00Z", "verify", { theme: "link" }), fix("l3", "2026-10-30T05:35:00Z", "show", { theme: "link", flow: "feature", step: "mockup", checked: true }),
       fix("h1", "2026-10-20T01:00:00Z", "show", { theme: "held" }), fix("h2", "2026-10-21T01:00:00Z", "show", { theme: "held" }),
       fix("b1", "2026-10-27T01:00:00Z", "process", { theme: "bare", flow: "bugfix", step: "fix" }), fix("b2", "2026-10-28T01:00:00Z", "process", { theme: "bare", flow: "bugfix", step: "fix" }), fix("b3", "2026-10-29T01:00:00Z", "process", { theme: "bare", flow: "bugfix", step: "fix" }),
       row("task", "2026-10-29T01:00:00Z", "task", { theme: "bare" }),
@@ -99,6 +100,55 @@ test("a practice holds while its theme's corrections stop: before it was written
   assert.ok(ledgerCards(twoMore, practices, "2026-10-30T06:00:00Z").some((c) => c.key === "repeat:bare"));
   // A practice for every flow and step covers its theme wherever it was said.
   assert.ok(!ledgerCards({ ...l, themes: l.themes.map((x) => (x.id === "bare" ? { ...x, practices: ["pAll"] } : x)) }, [...practices, practice("pAll", "2026-10-29T12:00:00Z")], "2026-10-30T06:00:00Z").some((c) => c.key === "repeat:bare"));
+});
+
+test("a 失效 card counts only corrections read against the rule: a symptom filed under it is taken out, and the card goes with it", () => {
+  const theme = { id: "exact", rule: "他报现象就按确切条件去验", at: "x", practices: ["pExact"] };
+  const pExact = practice("pExact", "2026-10-26T19:07:00Z");
+  const l = {
+    ...EMPTY_LEDGER,
+    themes: [theme, { id: "lone", rule: "只说一次", at: "x", practices: ["pLone"] }],
+    prompts: [
+      fix("before", "2026-10-20T01:00:00Z", "verify", { theme: "exact", text: "我说的是 Chrome，不是 Edge" }),
+      fix("menus", "2026-11-06T08:09:00Z", "verify", { theme: "exact", text: "我估计其他菜单也是一样的，全都没对应上" }),
+      fix("hover", "2026-11-09T02:14:00Z", "misread", { theme: "exact", text: "这个我是说让hover的时候显示而不是点击的时候显示" }),
+      fix("chrome", "2026-11-09T09:11:00Z", "verify", { theme: "exact", text: "我用chrome打开也是一样" }),
+      fix("exactly", "2026-11-10T01:00:00Z", "verify", { theme: "exact", text: "我说的是窄屏下，你在宽屏上验的不算" }),
+      // A practice with one correction after it: no card could count it, so it is not read.
+      fix("once", "2026-11-10T02:00:00Z", "verify", { theme: "lone" }),
+    ],
+  };
+  const practices = [pExact, practice("pLone", "2026-10-26T19:07:00Z")];
+  const now = "2026-11-11T03:00:00Z";
+  // Filed but never read: no card, and the practice counts none after it.
+  assert.deepEqual(ledgerCards(l, practices, now).filter((c) => c.kind === "failing"), []);
+  assert.deepEqual(practiceCounts(l, practices).pExact, { before: 1, after: 0 });
+  const waiting = unchecked(l, practices);
+  assert.deepEqual(waiting.map((x) => x.id), ["menus", "hover", "chrome", "exactly"], "after the practice, in time order; the one before it and the lone one are not read");
+  assert.equal(waiting[0].rule, "他报现象就按确切条件去验");
+  assert.deepEqual(unchecked(l, practices, 2).map((x) => x.id), ["chrome", "exactly"], "the newest first when there are more");
+
+  const ask = checkRequest(waiting);
+  assert.match(ask.prompt, /q3\. rule: 他报现象就按确切条件去验\n {4}message: 我用chrome打开也是一样/);
+  assert.match(ask.system, /only reports a problem, a symptom or a result/);
+  const verdicts = readChecks("q1 no\nq2: no\nq3. NO\nq4 yes\nq9 yes\nthe rest: unsure", ask.handles);
+  assert.deepEqual(verdicts, [{ id: "menus", holds: false }, { id: "hover", holds: false }, { id: "chrome", holds: false }, { id: "exactly", holds: true }]);
+  assert.deepEqual(readChecks("I cannot tell.", ask.handles), [], "a reply that reads none is no answer");
+
+  const read = applyChecks(l, verdicts);
+  assert.deepEqual(read.prompts.map((p) => [p.id, p.theme, p.checked]), [
+    ["before", "exact", undefined], ["menus", "", true], ["hover", "", true], ["chrome", "", true], ["exactly", "exact", true], ["once", "lone", undefined],
+  ]);
+  // One held: still no card (it takes two), and nothing is left to read — the three taken out are never asked again.
+  assert.deepEqual(ledgerCards(read, practices, now).filter((c) => c.kind === "failing"), []);
+  assert.deepEqual(unchecked(read, practices), []);
+  assert.deepEqual(unthemed(read), [], "taken out of its theme is not waiting for one");
+  assert.deepEqual(practiceCounts(read, practices).pExact, { before: 1, after: 1 });
+  // A second that holds brings the card, counting the two read.
+  const again = applyChecks({ ...read, prompts: [...read.prompts, fix("narrow", "2026-11-11T01:00:00Z", "verify", { theme: "exact", text: "又是宽屏上验的" })] }, [{ id: "narrow", holds: true }]);
+  assert.deepEqual(ledgerCards(again, practices, now).map((c) => [c.kind, c.key, c.n]), [["failing", "failing:pExact", 2]]);
+  // The file keeps what was read.
+  assert.deepEqual(parseLedger(ledgerText(again)).prompts.find((p) => p.id === "chrome"), { ...l.prompts[3], theme: "", checked: true });
 });
 
 test("only one session at a time puts corrections in themes, until it stops asking for five minutes", () => {
@@ -185,12 +235,19 @@ test("the bridge adds labelled prompts, puts them in themes for the session hold
   assert.deepEqual([r.ok, r.corrections.unthemed, r.corrections.cards], [true, 3, []]);
   r = hook(root, { op: "corrections", toTheme: true, session: "s1" }, env);
   assert.deepEqual(r.corrections.toTheme.corrections.map((c) => c.id), ["s1@1", "s1@2", "s1@3"]);
-  assert.equal(hook(root, { op: "corrections", toTheme: true, session: "s2" }, env).corrections.toTheme, undefined, "another session holds the claim");
+  assert.deepEqual([r.corrections.unchecked, r.corrections.toCheck], [0, []], "no practice: no 失效 card could count them");
+  const other = hook(root, { op: "corrections", toTheme: true, session: "s2" }, env).corrections;
+  assert.deepEqual([other.toTheme, other.toCheck], [undefined, undefined], "another session holds the claim");
   r = hook(root, { op: "corrections-themes", answer: { assign: prompts.map((p) => ({ id: p.id, theme: { rule: "改完附上路径" } })), links: [] }, linked: "" }, env);
   assert.deepEqual([r.corrections.unthemed, r.corrections.cards.map((c) => [c.kind, c.rule, c.n])], [0, [["repeat", "改完附上路径", 3]]]);
   assert.match(r.corrections.cards[0].quotes[0].day, /^\d\d-\d\d$/);
   r = hook(root, { op: "corrections-dismiss", key: r.corrections.cards[0].key, n: 3 }, env);
   assert.deepEqual(r.corrections.cards, []);
+  // Read against the rule: one holds, one leaves its theme.
+  r = hook(root, { op: "corrections-check", verdicts: [{ id: "s1@2", holds: true }, { id: "s1@3", holds: false }] }, env);
+  assert.equal(r.ok, true);
+  assert.deepEqual(readLedger(home).prompts.map((p) => [p.id, p.theme !== "", p.checked]), [["s1@1", true, undefined], ["s1@2", true, true], ["s1@3", false, true]]);
+  assert.equal(hook(root, { op: "corrections-check", verdicts: [{ id: "s1@1" }] }, env).ok, false, "a verdict says whether it holds");
   assert.equal(hook(root, { op: "corrections-add", prompts: [{ id: 1 }] }, env).ok, false);
 });
 

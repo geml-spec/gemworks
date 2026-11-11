@@ -40,7 +40,7 @@ import { envParts, remoteInPlay } from '../dist/hosts/claude-code/env.js'
 import { captureHint, offersCapture } from '../dist/hosts/claude-code/screenshot.js'
 import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, isStatusLine, legacyLogName, logName, nextTurn, NOTE_TOOL, parseLog, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
 import type { SeenRun, SessionEvent, SessionSummary } from '../dist/core/session-log.js'
-import { flowRequest, labelRequest, linkKey, promptId, readFlowDraft, readLabels, readThemes, themeRequest, typedWords } from '../dist/core/corrections.js'
+import { checkRequest, flowRequest, labelRequest, linkKey, promptId, readChecks, readFlowDraft, readLabels, readThemes, themeRequest, typedWords } from '../dist/core/corrections.js'
 import type { LabelledPrompt } from '../dist/core/corrections.js'
 import { ARTIFACT_TOOL, isMadeForPeople, publishedLink } from '../dist/core/artifact-tool.js'
 import { ASK_PROMPT, ASK_TOOL, askedOf } from '../dist/core/ask-tool.js'
@@ -1084,8 +1084,9 @@ async function labelPrompt($: EngineInterface, p: { text: string; before: string
   const res = await bridge($, { op: 'corrections-add', prompts: [row] }).catch(() => undefined)
   if (res === undefined || !res.ok || res.corrections === undefined) return
   await update($, correctionsAtom, () => res.corrections as unknown as GemworksJson)
-  // A correction goes into a theme; so do any waiting from before (imported, or a session that stopped), and the links follow changed practices.
-  if (label.kind === 'correct' || res.corrections.unthemed > 0 || res.corrections.stale) await themeLedger($)
+  // A correction goes into a theme; so do any waiting from before (imported, or a session that stopped), and the links follow changed practices;
+  // corrections a 失效 card would count are read against their rule first.
+  if (label.kind === 'correct' || res.corrections.unthemed > 0 || res.corrections.stale || res.corrections.unchecked > 0) await themeLedger($)
 }
 
 /**
@@ -1121,9 +1122,36 @@ async function themeLedger($: EngineInterface): Promise<void> {
       await update($, correctionsAtom, () => done.corrections as unknown as GemworksJson)
       if (done.corrections.unthemed === 0 && !done.corrections.stale) break
     }
+    await checkLedger($, session)
     await proposeFlows($)
   } finally {
     theming = false
+  }
+}
+
+/** The most check requests one run makes: a practice's backlog read in a few, the newest first. */
+const CHECK_RUNS = 4
+
+/**
+ * The corrections a 失效 card would count, read against the rule of the theme they were put in, by the session's own
+ * model, before any card counts them: a theme is given in a batch and may take a message that only resembles its rule
+ * (a symptom reported, filed under "verify the symptom as reported"). One that holds is marked read; one that does not
+ * leaves its theme. A reply that reads none is no answer: the batch is asked again another time.
+ */
+async function checkLedger($: EngineInterface, session: string): Promise<void> {
+  for (let run = 0; run < CHECK_RUNS; run++) {
+    const res = await bridge($, { op: 'corrections', toTheme: true, session }).catch(() => undefined)
+    const items = res !== undefined && res.ok ? res.corrections?.toCheck : undefined
+    if (items === undefined || items.length === 0) break
+    const ask = checkRequest(items)
+    const r = await $.model.complete({ model: LEDGER_MODEL, system: ask.system, prompt: ask.prompt, maxTokens: 400, effort: 'low', timeoutMs: 120_000 })
+    if (!r.isAnswered) break
+    const verdicts = readChecks(r.text, ask.handles)
+    if (verdicts.length === 0) break
+    const done = await bridge($, { op: 'corrections-check', verdicts }).catch(() => undefined)
+    if (done === undefined || !done.ok || done.corrections === undefined) break
+    await update($, correctionsAtom, () => done.corrections as unknown as GemworksJson)
+    if (done.corrections.unchecked === 0) break
   }
 }
 

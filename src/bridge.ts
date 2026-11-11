@@ -36,7 +36,7 @@ import { deleteMemory, memoryDir, readMemory, setMemoryHook } from "./memory-sto
 import { changePractice, readPractices, sharePractices, writePractices } from "./practice-store.js";
 import type { Practice } from "./core/practices.js";
 import { readLedger, updateLedger } from "./corrections-store.js";
-import { addPrompts, applyThemes, claimThemes, dismiss, flowless, isCorrection, ledgerCards, linkKey, localDay, practiceCounts, unthemed, type Ledger } from "./core/corrections.js";
+import { addPrompts, applyChecks, applyThemes, claimThemes, dismiss, flowless, isCorrection, ledgerCards, linkKey, localDay, practiceCounts, unchecked, unthemed, type Ledger } from "./core/corrections.js";
 import { isDocPath, isGemlPath, isImagePath, isMadeForPeople, pageTitle, artifactsOfItem, UPLOAD_PREFIX, type Artifact } from "./core/artifacts.js";
 import { historyPathFor } from "@geml/geml";
 import { prOf, type PrFact } from "./core/outline.js";
@@ -789,7 +789,7 @@ export function answerRequest(req: BridgeRequest): BridgeResponse {
   }
 }
 
-/** The ledger as the flow tab shows it, against the project's practices; with what a theme request reads, when asked. */
+/** The ledger as the flow tab shows it, against the project's practices; with what a theme request and a check request read, when asked. */
 function correctionsView(ledger: Ledger, practices: readonly Practice[], now: string, toTheme: boolean): CorrectionsView {
   const live = practices.filter((p) => p.deleted !== true);
   const since = new Date(Date.parse(now) - 7 * 86_400_000).toISOString();
@@ -807,7 +807,8 @@ function correctionsView(ledger: Ledger, practices: readonly Practice[], now: st
     })),
     unthemed: unthemed(ledger, Infinity).length,
     stale: ledger.linked !== linkKey(live),
-    ...(toTheme ? { toTheme: { corrections: unthemed(ledger), themes: ledger.themes, practices: live } } : {}),
+    unchecked: unchecked(ledger, live, Infinity).length,
+    ...(toTheme ? { toTheme: { corrections: unthemed(ledger), themes: ledger.themes, practices: live }, toCheck: unchecked(ledger, live) } : {}),
   };
 }
 
@@ -858,7 +859,7 @@ function answer(req: BridgeRequest): BridgeResponse {
     return { v: 1, ok: true, shell: shellAt(req), practices: { list: practices, memoryMoved } };
   }
   // The person's ledger of corrections: theirs, not the project's; read against this project's practices.
-  if (req.op === "corrections" || req.op === "corrections-add" || req.op === "corrections-themes" || req.op === "corrections-dismiss") {
+  if (req.op === "corrections" || req.op === "corrections-add" || req.op === "corrections-themes" || req.op === "corrections-dismiss" || req.op === "corrections-check") {
     const now = new Date().toISOString();
     // What a theme request reads goes only to the session that holds the claim: two sessions would theme the same corrections twice.
     let mine = false;
@@ -867,6 +868,7 @@ function answer(req: BridgeRequest): BridgeResponse {
       if (req.op === "corrections") { const c = claimThemes(l, req.session ?? "", now); mine = c.mine; return c.ledger; }
       if (req.op === "corrections-add") return addPrompts(l, req.prompts.map((p) => ({ ...p, by: "model" as const }))).ledger;
       if (req.op === "corrections-themes") return applyThemes(l, req.answer, now, req.linked, (n) => `t${Date.parse(now).toString(36)}${n}`);
+      if (req.op === "corrections-check") return applyChecks(l, req.verdicts);
       return dismiss(l, req.key, req.n, now);
     });
     return { v: 1, ok: true, shell: shellAt(req), corrections: correctionsView(ledger, practicesOf(root).list, now, mine) };

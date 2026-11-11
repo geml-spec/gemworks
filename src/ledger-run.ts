@@ -8,7 +8,7 @@
 // bridge's (corrections ops), shared with every session. Nothing here throws at
 // a caller: a model that does not answer leaves the prompt for `gemworks
 // corrections pending`.
-import { flowRequest, labelRequest, linkKey, promptId, readFlowDraft, readLabels, readThemes, themeRequest, type LabelledPrompt } from "./core/corrections.js";
+import { checkRequest, flowRequest, labelRequest, linkKey, promptId, readChecks, readFlowDraft, readLabels, readThemes, themeRequest, type LabelledPrompt } from "./core/corrections.js";
 import { newProposals } from "./core/growth.js";
 import type { CorrectionsView } from "./hosts/claude-code/protocol.js";
 import { langOf, wordsFor } from "./hosts/claude-code/text.js";
@@ -49,11 +49,32 @@ export async function labelPrompt(root: string, p: ToLabelPrompt, complete: Comp
   };
   const view = await bridgeCorrections(root, { op: "corrections-add", prompts: [row] });
   if (view === undefined) return false;
-  if (label.kind === "correct" || view.unthemed > 0 || view.stale) await themeLedger(root, p.session, complete, locale);
+  if (label.kind === "correct" || view.unthemed > 0 || view.stale || view.unchecked > 0) await themeLedger(root, p.session, complete, locale);
   return true;
 }
 
-/** The ledger's corrections put into themes, a batch a request, by the session that holds the claim; then flows proposed. */
+/** At most this many check requests a run. */
+const CHECK_RUNS = 4;
+
+/**
+ * The corrections a 失效 card would count, read against their theme's rule before any card counts them (hooks/register.tsx
+ * checkLedger): one that holds is marked read, one that does not leaves its theme; a reply that reads none is asked again later.
+ */
+export async function checkLedger(root: string, session: string, complete: Complete): Promise<void> {
+  for (let run = 0; run < CHECK_RUNS; run++) {
+    const view = await bridgeCorrections(root, { op: "corrections", toTheme: true, session });
+    const items = view?.toCheck;
+    if (items === undefined || items.length === 0) break;
+    const req = checkRequest(items);
+    const reply = await ask(complete, req.system, req.prompt, 400);
+    const verdicts = reply !== undefined ? readChecks(reply, req.handles) : [];
+    if (verdicts.length === 0) break;
+    const done = await bridgeCorrections(root, { op: "corrections-check", verdicts });
+    if (done === undefined || done.unchecked === 0) break;
+  }
+}
+
+/** The ledger's corrections put into themes, a batch a request, by the session that holds the claim; then read against their rule; then flows proposed. */
 export async function themeLedger(root: string, session: string, complete: Complete, locale?: string): Promise<void> {
   for (let run = 0; run < THEME_RUNS; run++) {
     const view = await bridgeCorrections(root, { op: "corrections", toTheme: true, session });
@@ -71,6 +92,7 @@ export async function themeLedger(root: string, session: string, complete: Compl
     const done = await bridgeCorrections(root, { op: "corrections-themes", answer: whole, linked: linkKey(given.practices) });
     if (done === undefined || (done.unthemed === 0 && !done.stale)) break;
   }
+  await checkLedger(root, session, complete);
   await proposeFlows(root, complete, locale);
 }
 

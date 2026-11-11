@@ -13,7 +13,7 @@ import type { AttentionFacts } from "./attention.js";
 import type { HostInfo } from "./env.js";
 import type { MemoryList } from "../../memory-store.js";
 import type { Practice } from "../../core/practices.js";
-import type { LabelledPrompt, LedgerCard, PracticeCount, Theme, ThemeAnswer, WorkKind } from "../../core/corrections.js";
+import type { LabelledPrompt, LedgerCard, PracticeCount, Theme, ThemeAnswer, ToCheck, WorkKind } from "../../core/corrections.js";
 import type { QueuedMessage } from "../../core/transcript.js";
 import type { Transcript } from "../../core/transcript.js";
 
@@ -119,14 +119,16 @@ export type BridgeOp =
   | { op: "practice-set"; id: string; deleted?: boolean; layer?: "personal" | "project"; everywhere?: boolean }
   /** Practices moved into the team's layer: the repository's .gemworks/practices.geml. */
   | { op: "practice-share"; ids: string[] }
-  /** The ledger of corrections as the flow tab shows it (core/corrections.ts); `toTheme`: what a theme request reads, when `session` holds the claim to put corrections in themes. */
+  /** The ledger of corrections as the flow tab shows it (core/corrections.ts); `toTheme`: what a theme request and a check request read, when `session` holds the claim to put corrections in themes. */
   | { op: "corrections"; toTheme?: boolean; session?: string }
   /** Prompts the hooks module labelled, added to the ledger. */
   | { op: "corrections-add"; prompts: LabelledPrompt[] }
   /** A theme answer the hooks module read (ids, not handles), applied; `linked` the practices it linked against. */
   | { op: "corrections-themes"; answer: ThemeAnswer; linked: string }
   /** A card put away, with what it counted. */
-  | { op: "corrections-dismiss"; key: string; n: number };
+  | { op: "corrections-dismiss"; key: string; n: number }
+  /** Corrections read against their theme's rule (core/corrections.ts checkRequest): each holds, or leaves its theme. */
+  | { op: "corrections-check"; verdicts: { id: string; holds: boolean }[] };
 
 /** A transcript the host keeps: its file, the session's id (the file's name), its size. */
 export interface TranscriptFile { file: string; id: string; size: number }
@@ -297,7 +299,8 @@ export interface FlowPicture { flow: Flow; overlay: Overlay; svg: string }
 /**
  * The ledger as the flow tab shows it: the cards, each practice's corrections before and after it, the kinds of work
  * corrected often with no flow; how many corrections wait for a theme, and whether the themes were linked against other
- * practices than there are now (`stale`). `toTheme` when asked: what a theme request reads.
+ * practices than there are now (`stale`); how many corrections a 失效 card would count wait to be read against their
+ * rule (`unchecked`). `toTheme` and `toCheck` when asked: what a theme request and a check request read.
  */
 export interface CorrectionsView {
   cards: LedgerCard[];
@@ -305,7 +308,9 @@ export interface CorrectionsView {
   flowless: { work: WorkKind; n: number; judgment: number; quotes: { at: string; text: string }[] }[];
   unthemed: number;
   stale: boolean;
+  unchecked: number;
   toTheme?: { corrections: LabelledPrompt[]; themes: Theme[]; practices: Practice[] };
+  toCheck?: ToCheck[];
 }
 
 export type BridgeResponse =
@@ -386,7 +391,7 @@ export function unreadableText(exitCode: number, stderr: string, pluginRoot: str
   return `gemworks：桥接的应答无法解析（退出码 ${exitCode}${said ? `：${said}` : ""}）`;
 }
 
-const OPS = new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "signoff", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss"]);
+const OPS = new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "signoff", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss", "corrections-check"]);
 const EXPORT_KINDS = new Set(["journal", "workflow", "text"]);
 const EXPORT_FORMATS = new Set(["geml", "md", "json"]);
 const VERBS = new Set(["status", "move", "set"]);
@@ -457,6 +462,7 @@ export function decodeRequest(text: string): BridgeRequest | { error: string } {
     "corrections-add": () => Array.isArray(v["prompts"]) && (v["prompts"] as unknown[]).every(isRecord),
     "corrections-themes": () => obj("answer") && Array.isArray((v["answer"] as Record<string, unknown>)["assign"]) && Array.isArray((v["answer"] as Record<string, unknown>)["links"]) && str("linked"),
     "corrections-dismiss": () => str("key") && v["key"] !== "" && Number.isInteger(v["n"]),
+    "corrections-check": () => Array.isArray(v["verdicts"]) && (v["verdicts"] as unknown[]).every((x) => isRecord(x) && typeof (x as Record<string, unknown>)["id"] === "string" && typeof (x as Record<string, unknown>)["holds"] === "boolean"),
   };
   const check = fields[op];
   if (check !== undefined && !check()) return { error: `op ${op}: missing or mistyped fields` };

@@ -22,12 +22,13 @@ export const PERSON_SUBS: readonly CorrectionSub[] = ["judgment", "domain", "mis
 /**
  * A prompt the person typed, labelled: when, in which session (and project), its words (clipped), its kind, for a
  * correction its sub, the kind of work it is about; the flow and step the session's work item stood at, when there was
- * one; the theme it shares with corrections that say the same thing; who labelled it.
+ * one; the theme it shares with corrections that say the same thing; who labelled it. `checked`: its words were read
+ * against its theme's rule before it counted against a practice (checkRequest): it holds, or it lost its theme.
  */
 export interface LabelledPrompt {
   id: string; at: string; session: string; text: string;
   kind: PromptKind; sub?: CorrectionSub; work?: WorkKind;
-  project?: string; flow?: string; step?: string; theme?: string;
+  project?: string; flow?: string; step?: string; theme?: string; checked?: boolean;
   by: "model" | "agent" | "import";
 }
 
@@ -91,7 +92,7 @@ function isPrompt(v: unknown): v is LabelledPrompt {
   const opt = (k: string): boolean => v[k] === undefined || typeof v[k] === "string";
   return ["id", "at", "session", "text"].every((k) => typeof v[k] === "string") && (KINDS as readonly string[]).includes(v["kind"] as string)
     && (v["sub"] === undefined || (SUBS as readonly string[]).includes(v["sub"] as string)) && (v["work"] === undefined || (WORKS as readonly string[]).includes(v["work"] as string))
-    && ["project", "flow", "step", "theme"].every(opt) && BY.includes(v["by"] as string);
+    && ["project", "flow", "step", "theme"].every(opt) && (v["checked"] === undefined || typeof v["checked"] === "boolean") && BY.includes(v["by"] as string);
 }
 const isTheme = (v: unknown): v is Theme => isObj(v) && ["id", "rule", "at"].every((k) => typeof v[k] === "string") && Array.isArray(v["practices"]) && v["practices"].every((x) => typeof x === "string");
 const isDismissed = (v: unknown): v is Dismissed => isObj(v) && typeof v["key"] === "string" && typeof v["n"] === "number" && typeof v["at"] === "string";
@@ -360,7 +361,8 @@ const covers = (p: Practice, x: LabelledPrompt): boolean => (p.flow === "*" || p
 
 /**
  * For each practice linked to a theme: how many of the theme's corrections came before it was written (anywhere), how
- * many after where it reminds. One said after it on another step is not the practice failing: it is a repeat card's.
+ * many after where it reminds, read against the rule and found to hold (unchecked). One said after it on another step is
+ * not the practice failing: it is a repeat card's.
  */
 export function practiceCounts(l: Ledger, practices: readonly Practice[]): Record<string, PracticeCount> {
   const out: Record<string, PracticeCount> = {};
@@ -369,9 +371,65 @@ export function practiceCounts(l: Ledger, practices: readonly Practice[]): Recor
     const mine = themesOf(l, p.id);
     if (mine.size === 0) continue;
     const said = l.prompts.filter((x) => isCorrection(x) && x.theme !== undefined && mine.has(x.theme));
-    out[p.id] = { before: said.filter((x) => x.at < p.at).length, after: said.filter((x) => x.at > p.at && covers(p, x)).length };
+    out[p.id] = { before: said.filter((x) => x.at < p.at).length, after: said.filter((x) => x.at > p.at && covers(p, x) && x.checked === true).length };
   }
   return out;
+}
+
+// ---- a correction read against its rule before it counts against a practice ----------------------
+
+/** The most corrections one check request carries. */
+export const CHECKS_ASKED = 30;
+
+/** A correction to read: its id, its words, and the rule of the theme it was put in. */
+export interface ToCheck { id: string; text: string; rule: string }
+
+/**
+ * The corrections a 失效 card would count that nobody has read against their theme's rule: of each practice, those of
+ * its themes said after it where it reminds, when it has two such at least, read or not. Each once, the newest `limit`
+ * in time order. A theme is given in a batch, by a model that may file a message that only resembles the rule — a
+ * symptom reported, under "verify the symptom as reported" — so a card counts only the ones read and found to hold.
+ */
+export function unchecked(l: Ledger, practices: readonly Practice[], limit = CHECKS_ASKED): ToCheck[] {
+  const rules = new Map(l.themes.map((t) => [t.id, t.rule]));
+  const corrections = l.prompts.filter((x) => isCorrection(x) && x.theme !== undefined && x.theme !== "");
+  const waiting = new Map<string, LabelledPrompt>();
+  for (const p of practices) {
+    if (p.deleted === true) continue;
+    const mine = themesOf(l, p.id);
+    const after = corrections.filter((x) => mine.has(x.theme as string) && x.at > p.at && covers(p, x));
+    if (after.length < 2) continue;
+    for (const x of after) if (x.checked !== true) waiting.set(x.id, x);
+  }
+  const sorted = [...waiting.values()].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+  return sorted.slice(Math.max(0, sorted.length - limit)).map((x) => ({ id: x.id, text: x.text, rule: rules.get(x.theme as string) ?? "" }));
+}
+
+/** The request that reads each correction against the rule it was filed under: does the person hold the agent to it? Handles q1, q2… stand for the ids. */
+export function checkRequest(items: readonly ToCheck[]): { system: string; prompt: string; handles: string[] } {
+  const system = [
+    "A person's messages to their coding agent were filed as corrections, each under a rule from their checklist. For each, say whether the message holds the agent to that rule: its words show the agent did not do what the rule says, or ask the agent to do it.",
+    "Answer no when the message only reports a problem, a symptom or a result, asks a question, gives new information, or corrects the agent about something the rule does not cover.",
+    "Reply with one line per message and nothing else: q1 yes, or q1 no.",
+  ].join("\n");
+  const prompt = items.map((x, i) => `q${i + 1}. rule: ${x.rule}\n    message: ${clip(x.text.replace(/\s+/g, " "), 240)}`).join("\n");
+  return { system, prompt, handles: items.map((x) => x.id) };
+}
+
+/** A check reply read against its handles: each correction answered yes or no; one that does not read is left out, to be asked again. */
+export function readChecks(reply: string, handles: readonly string[]): { id: string; holds: boolean }[] {
+  const out = new Map<string, boolean>();
+  for (const m of reply.matchAll(/^\W*q(\d+)\W{0,3}(yes|no)\b/gim)) {
+    const id = handles[Number(m[1]) - 1];
+    if (id !== undefined && !out.has(id)) out.set(id, (m[2] as string).toLowerCase() === "yes");
+  }
+  return [...out].map(([id, holds]) => ({ id, holds }));
+}
+
+/** Checks applied: a correction that holds is marked read; one that does not is taken out of its theme (`""`, not asked again), so no card counts it. */
+export function applyChecks(l: Ledger, verdicts: readonly { id: string; holds: boolean }[]): Ledger {
+  const given = new Map(verdicts.map((v) => [v.id, v.holds]));
+  return { ...l, prompts: l.prompts.map((p) => (!given.has(p.id) ? p : given.get(p.id) === true ? { ...p, checked: true } : { ...p, theme: "", checked: true })) };
 }
 
 /** A correction as a card quotes it: when (`day` the local date, MM-DD, where the bridge knows it), and the words. */
@@ -380,8 +438,8 @@ export interface Quote { at: string; text: string; day?: string }
 /**
  * A card on the flow tab, each with what the person can do about it. `repeat`: the same thing said `n` times in the
  * window, with no practice for it, or only practices on other steps than where it was said (`narrow`); `where` the step
- * most of it was said at. `failing`: a practice whose rule was said `n` times since it was written; `instead` a newer
- * practice for the same theme.
+ * most of it was said at. `failing`: a practice whose rule was said `n` times since it was written, each read against
+ * the rule and found to hold (unchecked); `instead` a newer practice for the same theme.
  */
 export type LedgerCard =
   | { kind: "repeat"; key: string; theme: string; rule: string; n: number; quotes: Quote[]; narrow?: Practice; where?: { flow: string; step: string } }
@@ -402,7 +460,7 @@ export function ledgerCards(l: Ledger, practices: readonly Practice[], now: stri
   const cards: LedgerCard[] = [];
   for (const p of live) {
     const mine = themesOf(l, p.id);
-    const after = corrections.filter((x) => mine.has(x.theme as string) && x.at > p.at && covers(p, x));
+    const after = corrections.filter((x) => mine.has(x.theme as string) && x.at > p.at && covers(p, x) && x.checked === true);
     if (after.length < 2 || away(`failing:${p.id}`, after.length)) continue;
     const instead = live.filter((q) => q.id !== p.id && q.at > p.at && [...themesOf(l, q.id)].some((t) => mine.has(t))).sort((a, b) => (a.at < b.at ? 1 : -1))[0];
     cards.push({ kind: "failing", key: `failing:${p.id}`, practice: p, n: after.length, quotes: quotesOf(after), ...(instead !== undefined ? { instead } : {}) });
