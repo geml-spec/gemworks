@@ -36,7 +36,7 @@ export function unreadableText(exitCode, stderr, pluginRoot) {
         return `gemworks：桥接没有构建 — 在 ${pluginRoot} 运行 npm run build（${said}）`;
     return `gemworks：桥接的应答无法解析（退出码 ${exitCode}${said ? `：${said}` : ""}）`;
 }
-const OPS = new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "signoff", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss"]);
+const OPS = new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "signoff", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss", "corrections-check"]);
 const EXPORT_KINDS = new Set(["journal", "workflow", "text"]);
 const EXPORT_FORMATS = new Set(["geml", "md", "json"]);
 const VERBS = new Set(["status", "move", "set"]);
@@ -114,6 +114,7 @@ export function decodeRequest(text) {
         "corrections-add": () => Array.isArray(v["prompts"]) && v["prompts"].every(isRecord),
         "corrections-themes": () => obj("answer") && Array.isArray(v["answer"]["assign"]) && Array.isArray(v["answer"]["links"]) && str("linked"),
         "corrections-dismiss": () => str("key") && v["key"] !== "" && Number.isInteger(v["n"]),
+        "corrections-check": () => Array.isArray(v["verdicts"]) && v["verdicts"].every((x) => isRecord(x) && typeof x["id"] === "string" && typeof x["practice"] === "string" && typeof x["holds"] === "boolean"),
     };
     const check = fields[op];
     if (check !== undefined && !check())

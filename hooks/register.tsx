@@ -40,7 +40,7 @@ import { envParts, remoteInPlay } from '../dist/hosts/claude-code/env.js'
 import { captureHint, offersCapture } from '../dist/hosts/claude-code/screenshot.js'
 import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, isStatusLine, legacyLogName, logName, nextTurn, NOTE_TOOL, parseLog, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
 import type { SeenRun, SessionEvent, SessionSummary } from '../dist/core/session-log.js'
-import { flowRequest, labelRequest, linkKey, promptId, readFlowDraft, readLabels, readThemes, themeRequest, typedWords } from '../dist/core/corrections.js'
+import { checkRequest, flowRequest, labelRequest, linkKey, promptId, readChecks, readFlowDraft, readLabels, readThemes, themeRequest, typedWords } from '../dist/core/corrections.js'
 import type { LabelledPrompt } from '../dist/core/corrections.js'
 import { ARTIFACT_TOOL, isMadeForPeople, publishedLink } from '../dist/core/artifact-tool.js'
 import { ASK_PROMPT, ASK_TOOL, askedOf } from '../dist/core/ask-tool.js'
@@ -88,6 +88,7 @@ import type { Judgement, JudgeOption } from '../dist/hosts/claude-code/judge.js'
 import { langOf, wordsFor } from '../dist/hosts/claude-code/text.js'
 import type { T } from '../dist/hosts/claude-code/text.js'
 import { act } from './act.tsx'
+import { drawHeading, drawJudges, drawPractice, drawPresses, drawStep } from './manual.tsx'
 
 const shellAtom = atom({ plugin: 'gemworks', key: 'shell' } as const, null as GemworksJson)
 const problemAtom = atom({ plugin: 'gemworks', key: 'problem' } as const, null as string | null)
@@ -233,6 +234,7 @@ const correctionsAtom = atom({ plugin: 'gemworks', key: 'corrections' } as const
 const memoryAskedAtom = atom({ plugin: 'gemworks', key: 'memoryAsked' } as const, false)
 /** The flows of the flow tab whose practices are listed (`*` those for every flow); null: the first flow's. */
 const manualExpandedAtom = atom({ plugin: 'gemworks', key: 'manualExpanded' } as const, null as string[] | null)
+const manualMenuAtom = atom({ plugin: 'gemworks', key: 'manualMenu' } as const, null as string | null)
 /** The work item unfolded under its row on the work items tab (its history). */
 const workUnfoldedAtom = atom({ plugin: 'gemworks', key: 'workUnfolded' } as const, null as string | null)
 /** The 好，做吧 the person pressed, on their way until their own turn ends (coach.ts GoneOn). */
@@ -1084,8 +1086,9 @@ async function labelPrompt($: EngineInterface, p: { text: string; before: string
   const res = await bridge($, { op: 'corrections-add', prompts: [row] }).catch(() => undefined)
   if (res === undefined || !res.ok || res.corrections === undefined) return
   await update($, correctionsAtom, () => res.corrections as unknown as GemworksJson)
-  // A correction goes into a theme; so do any waiting from before (imported, or a session that stopped), and the links follow changed practices.
-  if (label.kind === 'correct' || res.corrections.unthemed > 0 || res.corrections.stale) await themeLedger($)
+  // A correction goes into a theme; so do any waiting from before (imported, or a session that stopped), and the links follow changed practices;
+  // corrections a 失效 card would count are read against their rule first.
+  if (label.kind === 'correct' || res.corrections.unthemed > 0 || res.corrections.stale || res.corrections.unchecked > 0) await themeLedger($)
 }
 
 /**
@@ -1121,9 +1124,36 @@ async function themeLedger($: EngineInterface): Promise<void> {
       await update($, correctionsAtom, () => done.corrections as unknown as GemworksJson)
       if (done.corrections.unthemed === 0 && !done.corrections.stale) break
     }
+    await checkLedger($, session)
     await proposeFlows($)
   } finally {
     theming = false
+  }
+}
+
+/** The most check requests one run makes: a practice's backlog read in a few, the newest first. */
+const CHECK_RUNS = 4
+
+/**
+ * The corrections a 失效 card would count, each read against the words of the practice it would count against, by the
+ * session's own model, before any card counts it: a theme is given and linked in a batch and may take a message that
+ * only resembles its rule, or reach a practice its quotes have nothing to do with. Each pair keeps its answer and is
+ * not asked again. A reply that reads none is no answer: the batch is asked again another time.
+ */
+async function checkLedger($: EngineInterface, session: string): Promise<void> {
+  for (let run = 0; run < CHECK_RUNS; run++) {
+    const res = await bridge($, { op: 'corrections', toTheme: true, session }).catch(() => undefined)
+    const items = res !== undefined && res.ok ? res.corrections?.toCheck : undefined
+    if (items === undefined || items.length === 0) break
+    const ask = checkRequest(items)
+    const r = await $.model.complete({ model: LEDGER_MODEL, system: ask.system, prompt: ask.prompt, maxTokens: 400, effort: 'low', timeoutMs: 120_000 })
+    if (!r.isAnswered) break
+    const verdicts = readChecks(r.text, ask.handles)
+    if (verdicts.length === 0) break
+    const done = await bridge($, { op: 'corrections-check', verdicts }).catch(() => undefined)
+    if (done === undefined || !done.ok || done.corrections === undefined) break
+    await update($, correctionsAtom, () => done.corrections as unknown as GemworksJson)
+    if (done.corrections.unchecked === 0) break
   }
 }
 
@@ -2235,6 +2265,13 @@ function drawRows($: EngineInterface, els: Els, rows: BoardRow[], columns: numbe
       )
       continue
     }
+    // A step of the flow tab's manual takes its practices and their menus into its block (manual.tsx).
+    if (r.kind === 'step') {
+      const inner: BoardRow[] = []
+      while (i + 1 < rows.length && ['practice', 'menu'].includes((rows[i + 1] as BoardRow).kind)) inner.push(rows[++i] as BoardRow)
+      out.push(drawStep($, els, r, inner, (x, n) => safeRow($, els, x, n)))
+      continue
+    }
     if (r.kind !== 'entry') { out.push(safeRow($, els, r, i)); continue }
     const run: Extract<BoardRow, { kind: 'entry' }>[] = []
     while (i < rows.length && (rows[i] as BoardRow).kind === 'entry') run.push(rows[i++] as Extract<BoardRow, { kind: 'entry' }>)
@@ -2272,7 +2309,7 @@ function drawTool($: EngineInterface, els: Els, row: Extract<BoardRow, { kind: '
 function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWidth?: number): unknown {
   const { Box, Text, Button, Link, Input } = els
   switch (row.kind) {
-    case 'section': return (
+    case 'section': return row.tucked === true ? drawHeading($, els, row, i) : (
       <Box key={row.key} gap={1} marginTop={i > 0 ? 1 : 0} {...(row.actions !== undefined ? { flexWrap: 'wrap' as const } : {})}>
         {els.Svg !== undefined ? <Text color={HEADING} bold>{row.text}</Text> : <Text dimColor bold>{row.text}</Text>}
         {row.count !== undefined && <Text dimColor>{String(row.count)}</Text>}
@@ -2282,6 +2319,8 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
         {row.fold !== undefined && <Button key={row.fold.key} plain label={row.fold.label} onPress={press($, row.fold.action)} />}
       </Box>
     )
+    case 'judges': return drawJudges(els, row, i)
+    case 'presses': return drawPresses($, els, row)
     case 'card': return (
       <Box key={row.key} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
         <Box gap={1}>
@@ -2440,30 +2479,9 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
         )}
       </Box>
     )
-    // A flow's step in the manual: its title, the requirement to leave it, who judges it; under it what it prevents.
-    case 'step': return (
-      <Box key={row.key} flexDirection="column" paddingX={1} {...(row.here && els.Svg !== undefined ? { backgroundColor: SELECTED } : {})}>
-        <Box gap={1}>
-          <Text {...(row.final ? { dimColor: true } : row.here ? { bold: true } : {})}>{row.here && els.Svg === undefined ? `▸${row.title}` : row.title}</Text>
-          {row.need !== '' && <Box flexShrink={1} minWidth={0}><Text dimColor wrap="truncate-end">{`· ${row.need}`}</Text></Box>}
-          <Box flexGrow={1} />
-          {row.judge !== '' && <Text {...toneProps(row.judgeKind === 'fact' ? 'success' : row.judgeKind === 'you' ? 'warning' : 'dim')}>{row.judge}</Text>}
-        </Box>
-        {row.prevents !== '' && <Text dimColor wrap="truncate-end">{row.prevents}</Text>}
-        {(row.rules ?? []).map((r, n) => <Text key={`rule${n}`} {...toneProps('warning')} wrap="truncate-end">{`🔒 ${r}`}</Text>)}
-      </Box>
-    )
-    // A practice on a step: what to do, its tag, where it came from; its layer and × the person's presses.
-    case 'practice': return (
-      <Box key={row.key} gap={1} paddingX={2}>
-        {row.tag !== '' && <Text {...toneProps(row.fresh ? 'warning' : 'dim')}>{row.tag}</Text>}
-        <Box flexShrink={1} minWidth={0}><Text wrap="truncate-end">{row.text}</Text></Box>
-        {row.why !== '' && <Box flexShrink={1} minWidth={0}><Text dimColor wrap="truncate-end">{`— ${row.why}`}</Text></Box>}
-        <Box flexGrow={1} />
-        {row.count !== undefined && <Box flexShrink={0}><Text {...toneProps(row.count.held ? 'success' : 'warning')}>{row.count.text}</Text></Box>}
-        {row.actions.map((b) => <Button key={b.key} plain dimColor label={b.label} onPress={press($, b.action)} />)}
-      </Box>
-    )
+    // The flow tab's manual (manual.tsx): a step alone where its practices are drawn on their own (the terminal).
+    case 'step': return drawStep($, els, row, [], (x, n) => safeRow($, els, x, n))
+    case 'practice': return drawPractice($, els, row, 2)
     case 'tool': return (
       <Box key={row.key} gap={2} paddingX={1}>
         <Box {...(toolWidth !== undefined && toolWidth > 0 ? { width: toolWidth } : {})} flexShrink={0} overflow="hidden">
@@ -2844,7 +2862,7 @@ async function tabRows($: EngineInterface, e: { surface: string; props: { bodyCo
     ...(tab === 'items' || tab === 'flow' || tab === 'made' ? { coach: {
       items: await workItems($), flows: await coachFlowsKept($), focus: (await read($, coachFocusAtom)) as unknown as CoachFocus | null, asks: tab === 'items' ? await openAsks($) : [],
       own: await $.session.id().catch(() => ''), open: ((await read($, workOpenAtom)) ?? []) as WorkGroup[],
-      practices: (await practicesKept($))?.list ?? [], expanded: (await read($, manualExpandedAtom)) as string[] | null,
+      practices: (await practicesKept($))?.list ?? [], expanded: (await read($, manualExpandedAtom)) as string[] | null, menu: (await read($, manualMenuAtom)) as string | null,
       unfolded: (await read($, workUnfoldedAtom)) as string | null, sessions: ((await read($, projectSessionsAtom)) as unknown as SessionSummary[] | null) ?? [],
       proposals: await proposalsKept($), rules: await rulesKept($), skipped: skippedSteps(await workItems($), await coachFlowsKept($), await proposalsKept($)),
       gone: await goneOnKept($), doing: await doingKept($),
@@ -3666,7 +3684,7 @@ export {
   QUEUED_MATCH_MS, STORE_SETTINGS, TURNS_SHOWN, answerOf, appendOwn, attentionOnPrompt, bridge, checkLatest,
   coachFlows, coachFlowsKept, correctionsKept, dismissedOf, exportText, gemlDir, loadBoard, loadCorrections,
   loadGrowth, loadMade, loadMemory, loadPractices, loadProjectSessions, loadWorkflows, nowIso, openBoard,
-  openDialog, openFile, otherSessionText, practicesKept, proposalsKept, readAttention, readBoard, readPrompts,
+  openDialog, openFile, otherSessionText, practicesKept, press, proposalsKept, readAttention, readBoard, readPrompts,
   readSettings, reasonOf, rulesKept, saveProposals, saveRules, sessionText, setQueued, share, startBridge,
   storePrompts, takeOption, themeLedger, trace, turnBusy, words, workItems, writeOwnFlow,
 }

@@ -46,8 +46,8 @@ import {
   unlabelledPrompts,
   useWorkflow,
   writeBoard
-} from "./gemworks-chunk-NI6INBKL.mjs";
-import "./gemworks-chunk-FHQ77CQL.mjs";
+} from "./gemworks-chunk-IWTAME3A.mjs";
+import "./gemworks-chunk-VAQRKMSH.mjs";
 import {
   FLOW_TOOLS,
   TOOLS_FILE,
@@ -93,9 +93,9 @@ import {
 } from "./gemworks-chunk-4A7KYSFU.mjs";
 
 // src/cli.ts
-import { readFileSync as readFileSync4 } from "node:fs";
-import { homedir as homedir2 } from "node:os";
-import { basename, dirname as dirname2, join as join5, relative, resolve as resolve3, sep } from "node:path";
+import { readFileSync as readFileSync6 } from "node:fs";
+import { homedir as homedir4 } from "node:os";
+import { basename, dirname as dirname2, join as join7, relative, resolve as resolve5, sep } from "node:path";
 
 // src/hosts/dsh/launch.ts
 import { spawnSync } from "node:child_process";
@@ -721,19 +721,681 @@ function installAntigravity(bundle, home = homedir()) {
   return [hooksFile, mcpFile];
 }
 
+// src/cursor.ts
+import { existsSync, mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { join as join4, resolve as resolve3 } from "node:path";
+
+// src/hosts/cursor/hook.ts
+var isObject2 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+function inputOf(v) {
+  if (isObject2(v)) return v;
+  if (typeof v !== "string") return void 0;
+  try {
+    const p = JSON.parse(v);
+    return isObject2(p) ? p : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function readEvent2(text2) {
+  let v;
+  try {
+    v = JSON.parse(text2);
+  } catch {
+    return void 0;
+  }
+  if (!isObject2(v) || typeof v["hook_event_name"] !== "string") return void 0;
+  const str = (k) => typeof v[k] === "string" ? v[k] : void 0;
+  const roots = Array.isArray(v["workspace_roots"]) ? v["workspace_roots"].filter((r) => typeof r === "string") : void 0;
+  const input = inputOf(v["tool_input"]);
+  const out2 = { hook_event_name: v["hook_event_name"] };
+  for (const k of ["conversation_id", "session_id", "tool_name", "tool_use_id", "error_message", "prompt", "file_path", "text", "status", "cwd"]) {
+    const s = str(k);
+    if (s !== void 0) out2[k] = s;
+  }
+  if (roots !== void 0) out2.workspace_roots = roots;
+  if (input !== void 0) out2.tool_input = input;
+  if ("tool_output" in v) out2.tool_output = v["tool_output"];
+  if (typeof v["loop_count"] === "number") out2.loop_count = v["loop_count"];
+  return out2;
+}
+var SHELL = "Shell";
+var WRITERS = /* @__PURE__ */ new Set(["Write", "Edit", "StrReplace", "MultiEdit", "Delete", "ApplyPatch"]);
+var writesFiles = (tool) => WRITERS.has(tool);
+var bareTool = (tool) => tool.startsWith("MCP:") ? tool.slice(4) : tool;
+function pathOf(input) {
+  for (const k of ["file_path", "path", "target_file", "filePath", "target_notebook"]) if (typeof input[k] === "string" && input[k] !== "") return input[k];
+  return void 0;
+}
+function callOf2(tool, input) {
+  if (tool === SHELL) return { tool: "Bash", input: { ...input } };
+  if (writesFiles(tool)) {
+    const path = pathOf(input);
+    return { tool: tool === "Write" ? "Write" : "Edit", input: { ...input, ...path !== void 0 ? { file_path: path } : {} } };
+  }
+  return { tool: bareTool(tool), input: { ...input } };
+}
+function exitCodeOf(output) {
+  let v = output;
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v);
+    } catch {
+    }
+  }
+  if (isObject2(v)) {
+    for (const k of ["exitCode", "exit_code", "returnCode"]) if (typeof v[k] === "number") return v[k];
+  }
+  return exitCodeIn(v);
+}
+var denyCall2 = (reason) => ({ permission: "deny", user_message: `gemworks: ${reason}`, agent_message: `gemworks: ${reason}` });
+var rewriteCall = (updated) => updated === void 0 ? {} : { updated_input: updated };
+
+// src/cursor.ts
+var CURSOR_HOST = "cursor";
+function stateDir2(home = homedir2()) {
+  return join4(home, ".gemworks", "cursor");
+}
+var FRESH = { delivered: null, decisionsSeen: null, pending: [], answer: "", committed: false, acted: false };
+function readJson2(file, fallback) {
+  try {
+    return { ...fallback, ...JSON.parse(readFileSync3(file, "utf8")) };
+  } catch {
+    return { ...fallback };
+  }
+}
+function writeJson2(file, value) {
+  mkdirSync3(resolve3(file, ".."), { recursive: true });
+  writeFileSync3(file, JSON.stringify(value), "utf8");
+}
+function activeOf2(home = homedir2()) {
+  const a = readJson2(join4(stateDir2(home), "active.json"), {});
+  return typeof a.conversationId === "string" && typeof a.root === "string" ? { conversationId: a.conversationId, root: a.root, at: a.at ?? "" } : void 0;
+}
+function projectOf(roots, env, cwd) {
+  const withGeml = roots.find((r) => existsSync(join4(r, ".geml")));
+  const pick = withGeml ?? roots[0] ?? (env["CURSOR_PROJECT_DIR"] !== void 0 && env["CURSOR_PROJECT_DIR"] !== "" ? env["CURSOR_PROJECT_DIR"] : void 0) ?? cwd;
+  return pick === void 0 ? void 0 : resolve3(pick);
+}
+function speaksEvidence2(policy, command) {
+  const keys = evidenceKeys(command);
+  if (keys === null) return false;
+  const dict = { rows: policy.rows, diagnostics: [] };
+  const evidence = new Set(policy.evidence);
+  return keys.some((k) => {
+    const row = bindingOf(dict, k);
+    return row?.for !== void 0 && evidence.has(row.for);
+  });
+}
+function projectPath3(root, path) {
+  if (path === void 0) return void 0;
+  const p = normalised(path);
+  const base = normalised(root)?.replace(/\/+$/, "");
+  if (p === void 0 || base === void 0) return void 0;
+  const lower = (s) => process.platform === "win32" ? s.toLowerCase() : s;
+  if (lower(p).startsWith(`${lower(base)}/`)) return p.slice(base.length + 1);
+  if (p.startsWith("/") || /^[A-Za-z]:/.test(p)) return void 0;
+  return p === "" ? void 0 : p.replace(/^\.\//, "");
+}
+var say = (o) => ({ stdout: `${JSON.stringify(o)}
+` });
+var NOTHING2 = say({});
+async function runCursor(text2, env, o = {}) {
+  const ev = readEvent2(text2);
+  if (ev === void 0) return NOTHING2;
+  const home = o.home ?? homedir2();
+  const platform = o.platform ?? process.platform;
+  const sid = ev.conversation_id ?? ev.session_id;
+  const root = projectOf(ev.workspace_roots ?? [], env, ev.cwd);
+  if (sid === void 0 || root === void 0) return ev.hook_event_name === "beforeSubmitPrompt" ? say({ continue: true }) : NOTHING2;
+  const now = o.now ?? (/* @__PURE__ */ new Date()).toISOString();
+  const file = join4(stateDir2(home), `${sid.replace(/[^A-Za-z0-9._-]/g, "_")}.json`);
+  const state = readJson2(file, FRESH);
+  const record = (f) => {
+    try {
+      f();
+    } catch {
+    }
+  };
+  const save = () => record(() => writeJson2(file, state));
+  record(() => writeJson2(join4(stateDir2(home), "active.json"), { conversationId: sid, root, at: now }));
+  const ask = (op) => handleRequest({ v: 1, root, ...op });
+  const stage = (status, always = false) => {
+    const doc = join4(root, CONTEXT_DOC);
+    if (!exists(doc)) return void 0;
+    const seen = contextOf(readText(doc));
+    if (seen === void 0 || !always && seen.key === state.delivered) return void 0;
+    const item = status?.item;
+    if (item === void 0 || item.kind !== "item" || item.id !== seen.item) return void 0;
+    state.delivered = seen.key;
+    return seen.text;
+  };
+  switch (ev.hook_event_name) {
+    case "sessionStart": {
+      record(() => {
+        appendSession(root, CURSOR_HOST, sid, () => [], now);
+      });
+      let told = [];
+      try {
+        told = [SESSIONS_PROMPT.replace("gemworks `note` tool", "`note` tool of the gemworks MCP server"), ...loopPrompt(coachFlowsAt(root))];
+      } catch {
+      }
+      record(() => {
+        if (boardHasWork(root)) openBoardOnce(root, sid);
+      });
+      let text3;
+      const res = await ask({ op: "status" });
+      if (res.ok && res.shell.status !== null) {
+        const fresh = await ask({ op: "refresh" });
+        text3 = stage((fresh.ok ? fresh.shell.status : null) ?? res.shell.status, true);
+      }
+      Object.assign(state, { pending: [], answer: "", acted: false });
+      save();
+      const said = [text3, ...told].filter((x) => x !== void 0 && x !== "").join("\n\n");
+      return said === "" ? NOTHING2 : say({ additional_context: said });
+    }
+    case "beforeSubmitPrompt": {
+      const pending = [];
+      record(() => {
+        if (ev.prompt !== void 0 && ev.prompt.trim() !== "" && ev.prompt.trim() !== WORK_REMINDER.trim()) recordPrompt(root, CURSOR_HOST, sid, ev.prompt, now);
+        const fresh = decisionsFor(root, sid, state.decisionsSeen, now);
+        state.decisionsSeen = now;
+        if (fresh.length > 0) pending.push(decisionsContext(fresh, (d) => `${hostLabel(d.host)}${d.branch !== void 0 ? ` \xB7 ${d.branch}` : ""}\uFF0C${new Date(d.at).toTimeString().slice(0, 5)}`));
+      });
+      Object.assign(state, { acted: false, answer: "" });
+      record(() => {
+        writeBoard(root);
+      });
+      let loop = [];
+      try {
+        loop = loopContext(root, sid);
+      } catch {
+      }
+      const res = await ask({ op: "status" });
+      const text3 = res.ok && res.shell.status !== null ? stage(res.shell.status) : void 0;
+      state.pending = [text3, ...pending, ...loop].filter((x) => x !== void 0 && x !== "");
+      save();
+      return say({ continue: true });
+    }
+    case "preToolUse": {
+      const tool = ev.tool_name;
+      if (tool === void 0 || isOwnTool(bareTool(tool))) return NOTHING2;
+      const input = ev.tool_input ?? {};
+      const call = callOf2(tool, input);
+      const res = await ask({ op: "status" });
+      if (!res.ok || res.shell.policy === null) return NOTHING2;
+      const { policy } = res.shell;
+      const decision = beforeDecision(policy, call);
+      if (decision.kind === "prefer") {
+        state.pending.push(`[gemworks] ${decision.use}'s preferred tool is ${decision.preferred}; this call uses ${decision.key}.`);
+        save();
+      } else if (decision.kind === "consult") {
+        const before = await ask({ op: "before", tool: call.tool, callId: ev.tool_use_id ?? "cursor", input: call.input, cwd: root, ...decision.waived !== void 0 ? { waived: decision.waived } : {} });
+        if (before.ok && before.refusal !== void 0) return say(denyCall2(before.refusal));
+      }
+      let updated;
+      const fill = paramsToFill(policy, call);
+      if (fill !== void 0) updated = { ...input, ...fill };
+      const command = tool === SHELL ? commandOf(input) : void 0;
+      if (command !== void 0 && policy.active && platform !== "win32" && !isWrapped(command) && speaksEvidence2(policy, command)) updated = { ...updated ?? input, command: wrapCommand(command) };
+      return say(rewriteCall(updated));
+    }
+    case "postToolUse":
+    case "postToolUseFailure": {
+      const tool = ev.tool_name;
+      if (tool === void 0) return NOTHING2;
+      const failed = ev.hook_event_name === "postToolUseFailure";
+      const said = state.pending;
+      state.pending = [];
+      const reply = (extra) => {
+        save();
+        const all = [...said, ...extra !== void 0 ? [extra] : []];
+        return all.length === 0 ? NOTHING2 : say({ additional_context: all.join("\n\n") });
+      };
+      if (isOwnTool(bareTool(tool))) return reply();
+      const given = ev.tool_input ?? {};
+      const raw = tool === SHELL ? commandOf(given) : void 0;
+      const input = raw !== void 0 && isWrapped(raw) ? { ...given, command: unwrapCommand(raw) } : given;
+      const call = callOf2(tool, input);
+      if (tool === SHELL && raw !== void 0 && commits(unwrapCommand(raw)) && !failed) state.committed = true;
+      if (tool === SHELL || writesFiles(tool)) state.acted = true;
+      const res = await ask({ op: "status" });
+      if (!res.ok || res.shell.policy === null) return reply();
+      const exitCode = tool === SHELL && !failed ? exitCodeOf(ev.tool_output) : void 0;
+      const wrotePath = writesFiles(tool) && !failed ? projectPath3(root, pathOf(input)) : void 0;
+      const isError = failed || typeof exitCode === "number" && exitCode !== 0;
+      const outcome = { isError, gitOperation: false, consulted: false, ...typeof exitCode === "number" ? { exitCode } : {}, ...wrotePath !== void 0 ? { wrotePath } : {} };
+      if (!afterNeeded(res.shell.policy, call, outcome)) return reply();
+      const after = await ask({
+        op: "after",
+        tool: call.tool,
+        callId: ev.tool_use_id ?? "cursor",
+        input: call.input,
+        isError,
+        gitOperation: false,
+        cwd: root,
+        ...typeof exitCode === "number" ? { exitCode } : {},
+        ...wrotePath !== void 0 ? { wrotePath } : {},
+        ...state.delivered !== null ? { delivered: state.delivered } : {}
+      });
+      if (!after.ok || after.context === void 0) return reply();
+      if (after.shell.contextKey !== null) state.delivered = after.shell.contextKey;
+      return reply(after.handoff !== void 0 ? `${after.handoff}
+${after.context}` : after.context);
+    }
+    case "afterFileEdit": {
+      const path = projectPath3(root, ev.file_path);
+      if (path !== void 0) record(() => {
+        recordFile(root, CURSOR_HOST, sid, path, now);
+      });
+      state.acted = true;
+      save();
+      return NOTHING2;
+    }
+    case "afterAgentResponse": {
+      if (ev.text !== void 0 && ev.text.trim() !== "") {
+        state.answer = ev.text;
+        save();
+      }
+      return NOTHING2;
+    }
+    // The turn's end. One that changed things and reported no work item goes back once to report it (the record
+    // unread counts as reported: the reminder never comes from Gemworks' own failure). Else its answer and the commits
+    // a command in it made go into the record, and the board is written again.
+    case "stop": {
+      if (state.acted && ev.status === "completed" && (ev.loop_count ?? 0) === 0) {
+        state.acted = false;
+        let reported = true;
+        record(() => {
+          const events = appendSession(root, CURSOR_HOST, sid, () => [], now);
+          const turn = currentTurn(events);
+          reported = events.some((e) => e.t === "item" && e.turn === turn) || coachFlowsAt(root).length === 0;
+        });
+        if (!reported) {
+          save();
+          return say({ followup_message: WORK_REMINDER });
+        }
+      }
+      record(() => {
+        writeBoard(root);
+      });
+      record(() => {
+        recordAnswer(root, CURSOR_HOST, sid, state.answer, state.committed, now);
+      });
+      Object.assign(state, { committed: false, acted: false, answer: "" });
+      save();
+      return NOTHING2;
+    }
+    default:
+      return NOTHING2;
+  }
+}
+var EVENTS = { sessionStart: 60, beforeSubmitPrompt: 30, preToolUse: 30, postToolUse: 60, postToolUseFailure: 30, afterFileEdit: 20, afterAgentResponse: 20, stop: 30 };
+var isOurs = (entry) => typeof entry === "object" && entry !== null && typeof entry.command === "string" && /gemworks(\.mjs)?"?\s+cursor$/.test(entry.command);
+function hooksWith(file, command) {
+  const hooks = typeof file["hooks"] === "object" && file["hooks"] !== null && !Array.isArray(file["hooks"]) ? { ...file["hooks"] } : {};
+  for (const [event, timeout] of Object.entries(EVENTS)) {
+    const kept = Array.isArray(hooks[event]) ? hooks[event].filter((e) => !isOurs(e)) : [];
+    hooks[event] = [...kept, { command, timeout }];
+  }
+  return { ...file, version: typeof file["version"] === "number" ? file["version"] : 1, hooks };
+}
+function readSettings(file) {
+  if (!existsSync(file)) return {};
+  const text2 = readFileSync3(file, "utf8");
+  if (text2.trim() === "") return {};
+  let v;
+  try {
+    v = JSON.parse(text2);
+  } catch {
+    throw new Error(`${file} is not plain JSON (comments?): add the hooks and the MCP server by hand, or remove what keeps it from parsing`);
+  }
+  if (typeof v !== "object" || v === null || Array.isArray(v)) throw new Error(`${file} is not a JSON object`);
+  return v;
+}
+function installCursor(bundle, home = homedir2()) {
+  const dir = join4(home, ".cursor");
+  const hooksFile = join4(dir, "hooks.json");
+  const mcpFile = join4(dir, "mcp.json");
+  mkdirSync3(dir, { recursive: true });
+  const path = bundle.split("\\").join("/");
+  const hooks = readSettings(hooksFile);
+  const mcp = readSettings(mcpFile);
+  writeFileSync3(hooksFile, `${JSON.stringify(hooksWith(hooks, `node "${path}" cursor`), null, 2)}
+`, "utf8");
+  mcp.mcpServers = { ...mcp.mcpServers ?? {}, gemworks: { command: "node", args: [bundle, "mcp", "--host", CURSOR_HOST] } };
+  writeFileSync3(mcpFile, `${JSON.stringify(mcp, null, 2)}
+`, "utf8");
+  return [hooksFile, mcpFile];
+}
+
+// src/qwen.ts
+import { mkdirSync as mkdirSync4, readFileSync as readFileSync4, writeFileSync as writeFileSync4 } from "node:fs";
+import { homedir as homedir3 } from "node:os";
+import { join as join5, resolve as resolve4 } from "node:path";
+
+// src/hosts/qwen/hook.ts
+var isObject3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+function readEvent3(text2) {
+  let v;
+  try {
+    v = JSON.parse(text2);
+  } catch {
+    return void 0;
+  }
+  if (!isObject3(v) || typeof v["hook_event_name"] !== "string") return void 0;
+  const out2 = { hook_event_name: v["hook_event_name"] };
+  for (const k of ["session_id", "cwd", "prompt_id", "tool_name", "tool_use_id", "error", "prompt", "submitted_prompt", "source", "last_assistant_message"]) {
+    if (typeof v[k] === "string") out2[k] = v[k];
+  }
+  if (isObject3(v["tool_input"])) out2.tool_input = v["tool_input"];
+  if ("tool_response" in v) out2.tool_response = v["tool_response"];
+  if (typeof v["stop_hook_active"] === "boolean") out2.stop_hook_active = v["stop_hook_active"];
+  return out2;
+}
+var SHELL2 = "run_shell_command";
+var WRITERS2 = { write_file: "Write", edit: "Edit", replace: "Edit", notebook_edit: "NotebookEdit" };
+var writesFiles2 = (tool) => Object.hasOwn(WRITERS2, tool);
+var READERS = { read_file: "Read", read_many_files: "Read", grep_search: "Grep", glob: "Glob", list_directory: "LS", web_fetch: "WebFetch", web_search: "WebSearch", todo_write: "TodoWrite", task: "Task" };
+var bareTool2 = (tool) => {
+  const m = tool.match(/^mcp__.+?__(.+)$/);
+  return m !== null ? m[1] : tool;
+};
+function pathOf2(input) {
+  for (const k of ["file_path", "absolute_path", "notebook_path", "path"]) if (typeof input[k] === "string" && input[k] !== "") return input[k];
+  return void 0;
+}
+function callOf3(tool, input) {
+  if (tool === SHELL2) return { tool: "Bash", input: { ...input } };
+  if (writesFiles2(tool)) {
+    const path = pathOf2(input);
+    return { tool: WRITERS2[tool], input: { ...input, ...path !== void 0 ? { file_path: path } : {} } };
+  }
+  return { tool: READERS[tool] ?? bareTool2(tool), input: { ...input } };
+}
+function exitCodeOf2(response) {
+  const marked = exitCodeIn(response);
+  if (marked !== null) return marked;
+  let last = null;
+  const visit = (v) => {
+    if (typeof v === "string") {
+      for (const m of v.matchAll(/^Exit Code: (\d+)\s*$/gm)) last = Number(m[1]);
+    } else if (Array.isArray(v)) v.forEach(visit);
+    else if (isObject3(v)) {
+      for (const k of ["exitCode", "exit_code"]) if (typeof v[k] === "number") last = v[k];
+      if (last === null) Object.values(v).forEach(visit);
+    }
+  };
+  visit(response);
+  return last;
+}
+var denyCall3 = (reason) => ({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: `gemworks: ${reason}` } });
+function allowCall2(updatedInput, context) {
+  if (updatedInput === void 0 && context === void 0) return void 0;
+  return {
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "allow",
+      permissionDecisionReason: "gemworks",
+      ...updatedInput !== void 0 ? { updatedInput } : {},
+      ...context !== void 0 ? { additionalContext: context } : {}
+    }
+  };
+}
+var contextFor2 = (event, text2) => ({ hookSpecificOutput: { hookEventName: event, additionalContext: text2 } });
+
+// src/qwen.ts
+var QWEN_HOST = "qwen";
+function stateDir3(home = homedir3()) {
+  return join5(home, ".gemworks", "qwen");
+}
+var FRESH2 = { delivered: null, decisionsSeen: null, turn: null, committed: false, acted: false };
+function readState2(file) {
+  try {
+    return { ...FRESH2, ...JSON.parse(readFileSync4(file, "utf8")) };
+  } catch {
+    return { ...FRESH2 };
+  }
+}
+function speaksEvidence3(policy, command) {
+  const keys = evidenceKeys(command);
+  if (keys === null) return false;
+  const dict = { rows: policy.rows, diagnostics: [] };
+  const evidence = new Set(policy.evidence);
+  return keys.some((k) => {
+    const row = bindingOf(dict, k);
+    return row?.for !== void 0 && evidence.has(row.for);
+  });
+}
+function projectOf2(env, cwd) {
+  const dir = env["QWEN_PROJECT_DIR"] !== void 0 && env["QWEN_PROJECT_DIR"] !== "" ? env["QWEN_PROJECT_DIR"] : cwd;
+  return dir === void 0 ? void 0 : resolve4(dir);
+}
+var NOTHING3 = { stdout: "" };
+var say2 = (o) => o === void 0 ? NOTHING3 : { stdout: `${JSON.stringify(o)}
+` };
+async function runQwen(text2, env, o = {}) {
+  const ev = readEvent3(text2);
+  if (ev === void 0) return NOTHING3;
+  const sid = ev.session_id;
+  const root = projectOf2(env, ev.cwd);
+  if (sid === void 0 || root === void 0) return NOTHING3;
+  const home = o.home ?? homedir3();
+  const platform = o.platform ?? process.platform;
+  const now = o.now ?? (/* @__PURE__ */ new Date()).toISOString();
+  const file = join5(stateDir3(home), `${sid.replace(/[^A-Za-z0-9._-]/g, "_")}.json`);
+  const state = readState2(file);
+  const record = (f) => {
+    try {
+      f();
+    } catch {
+    }
+  };
+  const save = () => record(() => {
+    mkdirSync4(stateDir3(home), { recursive: true });
+    writeFileSync4(file, JSON.stringify(state), "utf8");
+  });
+  const ask = (op) => handleRequest({ v: 1, root, ...op });
+  const stage = (status, always = false) => {
+    const doc = join5(root, CONTEXT_DOC);
+    if (!exists(doc)) return void 0;
+    const seen = contextOf(readText(doc));
+    if (seen === void 0 || !always && seen.key === state.delivered) return void 0;
+    const item = status?.item;
+    if (item === void 0 || item.kind !== "item" || item.id !== seen.item) return void 0;
+    state.delivered = seen.key;
+    return seen.text;
+  };
+  switch (ev.hook_event_name) {
+    case "SessionStart": {
+      record(() => {
+        appendSession(root, QWEN_HOST, sid, () => [], now);
+      });
+      let told = [];
+      try {
+        told = [SESSIONS_PROMPT.replace("gemworks `note` tool", "`note` tool of the gemworks MCP server"), ...loopPrompt(coachFlowsAt(root))];
+      } catch {
+      }
+      if (ev.source === void 0 || ev.source === "startup") record(() => {
+        if (boardHasWork(root)) openBoardOnce(root, sid);
+      });
+      let text3;
+      const res = await ask({ op: "status" });
+      if (res.ok && res.shell.status !== null) {
+        const fresh = await ask({ op: "refresh" });
+        text3 = stage((fresh.ok ? fresh.shell.status : null) ?? res.shell.status, true);
+      }
+      save();
+      const said = [text3, ...told].filter((x) => x !== void 0 && x !== "").join("\n\n");
+      return said === "" ? NOTHING3 : say2(contextFor2("SessionStart", said));
+    }
+    case "UserPromptSubmit": {
+      const words = ev.submitted_prompt ?? ev.prompt;
+      const reminder = words !== void 0 && words.trim() === WORK_REMINDER.trim();
+      const newTurn = !reminder && (ev.submitted_prompt !== void 0 || ev.prompt_id === void 0 || ev.prompt_id !== state.turn);
+      if (!newTurn) return NOTHING3;
+      state.turn = ev.prompt_id ?? null;
+      let shared;
+      record(() => {
+        if (words !== void 0 && words.trim() !== "") recordPrompt(root, QWEN_HOST, sid, words, now);
+        const fresh = decisionsFor(root, sid, state.decisionsSeen, now);
+        state.decisionsSeen = now;
+        if (fresh.length > 0) shared = decisionsContext(fresh, (d) => `${hostLabel(d.host)}${d.branch !== void 0 ? ` \xB7 ${d.branch}` : ""}\uFF0C${new Date(d.at).toTimeString().slice(0, 5)}`);
+      });
+      state.acted = false;
+      record(() => {
+        writeBoard(root);
+      });
+      let loop = [];
+      try {
+        loop = loopContext(root, sid);
+      } catch {
+      }
+      const res = await ask({ op: "status" });
+      const text3 = res.ok && res.shell.status !== null ? stage(res.shell.status) : void 0;
+      save();
+      const said = [text3, shared, ...loop].filter((x) => x !== void 0 && x !== "");
+      return said.length === 0 ? NOTHING3 : say2(contextFor2("UserPromptSubmit", said.join("\n\n")));
+    }
+    case "PreToolUse": {
+      const tool = ev.tool_name;
+      if (tool === void 0 || isOwnTool(tool) || isOwnTool(bareTool2(tool))) return NOTHING3;
+      const input = ev.tool_input ?? {};
+      const call = callOf3(tool, input);
+      const res = await ask({ op: "status" });
+      if (!res.ok || res.shell.policy === null) return NOTHING3;
+      const { policy } = res.shell;
+      let context;
+      const decision = beforeDecision(policy, call);
+      if (decision.kind === "prefer") context = `[gemworks] ${decision.use}'s preferred tool is ${decision.preferred}; this call uses ${decision.key}.`;
+      else if (decision.kind === "consult") {
+        const before = await ask({ op: "before", tool: call.tool, callId: ev.tool_use_id ?? "qwen", input: call.input, cwd: root, ...decision.waived !== void 0 ? { waived: decision.waived } : {} });
+        if (before.ok && before.refusal !== void 0) return say2(denyCall3(before.refusal));
+      }
+      let updated;
+      const fill = paramsToFill(policy, call);
+      if (fill !== void 0) updated = { ...input, ...fill };
+      const command = tool === SHELL2 ? commandOf(input) : void 0;
+      if (command !== void 0 && policy.active && platform !== "win32" && !isWrapped(command) && speaksEvidence3(policy, command)) updated = { ...updated ?? input, command: wrapCommand(command) };
+      return say2(allowCall2(updated, context));
+    }
+    case "PostToolUse":
+    case "PostToolUseFailure": {
+      const tool = ev.tool_name;
+      if (tool === void 0 || isOwnTool(tool) || isOwnTool(bareTool2(tool))) return NOTHING3;
+      const failed = ev.hook_event_name === "PostToolUseFailure";
+      const given = ev.tool_input ?? {};
+      const raw = tool === SHELL2 ? commandOf(given) : void 0;
+      const input = raw !== void 0 && isWrapped(raw) ? { ...given, command: unwrapCommand(raw) } : given;
+      const call = callOf3(tool, input);
+      const wrote = writesFiles2(tool) && !failed ? projectPath3(root, pathOf2(input)) : void 0;
+      if (wrote !== void 0) record(() => {
+        recordFile(root, QWEN_HOST, sid, wrote, now);
+      });
+      if (tool === SHELL2 && raw !== void 0 && !failed && commits(unwrapCommand(raw))) state.committed = true;
+      if (tool === SHELL2 || writesFiles2(tool)) state.acted = true;
+      save();
+      const res = await ask({ op: "status" });
+      if (!res.ok || res.shell.policy === null) return NOTHING3;
+      const exitCode = tool === SHELL2 && !failed ? exitCodeOf2(ev.tool_response) : void 0;
+      const isError = failed || typeof exitCode === "number" && exitCode !== 0;
+      const outcome = { isError, gitOperation: false, consulted: false, ...typeof exitCode === "number" ? { exitCode } : {}, ...wrote !== void 0 ? { wrotePath: wrote } : {} };
+      if (!afterNeeded(res.shell.policy, call, outcome)) return NOTHING3;
+      const after = await ask({
+        op: "after",
+        tool: call.tool,
+        callId: ev.tool_use_id ?? "qwen",
+        input: call.input,
+        isError,
+        gitOperation: false,
+        cwd: root,
+        ...typeof exitCode === "number" ? { exitCode } : {},
+        ...wrote !== void 0 ? { wrotePath: wrote } : {},
+        ...state.delivered !== null ? { delivered: state.delivered } : {}
+      });
+      if (!after.ok || after.context === void 0) return NOTHING3;
+      if (after.shell.contextKey !== null) {
+        state.delivered = after.shell.contextKey;
+        save();
+      }
+      return say2(contextFor2(failed ? "PostToolUseFailure" : "PostToolUse", after.handoff !== void 0 ? `${after.handoff}
+${after.context}` : after.context));
+    }
+    // The turn's end. One that changed things and reported no work item goes back once to report it (the record
+    // unread counts as reported: the reminder never comes from Gemworks' own failure). Else its answer and the commits
+    // a command in it made go into the record, and the board is written again.
+    case "Stop": {
+      if (state.acted && ev.stop_hook_active !== true) {
+        state.acted = false;
+        let reported = true;
+        record(() => {
+          const events = appendSession(root, QWEN_HOST, sid, () => [], now);
+          const turn = currentTurn(events);
+          reported = events.some((e) => e.t === "item" && e.turn === turn) || coachFlowsAt(root).length === 0;
+        });
+        if (!reported) {
+          save();
+          return say2({ decision: "block", reason: WORK_REMINDER });
+        }
+      }
+      record(() => {
+        writeBoard(root);
+      });
+      record(() => {
+        recordAnswer(root, QWEN_HOST, sid, ev.last_assistant_message ?? "", state.committed, now);
+      });
+      Object.assign(state, { committed: false, acted: false });
+      save();
+      return NOTHING3;
+    }
+    default:
+      return NOTHING3;
+  }
+}
+var EVENTS2 = { SessionStart: 60, UserPromptSubmit: 30, PreToolUse: 30, PostToolUse: 60, PostToolUseFailure: 30, Stop: 30 };
+var isOurs2 = (hook) => typeof hook === "object" && hook !== null && typeof hook.command === "string" && /gemworks(\.mjs)?"?\s+qwen$/.test(hook.command);
+function hooksWith2(settings, command) {
+  const given = settings["hooks"];
+  const hooks = typeof given === "object" && given !== null && !Array.isArray(given) ? { ...given } : {};
+  for (const [event, timeout] of Object.entries(EVENTS2)) {
+    const groups = Array.isArray(hooks[event]) ? hooks[event] : [];
+    const kept = groups.flatMap((g) => {
+      if (typeof g !== "object" || g === null || !Array.isArray(g.hooks)) return [g];
+      const left = g.hooks.filter((h) => !isOurs2(h));
+      return left.length === 0 ? [] : [{ ...g, hooks: left }];
+    });
+    hooks[event] = [...kept, { hooks: [{ type: "command", command, name: "gemworks", timeout }] }];
+  }
+  return { ...settings, hooks };
+}
+function installQwen(bundle, home = homedir3()) {
+  const dir = join5(home, ".qwen");
+  const file = join5(dir, "settings.json");
+  const settings = readSettings(file);
+  const path = bundle.split("\\").join("/");
+  const next = hooksWith2(settings, `node "${path}" qwen`);
+  const servers = typeof settings["mcpServers"] === "object" && settings["mcpServers"] !== null ? settings["mcpServers"] : {};
+  next["mcpServers"] = { ...servers, gemworks: { command: "node", args: [bundle, "mcp", "--host", QWEN_HOST] } };
+  mkdirSync4(dir, { recursive: true });
+  writeFileSync4(file, `${JSON.stringify(next, null, 2)}
+`, "utf8");
+  return [file];
+}
+
 // src/mcp.ts
-import { existsSync, readFileSync as readFileSync3 } from "node:fs";
-import { isAbsolute as isAbsolute2, join as join4 } from "node:path";
+import { existsSync as existsSync3, readFileSync as readFileSync5 } from "node:fs";
+import { isAbsolute as isAbsolute2, join as join6 } from "node:path";
 import { createInterface } from "node:readline";
 function packageVersion() {
   try {
-    return JSON.parse(readFileSync3(new URL("../package.json", import.meta.url), "utf8")).version;
+    return JSON.parse(readFileSync5(new URL("../package.json", import.meta.url), "utf8")).version;
   } catch {
     return "unknown";
   }
 }
 var PROTOCOLS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
-var HOOKED = /* @__PURE__ */ new Set(["codex", ANTIGRAVITY_HOST]);
+var HOOKED = /* @__PURE__ */ new Set(["codex", ANTIGRAVITY_HOST, CURSOR_HOST, QWEN_HOST]);
 var result = (id, value) => ({ jsonrpc: "2.0", id, result: value });
 var failure = (id, code, message) => ({ jsonrpc: "2.0", id, error: { code, message } });
 var text = (id, body, isError) => result(id, { content: [{ type: "text", text: body }], ...isError ? { isError: true } : {} });
@@ -747,7 +1409,7 @@ function codexTurnOf(params) {
   if (turn === null || typeof turn !== "object" || Array.isArray(turn)) return {};
   const t = turn;
   const spaces = t["workspaces"] !== null && typeof t["workspaces"] === "object" && !Array.isArray(t["workspaces"]) ? Object.keys(t["workspaces"]).filter(isAbsolute2) : [];
-  const root = spaces.find((p) => existsSync(join4(p, ".geml"))) ?? spaces[0];
+  const root = spaces.find((p) => existsSync3(join6(p, ".geml"))) ?? spaces[0];
   const session = typeof t["session_id"] === "string" && t["session_id"] !== "" ? t["session_id"] : void 0;
   return { ...root !== void 0 ? { root } : {}, ...session !== void 0 ? { session } : {} };
 }
@@ -772,7 +1434,7 @@ async function answer(msg, o) {
   if (method === "tools/list") return result(id, { tools: [...FLOW_TOOLS.map(({ name: name2, description, inputSchema }) => ({ name: name2, description, inputSchema })), { name: NOTE_TOOL.name, description: NOTE_TOOL.description, inputSchema: NOTE_TOOL.inputSchema }, ...LOOP_TOOLS.map(({ name: name2, description, inputSchema }) => ({ name: name2, description, inputSchema }))] });
   if (method !== "tools/call") return failure(id, -32601, `method not found: ${method}`);
   const name = m?.params?.["name"];
-  const active = o.host === ANTIGRAVITY_HOST ? activeOf() : void 0;
+  const active = o.host === ANTIGRAVITY_HOST ? activeOf() : o.host === CURSOR_HOST ? activeOf2() : void 0;
   const codex = codexTurnOf(m?.params);
   const root = active?.root ?? codex.root ?? o.root;
   const sessionOf = () => active?.conversationId ?? codex.session ?? latestSessionOf(root, o.host) ?? `mcp-${process.pid}`;
@@ -918,6 +1580,8 @@ var USAGE = [
   "  hook                                    the Claude Code bridge: one JSON request on stdin, one answer on stdout",
   "  codex                                   the Codex hook: one event on stdin, its answer on stdout (exit 0 always)",
   "  antigravity <Event> | install           the Antigravity editor's hook (one event on stdin), or put its hooks and MCP server in place",
+  "  cursor [install]                        Cursor's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place",
+  "  qwen [install]                          Qwen Code's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place",
   "  mcp [--host h] [--root dir]             the model's tools over stdio MCP (host default: mcp)",
   "  corrections [--baseline a..b] [--trial a..b] [--since day] [--by work] [--json]",
   "                                          how often you corrected the agent, per 100 prompts, by kind and by week",
@@ -968,14 +1632,14 @@ function positionals(verb, args, flags, valued) {
 }
 var slashed = (p) => p.split(sep).join("/");
 var shown = (p) => slashed(relative(process.cwd(), p) || ".");
-function projectOf(flowPath) {
+function projectOf3(flowPath) {
   const workflowDir = dirname2(flowPath);
   if (basename(flowPath).toLowerCase() !== FLOW_FILE && basename(workflowDir) === "workflows" && basename(dirname2(workflowDir)) === GEML_DIR) {
     const home = dirname2(dirname2(workflowDir));
     return realPath(homeOf(process.cwd())) === realPath(home) ? process.cwd() : home;
   }
-  const above = resolve3(workflowDir, "..", "..", "..");
-  return resolve3(above, WORKFLOWS_DIR, basename(workflowDir)) === workflowDir ? above : process.cwd();
+  const above = resolve5(workflowDir, "..", "..", "..");
+  return resolve5(above, WORKFLOWS_DIR, basename(workflowDir)) === workflowDir ? above : process.cwd();
 }
 function promptResolver(flowPath, root) {
   return (ref) => {
@@ -1019,9 +1683,47 @@ async function runCodexHook() {
     return 0;
   }
 }
+function installed(host, install) {
+  try {
+    for (const f of install()) process.stdout.write(`${f}
+`);
+    return 0;
+  } catch (e) {
+    process.stderr.write(`gemworks ${host} install: ${e instanceof Error ? e.message : String(e)}
+`);
+    return 1;
+  }
+}
+async function runQwenHook(arg) {
+  if (arg === "install") return installed("qwen", () => installQwen(resolve5(process.argv[1] ?? "gemworks.mjs")));
+  try {
+    process.stdin.setEncoding("utf8");
+    let text2 = "";
+    for await (const chunk of process.stdin) text2 += chunk;
+    process.stdout.write((await runQwen(text2, process.env)).stdout);
+  } catch (e) {
+    process.stderr.write(`gemworks qwen: ${e instanceof Error ? e.message : String(e)}
+`);
+  }
+  return 0;
+}
+async function runCursorHook(arg) {
+  if (arg === "install") return installed("cursor", () => installCursor(resolve5(process.argv[1] ?? "gemworks.mjs")));
+  try {
+    process.stdin.setEncoding("utf8");
+    let text2 = "";
+    for await (const chunk of process.stdin) text2 += chunk;
+    process.stdout.write((await runCursor(text2, process.env)).stdout);
+  } catch (e) {
+    process.stderr.write(`gemworks cursor: ${e instanceof Error ? e.message : String(e)}
+`);
+    process.stdout.write("{}\n");
+  }
+  return 0;
+}
 async function runAntigravityHook(event) {
   if (event === "install") {
-    for (const f of installAntigravity(resolve3(process.argv[1] ?? "gemworks.mjs"))) process.stdout.write(`${f}
+    for (const f of installAntigravity(resolve5(process.argv[1] ?? "gemworks.mjs"))) process.stdout.write(`${f}
 `);
     return 0;
   }
@@ -1038,7 +1740,7 @@ async function runAntigravityHook(event) {
 }
 function corrections(args) {
   const [sub, ...rest] = args;
-  const transcripts = process.env["CLAUDE_CONFIG_DIR"] !== void 0 ? join5(process.env["CLAUDE_CONFIG_DIR"], "projects") : join5(homedir2(), ".claude", "projects");
+  const transcripts = process.env["CLAUDE_CONFIG_DIR"] !== void 0 ? join7(process.env["CLAUDE_CONFIG_DIR"], "projects") : join7(homedir4(), ".claude", "projects");
   if (sub === "guide") {
     console.log(LABEL_GUIDE);
     console.log('\nFor each line of `gemworks corrections pending`, keep its fields and add "kind", "sub" (null unless kind is correct) and "work"; give the lines to `gemworks corrections label`.');
@@ -1058,7 +1760,7 @@ function corrections(args) {
   if (sub === "label") {
     const files = positionals("corrections label", rest, ["--import"], []);
     if (files.length > 1) fail(USAGE, 2);
-    const text2 = files[0] !== void 0 ? readOrFail(files[0]) : readFileSync4(0, "utf8");
+    const text2 = files[0] !== void 0 ? readOrFail(files[0]) : readFileSync6(0, "utf8");
     const lines = text2.split(/\r?\n/).filter((l) => l.trim() !== "");
     const parsed = [];
     for (const [n, l] of lines.entries()) {
@@ -1102,13 +1804,13 @@ function main(argv2) {
       const pos = positionals("check", rest, [], []);
       const file = pos[0];
       if (file === void 0 || pos.length !== 1) fail(USAGE, 2);
-      const path = resolve3(file);
-      const root = projectOf(path);
+      const path = resolve5(file);
+      const root = projectOf3(path);
       const r = loadStatechart(readOrFail(path), file, { resolveRef: promptResolver(path, root), readDoc: docReader(dirname2(path), root) });
       const ds = [...r.diagnostics];
       const dict = dictionaryPathOf(path);
       if (r.statechart !== void 0 && exists(dict)) {
-        const own = dict === join5(dirname2(path), TOOLS_FILE);
+        const own = dict === join7(dirname2(path), TOOLS_FILE);
         const others = own ? [] : installedWorkflows(root).filter((w) => realPath(w.path) !== realPath(path)).flatMap((w) => {
           try {
             return [loadStatechart(readText(w.path), w.path).statechart].filter((c) => c !== void 0);
@@ -1124,7 +1826,7 @@ function main(argv2) {
     case "snapshot": {
       const file = rest[0];
       if (!file || file.startsWith("--")) fail(USAGE, 2);
-      const journal = readJournal(readOrFail(resolve3(file)));
+      const journal = readJournal(readOrFail(resolve5(file)));
       const last = journal.snapshots[journal.snapshots.length - 1];
       if (!last) fail(`${file}: no revision`, 1);
       if (has(rest, "--json")) {
@@ -1145,15 +1847,15 @@ at: ${last.at}`);
       const scPath = flag(rest, "--workflow");
       let sc;
       if (scPath) {
-        const path = resolve3(scPath);
-        const r = loadStatechart(readOrFail(path), scPath, { readDoc: docReader(dirname2(path), projectOf(path)) });
+        const path = resolve5(scPath);
+        const r = loadStatechart(readOrFail(path), scPath, { readDoc: docReader(dirname2(path), projectOf3(path)) });
         if (!r.statechart) {
           printDiagnostics(r.diagnostics);
           return 1;
         }
         sc = r.statechart;
       }
-      const errors = verifyJournal(readJournal(readOrFail(resolve3(file))), sc);
+      const errors = verifyJournal(readJournal(readOrFail(resolve5(file))), sc);
       for (const e of errors) console.error(e);
       console.error(errors.length ? `${errors.length} error(s)` : "ok: chain verified");
       return errors.length ? 1 : 0;
@@ -1162,7 +1864,7 @@ at: ${last.at}`);
       const file = rest[0];
       if (!file || file.startsWith("--")) fail(USAGE, 2);
       if (flag(rest, "--to") !== "md") fail("export: only --to md is supported", 2);
-      console.log(renderJournalMarkdown(readJournal(readOrFail(resolve3(file)))));
+      console.log(renderJournalMarkdown(readJournal(readOrFail(resolve5(file)))));
       return 0;
     }
     case "init": {
@@ -1171,7 +1873,7 @@ at: ${last.at}`);
       if (pos.length > 1) fail(USAGE, 2);
       let r;
       try {
-        r = addWorkflow(resolve3(pos[0] ?? "."), template, { activate: !has(rest, "--no-activate") });
+        r = addWorkflow(resolve5(pos[0] ?? "."), template, { activate: !has(rest, "--no-activate") });
       } catch (e) {
         return fail(String(e), 1);
       }
@@ -1270,7 +1972,7 @@ at: ${last.at}`);
     case "migrate": {
       if (positionals("migrate", rest, [], []).length > 0) fail(USAGE, 2);
       const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "");
-      const moved = migrateLayout(process.cwd(), join5(homedir2(), ".gemworks", "trash", `${stamp}-layout`));
+      const moved = migrateLayout(process.cwd(), join7(homedir4(), ".gemworks", "trash", `${stamp}-layout`));
       if (moved.length === 0) {
         console.log("nothing to move: no workflow directory here");
         return 0;
@@ -1313,8 +2015,14 @@ else if (argv[0] === "codex") void runCodexHook().then((code) => {
 else if (argv[0] === "antigravity") void runAntigravityHook(argv[1]).then((code) => {
   process.exitCode = code;
 });
+else if (argv[0] === "cursor") void runCursorHook(argv[1]).then((code) => {
+  process.exitCode = code;
+});
+else if (argv[0] === "qwen") void runQwenHook(argv[1]).then((code) => {
+  process.exitCode = code;
+});
 else if (argv[0] === "mcp") {
   const rest = argv.slice(1);
   if (positionals("mcp", rest, [], ["--host", "--root"]).length > 0) fail(USAGE, 2);
-  void serveMcp({ root: resolve3(flag(rest, "--root") ?? "."), host: flag(rest, "--host") ?? "mcp" });
+  void serveMcp({ root: resolve5(flag(rest, "--root") ?? "."), host: flag(rest, "--host") ?? "mcp" });
 } else process.exit(main(argv));

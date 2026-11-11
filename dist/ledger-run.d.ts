@@ -11,7 +11,12 @@ export interface ToLabelPrompt {
 }
 /** One typed prompt labelled into the ledger; a correction, or themes left waiting, then put into themes. Whether it was labelled. */
 export declare function labelPrompt(root: string, p: ToLabelPrompt, complete: Complete, locale?: string): Promise<boolean>;
-/** The ledger's corrections put into themes, a batch a request, by the session that holds the claim; then flows proposed. */
+/**
+ * The corrections a 失效 card would count, each read against the practice it would count against before any card counts
+ * it (hooks/register.tsx checkLedger): each pair keeps its answer; a reply that reads none is asked again later.
+ */
+export declare function checkLedger(root: string, session: string, complete: Complete): Promise<void>;
+/** The ledger's corrections put into themes, a batch a request, by the session that holds the claim; then read against their rule; then flows proposed. */
 export declare function themeLedger(root: string, session: string, complete: Complete, locale?: string): Promise<void>;
 /** A flow proposed, once, for each kind of work corrected often in the last days with none of its own: its steps drafted by the model. */
 export declare function proposeFlows(root: string, complete: Complete, locale?: string): Promise<void>;

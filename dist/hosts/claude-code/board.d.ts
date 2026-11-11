@@ -31,6 +31,23 @@ export type BoardRow = {
     kind: "text";
     text: string;
     tone: Tone;
+}
+/** Who judges a step, each word as a chip with what it means beside it (the flow tab's first line). */
+ | {
+    kind: "judges";
+    lead: string;
+    items: {
+        judge: Judge;
+        word: string;
+        means: string;
+    }[];
+}
+/** Words, then presses after them on the same line (没有在走的：优化 ▸). */
+ | {
+    kind: "presses";
+    key: string;
+    lead: string;
+    items: Pressable[];
 } | {
     kind: "button";
     key: string;
@@ -129,7 +146,11 @@ export type BoardRow = {
     edges: FlowEdgeRow[];
     svg: string;
 }
-/** A group's heading: its words, how many it holds when that is worth saying, and a press that lists or folds it. */
+/**
+ * A group's heading: its words, how many it holds when that is worth saying, and a press that lists or folds it.
+ * `tucked`: its note runs on after the words, wrapped, and its presses show under the pointer where a surface has
+ * one (a flow's heading on the flow tab, as its design has it: the heading reads as a heading).
+ */
  | {
     kind: "section";
     key: string;
@@ -138,6 +159,7 @@ export type BoardRow = {
     fold?: Pressable;
     note?: string;
     actions?: Pressable[];
+    tucked?: true;
 }
 /**
  * One thing waiting on the person (the work items tab's top group): the icon
@@ -296,7 +318,11 @@ export type BoardRow = {
     open?: Pressable;
     made?: Pressable;
 }
-/** A flow's step in the manual (coach.ts manualRows): its title, the requirement to leave it, who judges it (`judge` in words), what it prevents; `here` the step the focused item stands at. */
+/**
+ * A flow's step in the manual (coach.ts manualRows): its title, the requirement to leave it, who judges it (`judge`
+ * in words), what it prevents; `here` the step the focused item stands at. The practice rows after it are its own,
+ * drawn in its block; `more`, on a flow whose practices are folded, the press that lists them (2 条做法 ▾).
+ */
  | {
     kind: "step";
     key: string;
@@ -308,8 +334,12 @@ export type BoardRow = {
     here: boolean;
     final: boolean;
     rules?: string[];
+    more?: Pressable;
 }
-/** A practice on a step: what to do, where it came from, its tag (新学到, 从记忆搬来, 团队), the presses on it (its layer, ×). */
+/**
+ * A practice on a step: what to do, where it came from, its tag (做法, 新学到, 从记忆搬来, 团队), the presses on it:
+ * × and 改成规定 beside its words, its layer and sharing under the pointer where a surface has one.
+ */
 /** `count`: the corrections of its themes before it was written and since (纠正 2 → 0), green while none came since, amber once one did. */
  | {
     kind: "practice";
@@ -456,6 +486,7 @@ export interface PaneInput {
         open?: readonly WorkGroup[];
         practices?: readonly Practice[];
         expanded?: readonly string[] | null;
+        menu?: string | null;
         unfolded?: string | null;
         sessions?: readonly SessionSummary[];
         proposals?: readonly Proposal[];

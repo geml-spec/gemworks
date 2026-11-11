@@ -176,6 +176,8 @@ declare module 'claude-code' {
       memoryAsked: boolean
       /** The flows of the flow tab whose practices are listed (`*` those for every flow); null: the first flow's. */
       manualExpanded: string[] | null
+      /** The flow tab's menu open under a ⋯: `practice:<id>` or `flow:<name>`; null, none. */
+      manualMenu: string | null
       /** The work item unfolded under its row on the work items tab (its history). */
       workUnfolded: string | null
       /** The 好，做吧 the person pressed, on their way until their own turn ends. */

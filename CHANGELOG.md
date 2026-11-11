@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.3.15] — 2026-11-11
+
+- **Two more hosts: Cursor and Qwen Code.** `gemworks cursor install` and
+  `gemworks qwen install` add the hooks and the gemworks MCP server to the
+  host's own settings, keeping what is there and refusing a settings file that
+  is not plain JSON. Both get the stage, the work loop and the tool gate; on
+  Cursor a turn's work items go with its first tool result, since its prompt
+  hook cannot speak to the model.
+
+- **The flow tab as its design has it.** Each step is a block with a bar down
+  its left edge, the step a work item stands at shaded, and who judges it a
+  tinted chip. A practice reads "tag: words — where it came from" on one
+  wrapped line with its buttons beside it; its layer and sharing are under
+  "⋯". At the pane's usual width a practice's words are no longer cut short.
+
+- **A failing-practice card only for corrections about that practice.** A
+  correction counts against a practice once the model has read it against the
+  practice's own words and found that it holds; a bare "not fixed", a pasted
+  link or a question never counts. Cards that came back after every Keep stop.
+
+## [0.3.9] — 2026-11-10
+
+- **Ten starter flows.** Besides new design, new feature, bugfix and optimize:
+  incident, review, research, refactor, docs and analysis. Bugfix finds the
+  root cause and writes a failing test before the fix. Every step says who
+  judges it and what it prevents, in English and Japanese too. A session open
+  across an upgrade reads the new flows when it reloads.
+
+- **A sign-off sheet for every work item.** `.geml/signoffs/<id>.geml` says
+  for each step who judged it, on what grounds and when, with the commits and
+  artifacts of the work; it is kept among the item's artifacts once the item
+  is done.
+
+- **On npm as `@geml/gemworks`.** The marketplace installs the plugin from it,
+  and the earlier names `gemworks` and `gemwork` get every release too.
+
+- The GEML board page that hosts without a panel show is written in your
+  language (`GEMWORKS_LANG`, else the locale). The name gemflow is gone:
+  `.geml/gemflow.geml` is no longer read.
+
 ## [0.3.0] — 2026-11-09
 
 The first release for people outside the project: a workbench beside your agent chat. It keeps track of the work, the

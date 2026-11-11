@@ -60,6 +60,7 @@ const lastFileAtom = atom({ plugin: 'gemworks', key: 'lastFile' } as const, null
 const latestAtom = atom({ plugin: 'gemworks', key: 'latest' } as const, null as GemworksJson)
 const madeViewAtom = atom({ plugin: 'gemworks', key: 'madeView' } as const, MADE_VIEW as { kind: string; shown: number; item: string | null })
 const manualExpandedAtom = atom({ plugin: 'gemworks', key: 'manualExpanded' } as const, null as string[] | null)
+const manualMenuAtom = atom({ plugin: 'gemworks', key: 'manualMenu' } as const, null as string | null)
 const memoryAtom = atom({ plugin: 'gemworks', key: 'memory' } as const, null as MemoryList | null)
 const memoryEditAtom = atom({ plugin: 'gemworks', key: 'memoryEdit' } as const, null as string | null)
 const memoryGroupAtom = atom({ plugin: 'gemworks', key: 'memoryGroup' } as const, null as string | null)
@@ -113,8 +114,11 @@ async function capture($: EngineInterface, platform: string): Promise<void> {
 
 /** A press on the band or the board: what it does. */
 export async function act($: EngineInterface, action: BoardAction, surface?: string): Promise<void> {
+  // An entry of a flow-tab menu closes the menu, whatever it then does.
+  if (['practice-layer', 'practice-share', 'practice-claude-md', 'flow-share', 'flow-export', 'manual-open'].includes(action.op)) await update($, manualMenuAtom, () => null)
   // A view change first, before anything is read: a tab, a filter, a fold or a menu shows at once.
   switch (action.op) {
+    case 'manual-menu': await update($, manualMenuAtom, () => action.key); return
     case 'coach-go': {
       await update($, coachFocusAtom, () => ({ flow: action.flow, id: action.id }))
       await update($, tabAtom, () => 'flow')

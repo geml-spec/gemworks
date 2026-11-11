@@ -10,7 +10,7 @@ import type { AttentionFacts } from "./attention.js";
 import type { HostInfo } from "./env.js";
 import type { MemoryList } from "../../memory-store.js";
 import type { Practice } from "../../core/practices.js";
-import type { LabelledPrompt, LedgerCard, PracticeCount, Theme, ThemeAnswer, WorkKind } from "../../core/corrections.js";
+import type { LabelledPrompt, LedgerCard, PracticeCount, Theme, ThemeAnswer, ToCheck, WorkKind } from "../../core/corrections.js";
 import type { QueuedMessage } from "../../core/transcript.js";
 import type { Transcript } from "../../core/transcript.js";
 export type { VerbName } from "../../core/verb-specs.js";
@@ -242,7 +242,7 @@ export type BridgeOp =
     op: "practice-share";
     ids: string[];
 }
-/** The ledger of corrections as the flow tab shows it (core/corrections.ts); `toTheme`: what a theme request reads, when `session` holds the claim to put corrections in themes. */
+/** The ledger of corrections as the flow tab shows it (core/corrections.ts); `toTheme`: what a theme request and a check request read, when `session` holds the claim to put corrections in themes. */
  | {
     op: "corrections";
     toTheme?: boolean;
@@ -264,6 +264,15 @@ export type BridgeOp =
     op: "corrections-dismiss";
     key: string;
     n: number;
+}
+/** Corrections read against their theme's rule (core/corrections.ts checkRequest): each holds, or leaves its theme. */
+ | {
+    op: "corrections-check";
+    verdicts: {
+        id: string;
+        practice: string;
+        holds: boolean;
+    }[];
 };
 /** A transcript the host keeps: its file, the session's id (the file's name), its size. */
 export interface TranscriptFile {
@@ -569,7 +578,8 @@ export interface FlowPicture {
 /**
  * The ledger as the flow tab shows it: the cards, each practice's corrections before and after it, the kinds of work
  * corrected often with no flow; how many corrections wait for a theme, and whether the themes were linked against other
- * practices than there are now (`stale`). `toTheme` when asked: what a theme request reads.
+ * practices than there are now (`stale`); how many corrections a 失效 card would count wait to be read against the
+ * practice (`unchecked`, pairs). `toTheme` and `toCheck` when asked: what a theme request and a check request read.
  */
 export interface CorrectionsView {
     cards: LedgerCard[];
@@ -585,11 +595,13 @@ export interface CorrectionsView {
     }[];
     unthemed: number;
     stale: boolean;
+    unchecked: number;
     toTheme?: {
         corrections: LabelledPrompt[];
         themes: Theme[];
         practices: Practice[];
     };
+    toCheck?: ToCheck[];
 }
 export type BridgeResponse = {
     v: 1;

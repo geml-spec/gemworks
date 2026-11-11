@@ -45,7 +45,9 @@ function isPrompt(v) {
     const opt = (k) => v[k] === undefined || typeof v[k] === "string";
     return ["id", "at", "session", "text"].every((k) => typeof v[k] === "string") && KINDS.includes(v["kind"])
         && (v["sub"] === undefined || SUBS.includes(v["sub"])) && (v["work"] === undefined || WORKS.includes(v["work"]))
-        && ["project", "flow", "step", "theme"].every(opt) && BY.includes(v["by"]);
+        && ["project", "flow", "step", "theme"].every(opt) && (v["checked"] === undefined || typeof v["checked"] === "boolean")
+        && (v["checks"] === undefined || (typeof v["checks"] === "object" && v["checks"] !== null && !Array.isArray(v["checks"]) && Object.values(v["checks"]).every((x) => typeof x === "boolean")))
+        && BY.includes(v["by"]);
 }
 const isTheme = (v) => isObj(v) && ["id", "rule", "at"].every((k) => typeof v[k] === "string") && Array.isArray(v["practices"]) && v["practices"].every((x) => typeof x === "string");
 const isDismissed = (v) => isObj(v) && typeof v["key"] === "string" && typeof v["n"] === "number" && typeof v["at"] === "string";
@@ -312,7 +314,8 @@ const themesOf = (l, practice) => new Set(l.themes.filter((t) => t.practices.inc
 const covers = (p, x) => (p.flow === "*" || p.flow === x.flow) && (p.step === "*" || p.step === x.step);
 /**
  * For each practice linked to a theme: how many of the theme's corrections came before it was written (anywhere), how
- * many after where it reminds. One said after it on another step is not the practice failing: it is a repeat card's.
+ * many after where it reminds, read against the practice's own words and found to hold (unchecked). One said after it
+ * on another step is not the practice failing: it is a repeat card's.
  */
 export function practiceCounts(l, practices) {
     const out = {};
@@ -323,9 +326,64 @@ export function practiceCounts(l, practices) {
         if (mine.size === 0)
             continue;
         const said = l.prompts.filter((x) => isCorrection(x) && x.theme !== undefined && mine.has(x.theme));
-        out[p.id] = { before: said.filter((x) => x.at < p.at).length, after: said.filter((x) => x.at > p.at && covers(p, x)).length };
+        out[p.id] = { before: said.filter((x) => x.at < p.at).length, after: said.filter((x) => x.at > p.at && covers(p, x) && x.checks?.[p.id] === true).length };
     }
     return out;
+}
+// ---- a correction read against the practice it would count against -------------------------------
+/** The most pairs one check request carries. */
+export const CHECKS_ASKED = 30;
+/**
+ * The pairs a 失效 card would count that nobody has read: of each practice, the corrections of its themes said after
+ * it where it reminds, when it has two such at least, each against that practice's own words. Not against the theme's
+ * rule: a theme is put together, and linked to practices, in a batch by a model, which may file a message that only
+ * resembles the rule (a symptom reported, a bare 没好, a link) or link a theme to a practice its quotes have nothing to
+ * do with; the card names the practice, so the practice is what each is read against. The newest `limit`, in time order.
+ */
+export function unchecked(l, practices, limit = CHECKS_ASKED) {
+    const corrections = l.prompts.filter((x) => isCorrection(x) && x.theme !== undefined && x.theme !== "");
+    const waiting = [];
+    for (const p of practices) {
+        if (p.deleted === true)
+            continue;
+        const mine = themesOf(l, p.id);
+        const after = corrections.filter((x) => mine.has(x.theme) && x.at > p.at && covers(p, x));
+        if (after.length < 2)
+            continue;
+        for (const x of after)
+            if (x.checks?.[p.id] === undefined)
+                waiting.push({ x, p });
+    }
+    const sorted = waiting.sort((a, b) => (a.x.at < b.x.at ? -1 : a.x.at > b.x.at ? 1 : 0));
+    return sorted.slice(Math.max(0, sorted.length - limit)).map(({ x, p }) => ({ id: x.id, practice: p.id, text: x.text, rule: p.text }));
+}
+/** The request that reads each correction against a practice: do its words hold the agent to that practice? Handles q1, q2… stand for the pairs. */
+export function checkRequest(items) {
+    const system = [
+        "A person's messages to their coding agent, each paired with a practice from their checklist. For each, say whether the message's own words show the agent did not do what that practice says, about the very thing the practice names, or tell the agent to do it.",
+        "Answer no when the message only gives a verdict or a result (\"not fixed\", \"没好\", \"still there\"), reports what the person sees, is a link or a path, asks for content to be changed or removed, asks a question, gives new information, or is about something the practice does not name. When unsure, answer no.",
+        "Reply with one line per message and nothing else: q1 yes, or q1 no.",
+    ].join("\n");
+    const prompt = items.map((x, i) => `q${i + 1}. practice: ${x.rule}\n    message: ${clip(x.text.replace(/\s+/g, " "), 240)}`).join("\n");
+    return { system, prompt, handles: items.map((x) => ({ id: x.id, practice: x.practice })) };
+}
+/** A check reply read against its handles: each pair answered yes or no; one that does not read is left out, to be asked again. */
+export function readChecks(reply, handles) {
+    const out = new Map();
+    for (const m of reply.matchAll(/^\W*q(\d+)\W{0,3}(yes|no)\b/gim)) {
+        const n = Number(m[1]) - 1;
+        const h = handles[n];
+        if (h !== undefined && !out.has(n))
+            out.set(n, { ...h, holds: m[2].toLowerCase() === "yes" });
+    }
+    return [...out.values()];
+}
+/** Checks applied: each correction keeps what it was found to be against each practice, and is not asked about that one again. */
+export function applyChecks(l, verdicts) {
+    const given = new Map();
+    for (const v of verdicts)
+        given.set(v.id, { ...(given.get(v.id) ?? {}), [v.practice]: v.holds });
+    return { ...l, prompts: l.prompts.map((p) => { const g = given.get(p.id); return g === undefined ? p : { ...p, checks: { ...(p.checks ?? {}), ...g } }; }) };
 }
 const quotesOf = (xs) => xs.slice(-3).map((x) => ({ at: x.at, text: x.text.replace(/<!--[^>]*-->/g, "").replace(/\s+/g, " ").trim() }));
 /** The cards the ledger shows, the failing practices first, then the repeats, the most said first; a card put away stays away until two more are said. */
@@ -338,7 +396,7 @@ export function ledgerCards(l, practices, now, o = {}) {
     const cards = [];
     for (const p of live) {
         const mine = themesOf(l, p.id);
-        const after = corrections.filter((x) => mine.has(x.theme) && x.at > p.at && covers(p, x));
+        const after = corrections.filter((x) => mine.has(x.theme) && x.at > p.at && covers(p, x) && x.checks?.[p.id] === true);
         if (after.length < 2 || away(`failing:${p.id}`, after.length))
             continue;
         const instead = live.filter((q) => q.id !== p.id && q.at > p.at && [...themesOf(l, q.id)].some((t) => mine.has(t))).sort((a, b) => (a.at < b.at ? 1 : -1))[0];

@@ -12,7 +12,9 @@ export declare const PERSON_SUBS: readonly CorrectionSub[];
 /**
  * A prompt the person typed, labelled: when, in which session (and project), its words (clipped), its kind, for a
  * correction its sub, the kind of work it is about; the flow and step the session's work item stood at, when there was
- * one; the theme it shares with corrections that say the same thing; who labelled it.
+ * one; the theme it shares with corrections that say the same thing; who labelled it. `checks`: its words read against
+ * the words of a practice it would count against (checkRequest), by the practice's id: whether it holds the agent to
+ * that practice. `checked`: read against its theme's rule, as 0.3.11 read it; kept as it was written, counted by nothing.
  */
 export interface LabelledPrompt {
     id: string;
@@ -26,6 +28,8 @@ export interface LabelledPrompt {
     flow?: string;
     step?: string;
     theme?: string;
+    checks?: Record<string, boolean>;
+    checked?: boolean;
     by: "model" | "agent" | "import";
 }
 /** What corrections that say the same thing ask for, as one short rule; the practices that state it. */
@@ -163,9 +167,49 @@ export interface PracticeCount {
 }
 /**
  * For each practice linked to a theme: how many of the theme's corrections came before it was written (anywhere), how
- * many after where it reminds. One said after it on another step is not the practice failing: it is a repeat card's.
+ * many after where it reminds, read against the practice's own words and found to hold (unchecked). One said after it
+ * on another step is not the practice failing: it is a repeat card's.
  */
 export declare function practiceCounts(l: Ledger, practices: readonly Practice[]): Record<string, PracticeCount>;
+/** The most pairs one check request carries. */
+export declare const CHECKS_ASKED = 30;
+/** A correction to read against a practice: the correction's id and words, the practice's id and words. */
+export interface ToCheck {
+    id: string;
+    practice: string;
+    text: string;
+    rule: string;
+}
+/** What a check said: whether correction `id` holds the agent to practice `practice`. */
+export interface CheckVerdict {
+    id: string;
+    practice: string;
+    holds: boolean;
+}
+/**
+ * The pairs a 失效 card would count that nobody has read: of each practice, the corrections of its themes said after
+ * it where it reminds, when it has two such at least, each against that practice's own words. Not against the theme's
+ * rule: a theme is put together, and linked to practices, in a batch by a model, which may file a message that only
+ * resembles the rule (a symptom reported, a bare 没好, a link) or link a theme to a practice its quotes have nothing to
+ * do with; the card names the practice, so the practice is what each is read against. The newest `limit`, in time order.
+ */
+export declare function unchecked(l: Ledger, practices: readonly Practice[], limit?: number): ToCheck[];
+/** The request that reads each correction against a practice: do its words hold the agent to that practice? Handles q1, q2… stand for the pairs. */
+export declare function checkRequest(items: readonly ToCheck[]): {
+    system: string;
+    prompt: string;
+    handles: {
+        id: string;
+        practice: string;
+    }[];
+};
+/** A check reply read against its handles: each pair answered yes or no; one that does not read is left out, to be asked again. */
+export declare function readChecks(reply: string, handles: readonly {
+    id: string;
+    practice: string;
+}[]): CheckVerdict[];
+/** Checks applied: each correction keeps what it was found to be against each practice, and is not asked about that one again. */
+export declare function applyChecks(l: Ledger, verdicts: readonly CheckVerdict[]): Ledger;
 /** A correction as a card quotes it: when (`day` the local date, MM-DD, where the bridge knows it), and the words. */
 export interface Quote {
     at: string;
@@ -175,8 +219,8 @@ export interface Quote {
 /**
  * A card on the flow tab, each with what the person can do about it. `repeat`: the same thing said `n` times in the
  * window, with no practice for it, or only practices on other steps than where it was said (`narrow`); `where` the step
- * most of it was said at. `failing`: a practice whose rule was said `n` times since it was written; `instead` a newer
- * practice for the same theme.
+ * most of it was said at. `failing`: a practice whose rule was said `n` times since it was written, each read against
+ * the rule and found to hold (unchecked); `instead` a newer practice for the same theme.
  */
 export type LedgerCard = {
     kind: "repeat";

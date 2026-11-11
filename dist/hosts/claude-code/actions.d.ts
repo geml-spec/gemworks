@@ -260,6 +260,11 @@ export type BoardAction =
     flow: string;
     open: boolean;
 }
+/** The flow tab's ⋯ on a practice (`practice:<id>`) or a flow's heading (`flow:<name>`): its menu opened, or closed (null). */
+ | {
+    op: "manual-menu";
+    key: string | null;
+}
 /** A practice taken out by the person (kept as a tombstone, so it is not learned again). */
  | {
     op: "practice-delete";

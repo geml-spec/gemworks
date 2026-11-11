@@ -102,6 +102,7 @@ export interface ManualOptions {
     focus: CoachFocus | null;
     expanded: readonly string[] | null;
     now?: string;
+    menu?: string | null;
     proposals?: readonly Proposal[];
     rules?: readonly Rule[];
     skipped?: readonly {

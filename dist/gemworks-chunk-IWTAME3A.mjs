@@ -1,7 +1,7 @@
 import {
   langOf,
   wordsFor
-} from "./gemworks-chunk-FHQ77CQL.mjs";
+} from "./gemworks-chunk-VAQRKMSH.mjs";
 import {
   TOOLS_FILE,
   blockText,
@@ -1169,7 +1169,7 @@ var BY2 = ["model", "agent", "import"];
 function isPrompt(v) {
   if (!isObj(v)) return false;
   const opt = (k) => v[k] === void 0 || typeof v[k] === "string";
-  return ["id", "at", "session", "text"].every((k) => typeof v[k] === "string") && KINDS.includes(v["kind"]) && (v["sub"] === void 0 || SUBS.includes(v["sub"])) && (v["work"] === void 0 || WORKS.includes(v["work"])) && ["project", "flow", "step", "theme"].every(opt) && BY2.includes(v["by"]);
+  return ["id", "at", "session", "text"].every((k) => typeof v[k] === "string") && KINDS.includes(v["kind"]) && (v["sub"] === void 0 || SUBS.includes(v["sub"])) && (v["work"] === void 0 || WORKS.includes(v["work"])) && ["project", "flow", "step", "theme"].every(opt) && (v["checked"] === void 0 || typeof v["checked"] === "boolean") && (v["checks"] === void 0 || typeof v["checks"] === "object" && v["checks"] !== null && !Array.isArray(v["checks"]) && Object.values(v["checks"]).every((x) => typeof x === "boolean")) && BY2.includes(v["by"]);
 }
 var isTheme = (v) => isObj(v) && ["id", "rule", "at"].every((k) => typeof v[k] === "string") && Array.isArray(v["practices"]) && v["practices"].every((x) => typeof x === "string");
 var isDismissed = (v) => isObj(v) && typeof v["key"] === "string" && typeof v["n"] === "number" && typeof v["at"] === "string";
@@ -1305,9 +1305,31 @@ function practiceCounts(l, practices) {
     const mine = themesOf(l, p.id);
     if (mine.size === 0) continue;
     const said = l.prompts.filter((x) => isCorrection(x) && x.theme !== void 0 && mine.has(x.theme));
-    out[p.id] = { before: said.filter((x) => x.at < p.at).length, after: said.filter((x) => x.at > p.at && covers(p, x)).length };
+    out[p.id] = { before: said.filter((x) => x.at < p.at).length, after: said.filter((x) => x.at > p.at && covers(p, x) && x.checks?.[p.id] === true).length };
   }
   return out;
+}
+var CHECKS_ASKED = 30;
+function unchecked(l, practices, limit = CHECKS_ASKED) {
+  const corrections = l.prompts.filter((x) => isCorrection(x) && x.theme !== void 0 && x.theme !== "");
+  const waiting = [];
+  for (const p of practices) {
+    if (p.deleted === true) continue;
+    const mine = themesOf(l, p.id);
+    const after = corrections.filter((x) => mine.has(x.theme) && x.at > p.at && covers(p, x));
+    if (after.length < 2) continue;
+    for (const x of after) if (x.checks?.[p.id] === void 0) waiting.push({ x, p });
+  }
+  const sorted = waiting.sort((a, b) => a.x.at < b.x.at ? -1 : a.x.at > b.x.at ? 1 : 0);
+  return sorted.slice(Math.max(0, sorted.length - limit)).map(({ x, p }) => ({ id: x.id, practice: p.id, text: x.text, rule: p.text }));
+}
+function applyChecks(l, verdicts) {
+  const given = /* @__PURE__ */ new Map();
+  for (const v of verdicts) given.set(v.id, { ...given.get(v.id) ?? {}, [v.practice]: v.holds });
+  return { ...l, prompts: l.prompts.map((p) => {
+    const g = given.get(p.id);
+    return g === void 0 ? p : { ...p, checks: { ...p.checks ?? {}, ...g } };
+  }) };
 }
 var quotesOf = (xs) => xs.slice(-3).map((x) => ({ at: x.at, text: x.text.replace(/<!--[^>]*-->/g, "").replace(/\s+/g, " ").trim() }));
 function ledgerCards(l, practices, now, o = {}) {
@@ -1319,7 +1341,7 @@ function ledgerCards(l, practices, now, o = {}) {
   const cards = [];
   for (const p of live) {
     const mine = themesOf(l, p.id);
-    const after = corrections.filter((x) => mine.has(x.theme) && x.at > p.at && covers(p, x));
+    const after = corrections.filter((x) => mine.has(x.theme) && x.at > p.at && covers(p, x) && x.checks?.[p.id] === true);
     if (after.length < 2 || away(`failing:${p.id}`, after.length)) continue;
     const instead = live.filter((q) => q.id !== p.id && q.at > p.at && [...themesOf(l, q.id)].some((t) => mine.has(t))).sort((a, b) => a.at < b.at ? 1 : -1)[0];
     cards.push({ kind: "failing", key: `failing:${p.id}`, practice: p, n: after.length, quotes: quotesOf(after), ...instead !== void 0 ? { instead } : {} });
@@ -2124,7 +2146,7 @@ function branchesElsewhere(open, own) {
   return out;
 }
 function hostLabel(host) {
-  return { "claude-code": "Claude", codex: "Codex", gemini: "Gemini", dsh: "DeepSeek", pi: "pi" }[host] ?? host;
+  return { "claude-code": "Claude", codex: "Codex", cursor: "Cursor", qwen: "Qwen", gemini: "Gemini", dsh: "DeepSeek", pi: "pi" }[host] ?? host;
 }
 function commits(command) {
   return /\bgit\b[^\n|;&]*\bcommit\b/.test(command);
@@ -2141,7 +2163,7 @@ import { todo } from "./vendor/geml/media-verbs.js";
 // src/hosts/claude-code/protocol.ts
 var PROTOCOL_VERSION = 1;
 var TODO_CAP = 999;
-var OPS = /* @__PURE__ */ new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "signoff", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss"]);
+var OPS = /* @__PURE__ */ new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "signoff", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss", "corrections-check"]);
 var EXPORT_KINDS = /* @__PURE__ */ new Set(["journal", "workflow", "text"]);
 var EXPORT_FORMATS = /* @__PURE__ */ new Set(["geml", "md", "json"]);
 var VERBS = /* @__PURE__ */ new Set(["status", "move", "set"]);
@@ -2209,7 +2231,8 @@ function decodeRequest(text) {
     corrections: () => (v["toTheme"] === void 0 || typeof v["toTheme"] === "boolean") && (v["session"] === void 0 || str4("session")),
     "corrections-add": () => Array.isArray(v["prompts"]) && v["prompts"].every(isRecord),
     "corrections-themes": () => obj("answer") && Array.isArray(v["answer"]["assign"]) && Array.isArray(v["answer"]["links"]) && str4("linked"),
-    "corrections-dismiss": () => str4("key") && v["key"] !== "" && Number.isInteger(v["n"])
+    "corrections-dismiss": () => str4("key") && v["key"] !== "" && Number.isInteger(v["n"]),
+    "corrections-check": () => Array.isArray(v["verdicts"]) && v["verdicts"].every((x) => isRecord(x) && typeof x["id"] === "string" && typeof x["practice"] === "string" && typeof x["holds"] === "boolean")
   };
   const check = fields[op];
   if (check !== void 0 && !check()) return { error: `op ${op}: missing or mistyped fields` };
@@ -4277,7 +4300,8 @@ function correctionsView(ledger, practices, now, toTheme) {
     })),
     unthemed: unthemed(ledger, Infinity).length,
     stale: ledger.linked !== linkKey(live),
-    ...toTheme ? { toTheme: { corrections: unthemed(ledger), themes: ledger.themes, practices: live } } : {}
+    unchecked: unchecked(ledger, live, Infinity).length,
+    ...toTheme ? { toTheme: { corrections: unthemed(ledger), themes: ledger.themes, practices: live }, toCheck: unchecked(ledger, live) } : {}
   };
 }
 function practicesOf(root) {
@@ -4326,7 +4350,7 @@ function answer(req) {
     const { practices, memoryMoved } = readPractices(root);
     return { v: 1, ok: true, shell: shellAt(req), practices: { list: practices, memoryMoved } };
   }
-  if (req.op === "corrections" || req.op === "corrections-add" || req.op === "corrections-themes" || req.op === "corrections-dismiss") {
+  if (req.op === "corrections" || req.op === "corrections-add" || req.op === "corrections-themes" || req.op === "corrections-dismiss" || req.op === "corrections-check") {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     let mine = false;
     const asking = req.op === "corrections" && req.toTheme === true && req.session !== void 0;
@@ -4338,6 +4362,7 @@ function answer(req) {
       }
       if (req.op === "corrections-add") return addPrompts(l, req.prompts.map((p) => ({ ...p, by: "model" }))).ledger;
       if (req.op === "corrections-themes") return applyThemes(l, req.answer, now, req.linked, (n) => `t${Date.parse(now).toString(36)}${n}`);
+      if (req.op === "corrections-check") return applyChecks(l, req.verdicts);
       return dismiss(l, req.key, req.n, now);
     });
     return { v: 1, ok: true, shell: shellAt(req), corrections: correctionsView(ledger, practicesOf(root).list, now, mine) };
