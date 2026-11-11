@@ -57,8 +57,8 @@ export async function labelPrompt(root: string, p: ToLabelPrompt, complete: Comp
 const CHECK_RUNS = 4;
 
 /**
- * The corrections a 失效 card would count, read against their theme's rule before any card counts them (hooks/register.tsx
- * checkLedger): one that holds is marked read, one that does not leaves its theme; a reply that reads none is asked again later.
+ * The corrections a 失效 card would count, each read against the practice it would count against before any card counts
+ * it (hooks/register.tsx checkLedger): each pair keeps its answer; a reply that reads none is asked again later.
  */
 export async function checkLedger(root: string, session: string, complete: Complete): Promise<void> {
   for (let run = 0; run < CHECK_RUNS; run++) {

@@ -1135,10 +1135,10 @@ async function themeLedger($: EngineInterface): Promise<void> {
 const CHECK_RUNS = 4
 
 /**
- * The corrections a 失效 card would count, read against the rule of the theme they were put in, by the session's own
- * model, before any card counts them: a theme is given in a batch and may take a message that only resembles its rule
- * (a symptom reported, filed under "verify the symptom as reported"). One that holds is marked read; one that does not
- * leaves its theme. A reply that reads none is no answer: the batch is asked again another time.
+ * The corrections a 失效 card would count, each read against the words of the practice it would count against, by the
+ * session's own model, before any card counts it: a theme is given and linked in a batch and may take a message that
+ * only resembles its rule, or reach a practice its quotes have nothing to do with. Each pair keeps its answer and is
+ * not asked again. A reply that reads none is no answer: the batch is asked again another time.
  */
 async function checkLedger($: EngineInterface, session: string): Promise<void> {
   for (let run = 0; run < CHECK_RUNS; run++) {

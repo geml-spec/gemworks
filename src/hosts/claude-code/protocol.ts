@@ -128,7 +128,7 @@ export type BridgeOp =
   /** A card put away, with what it counted. */
   | { op: "corrections-dismiss"; key: string; n: number }
   /** Corrections read against their theme's rule (core/corrections.ts checkRequest): each holds, or leaves its theme. */
-  | { op: "corrections-check"; verdicts: { id: string; holds: boolean }[] };
+  | { op: "corrections-check"; verdicts: { id: string; practice: string; holds: boolean }[] };
 
 /** A transcript the host keeps: its file, the session's id (the file's name), its size. */
 export interface TranscriptFile { file: string; id: string; size: number }
@@ -299,8 +299,8 @@ export interface FlowPicture { flow: Flow; overlay: Overlay; svg: string }
 /**
  * The ledger as the flow tab shows it: the cards, each practice's corrections before and after it, the kinds of work
  * corrected often with no flow; how many corrections wait for a theme, and whether the themes were linked against other
- * practices than there are now (`stale`); how many corrections a 失效 card would count wait to be read against their
- * rule (`unchecked`). `toTheme` and `toCheck` when asked: what a theme request and a check request read.
+ * practices than there are now (`stale`); how many corrections a 失效 card would count wait to be read against the
+ * practice (`unchecked`, pairs). `toTheme` and `toCheck` when asked: what a theme request and a check request read.
  */
 export interface CorrectionsView {
   cards: LedgerCard[];
@@ -462,7 +462,7 @@ export function decodeRequest(text: string): BridgeRequest | { error: string } {
     "corrections-add": () => Array.isArray(v["prompts"]) && (v["prompts"] as unknown[]).every(isRecord),
     "corrections-themes": () => obj("answer") && Array.isArray((v["answer"] as Record<string, unknown>)["assign"]) && Array.isArray((v["answer"] as Record<string, unknown>)["links"]) && str("linked"),
     "corrections-dismiss": () => str("key") && v["key"] !== "" && Number.isInteger(v["n"]),
-    "corrections-check": () => Array.isArray(v["verdicts"]) && (v["verdicts"] as unknown[]).every((x) => isRecord(x) && typeof (x as Record<string, unknown>)["id"] === "string" && typeof (x as Record<string, unknown>)["holds"] === "boolean"),
+    "corrections-check": () => Array.isArray(v["verdicts"]) && (v["verdicts"] as unknown[]).every((x) => isRecord(x) && typeof (x as Record<string, unknown>)["id"] === "string" && typeof (x as Record<string, unknown>)["practice"] === "string" && typeof (x as Record<string, unknown>)["holds"] === "boolean"),
   };
   const check = fields[op];
   if (check !== undefined && !check()) return { error: `op ${op}: missing or mistyped fields` };
