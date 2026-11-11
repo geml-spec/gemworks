@@ -49,7 +49,8 @@ export function tabs(t: T = ZH, ids: readonly BoardTab[] = TAB_IDS): { id: Board
 export type InputField = "add-tool" | "import-workflow" | "tool-search" | "new-use" | "memory-hook" | "import-reference";
 
 export type BoardRow =
-  | { kind: "text"; text: string; tone: Tone }
+  /** `indent`: the cells it starts in by, a label over rows that are themselves indented (这类活都要：). */
+  | { kind: "text"; text: string; tone: Tone; indent?: number }
   | { kind: "button"; key: string; label: string; action: BoardAction; primary?: boolean }
   /** Several buttons on one line. */
   | { kind: "buttons"; items: Pressable[]; end?: true }
@@ -77,8 +78,11 @@ export type BoardRow =
    * same picture as markup, for a surface that inlines it.
    */
   | { kind: "flow"; key: string; ranks: FlowStateRow[][]; edges: FlowEdgeRow[]; svg: string }
-  /** A group's heading: its words, how many it holds when that is worth saying, and a press that lists or folds it. */
-  | { kind: "section"; key: string; text: string; count?: number; fold?: Pressable; note?: string; actions?: Pressable[] }
+  /**
+   * A group's heading: its words, how many it holds when that is worth saying, and a press that lists or folds it.
+   * `below`: the note on a line of its own under the words and presses, so a long note never pushes them apart.
+   */
+  | { kind: "section"; key: string; text: string; count?: number; fold?: Pressable; note?: string; actions?: Pressable[]; below?: true }
   /**
    * One thing waiting on the person (the work items tab's top group): the icon
    * for what it asks, its verb and name, a tag (what the work made, or the
@@ -118,7 +122,10 @@ export type BoardRow =
   | { kind: "work"; key: string; flow: string; tag: string; title: string; cells: { title: string; cell: Cell }[]; detail: string; actions: Pressable[]; go: Pressable; open?: Pressable; made?: Pressable }
   /** A flow's step in the manual (coach.ts manualRows): its title, the requirement to leave it, who judges it (`judge` in words), what it prevents; `here` the step the focused item stands at. */
   | { kind: "step"; key: string; title: string; need: string; judge: string; judgeKind: Judge; prevents: string; here: boolean; final: boolean; rules?: string[] }
-  /** A practice on a step: what to do, where it came from, its tag (新学到, 从记忆搬来, 团队), the presses on it (its layer, ×). */
+  /**
+   * A practice on a step: what to do, where it came from, its tag (新学到, 从记忆搬来, 团队), the presses on it in a
+   * fixed order (its layer, 改成规定, sharing, × last), so they stand in the same columns row under row.
+   */
   /** `count`: the corrections of its themes before it was written and since (纠正 2 → 0), green while none came since, amber once one did. */
   | { kind: "practice"; key: string; text: string; why: string; tag: string; fresh: boolean; actions: Pressable[]; count?: { text: string; held: boolean } };
 

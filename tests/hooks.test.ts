@@ -969,7 +969,10 @@ test('新学到 n 条 on the band is a press: the flow tab opens with the flows 
   w.workflow = false
   w.sessionsDir = LOGS
   w.files.set(`${ROOT}/.geml/coach/bugfix.geml`, BUGFIX_JUDGED)
-  w.practices = { list: [{ id: 'p1', flow: 'bugfix', step: 'fix', text: '修之前先读引擎契约', why: '', at: new Date().toISOString(), by: 'model', layer: 'personal' }], memoryMoved: true }
+  w.practices = { list: [
+    { id: 'p1', flow: 'bugfix', step: 'fix', text: '修之前先读引擎契约', why: '', at: new Date().toISOString(), by: 'model', layer: 'personal' },
+    { id: 'p2', flow: 'bugfix', step: 'fix', text: '一版只试一个猜测，几个猜测混在一起就不知道是哪个修好的', why: '10-22 页签连死四次', at: '2026-10-01T00:00:00.000Z', by: 'person', layer: 'project' },
+  ], memoryMoved: true }
   const clock = await start($, on)
   // The light flows are read behind the start.
   await clock.settle()
@@ -984,6 +987,19 @@ test('新学到 n 条 on the band is a press: the flow tab opens with the flows 
   const words = shown((await pane.drawn()) as unknown as Drawn).join(' ')
   expect(words, 'on the flow tab, its flow unfolded: the practice listed under its step').toContain('修之前先读引擎契约')
   expect(words).toContain('新学到')
+  // A practice in two lines: its words whole on the first, wrapped and never cut; where it came from and the presses
+  // under them, × last, its place kept empty on a row with none, so the presses stand in the same columns.
+  const tree = (await pane.drawn()) as unknown as Drawn
+  const lines = (id: string): Drawn[] => ((findKey(tree, `practice-${id}`)?.children ?? []) as Drawn[])
+  const presses = (el: Drawn | string): string[] => typeof el === 'string' ? [] : el.type === 'Button' ? [String(keyOf(el))] : (el.children ?? []).flatMap(presses)
+  expect(lines('p2').map((l) => shown(l).join(' '))).toEqual(['一版只试一个猜测，几个猜测混在一起就不知道是哪个修好的', '10-22 页签连死四次 [项目] [改成规定] [分享给团队]'])
+  expect(presses(lines('p1')[1] as Drawn)).toEqual(['practice-layer-p1', 'practice-rule-p1', 'practice-share-p1', 'practice-delete-p1'])
+  const lastCell = (id: string): Drawn => ((lines(id)[1] as Drawn).children ?? []).at(-1) as Drawn
+  expect([lastCell('p1').props?.width, lastCell('p2').props?.width, (lastCell('p2').children ?? []).length]).toEqual([2, 2, 0])
+  // As many elements as the one line drew (its box, the words in theirs, where it came from in its, a spacer, three
+  // presses each with its label): now its box, the words, the second line, where it came from in its box, the three
+  // presses, ×'s place. The pane's budget lists as many practices as before.
+  expect(nodesOf(findKey(tree, 'practice-p2') as Drawn)).toBe(12)
   await pane.unmount()
 })
 
@@ -1893,7 +1909,8 @@ test('the coach: the model reports the steps met with the work tool; the work it
   await pane.unmount()
   pane = await mount()
   expect(await words(), 'the manual: where it came from').toMatch(/从「导出跳过不留」过来 · 卡在「你确认」/)
-  expect(await words(), 'how many are on the way').toMatch(/bugfix 1 件在走/)
+  expect(await words(), 'how many are on the way, on a line of its own under the heading and its presses').toMatch(/bugfix \[分享给团队\] \[导出\] 1 件在走/)
+  expect((findKey((await pane.drawn()) as unknown as Drawn, 'manual-bugfix')?.children ?? []).map((l) => shown(l).join(' '))).toEqual(['bugfix [分享给团队] [导出]', '1 件在走'])
   expect(await words(), 'each step, its requirement, who judges it').toMatch(/你确认 · 你按过说对 你/)
   await pane.unmount()
   // Where the surface draws no pictures, the step it stands at is marked.

@@ -260,11 +260,12 @@ function practiceRow(p: Practice, t: T, now: string | undefined, count?: Practic
   const tag = p.layer === "team" ? t("团队") : fresh ? t("新学到") : p.by === "memory" ? t("从记忆搬来") : "";
   const actions: Pressable[] = p.layer === "team" ? [] : [
     { key: `practice-layer-${p.id}`, label: p.layer === "personal" ? t("个人") : t("项目"), action: { op: "practice-layer", id: p.id, layer: p.layer === "personal" ? "project" : "personal" } },
-    ...(fresh || p.by === "memory" ? [{ key: `practice-delete-${p.id}`, label: "×", action: { op: "practice-delete" as const, id: p.id } }] : []),
     // Only a practice on a step can hold calls until that step is met: those get 改成规定.
     ...(p.flow !== "*" && p.step !== "*" ? [{ key: `practice-rule-${p.id}`, label: t("改成规定"), action: { op: "practice-rule" as const, id: p.id } }] : []),
     // Shared: a step's practice into the team's file in the repository; one for every time, into CLAUDE.md (read every turn), shown to the person first.
     p.flow !== "*" ? { key: `practice-share-${p.id}`, label: t("分享给团队"), action: { op: "practice-share" as const, id: p.id } } : { key: `practice-claude-${p.id}`, label: t("写进 CLAUDE.md"), action: { op: "practice-claude-md" as const, id: p.id } },
+    // Last: a row without it keeps its place empty (hooks/register.tsx), so the presses before it line up.
+    ...(fresh || p.by === "memory" ? [{ key: `practice-delete-${p.id}`, label: "×", action: { op: "practice-delete" as const, id: p.id } }] : []),
   ];
   return {
     kind: "practice", key: `practice-${p.id}`, text: p.text, why: [p.why, p.ref ?? ""].filter((x) => x !== "").join(" · "), tag, fresh, actions,
@@ -355,10 +356,12 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
       kind: "section", key: `manual-${f.name}`, text: f.title, note: [n > 0 ? t("{0} 件在走", n) : "", diff !== "" ? t("本项目改过：{0}", diff) : ""].filter((x) => x !== "").join(" · "),
       actions: [{ key: `flow-share-${f.name}`, label: t("分享给团队"), action: { op: "flow-share", flow: f.name } }, { key: `flow-export-${f.name}`, label: t("导出"), action: { op: "flow-export", flow: f.name } }],
       ...(mine.length > 0 ? { fold: { key: `manual-fold-${f.name}`, label: listed ? t("收起做法") : t("做法 {0} 条", mine.length), action: { op: "manual-open", flow: f.name, open: !listed } } } : {}),
+      below: true,
     });
     if (listed) {
       const wide = mine.filter((p) => p.step === "*");
-      if (wide.length > 0) rows.push({ kind: "text", text: t("这类活都要："), tone: "dim" }, ...wide.map((p) => practiceRow(p, t, o.now, o.ledger?.counts[p.id])));
+      // The label stands where the steps' names do, its practices under it as theirs are under them.
+      if (wide.length > 0) rows.push({ kind: "text", text: t("这类活都要："), tone: "dim", indent: 1 }, ...wide.map((p) => practiceRow(p, t, o.now, o.ledger?.counts[p.id])));
     }
     for (const s of f.states) {
       const held = (o.rules ?? []).filter((r) => (r.flow === f.name || r.flow === "*") && r.requires === s.id).map((r) => t("规定：{0}", r.text) + (r.held !== undefined && r.held > 0 ? ` · ${t("拦过 {0} 次", r.held)}` : ""));

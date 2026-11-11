@@ -2300,16 +2300,23 @@ function drawTool($: EngineInterface, els: Els, row: Extract<BoardRow, { kind: '
 function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWidth?: number): unknown {
   const { Box, Text, Button, Link, Input } = els
   switch (row.kind) {
-    case 'section': return (
-      <Box key={row.key} gap={1} marginTop={i > 0 ? 1 : 0} {...(row.actions !== undefined ? { flexWrap: 'wrap' as const } : {})}>
-        {els.Svg !== undefined ? <Text color={HEADING} bold>{row.text}</Text> : <Text dimColor bold>{row.text}</Text>}
-        {row.count !== undefined && <Text dimColor>{String(row.count)}</Text>}
-        {row.note !== undefined && <Text dimColor>{row.note}</Text>}
-        {(row.fold !== undefined || row.actions !== undefined) && <Box flexGrow={1} />}
-        {(row.actions ?? []).map((b) => <Button key={b.key} plain label={b.label} onPress={press($, b.action)} />)}
-        {row.fold !== undefined && <Button key={row.fold.key} plain label={row.fold.label} onPress={press($, row.fold.action)} />}
-      </Box>
-    )
+    case 'section': {
+      // A long note under the words and presses, on a line of its own: never wrapped in between them.
+      const below = row.below === true && row.note !== undefined && row.note !== ''
+      const head = (
+        <Box key={below ? `${row.key}-head` : row.key} gap={1} {...(below ? {} : { marginTop: i > 0 ? 1 : 0 })} {...(row.actions !== undefined ? { flexWrap: 'wrap' as const } : {})}>
+          {els.Svg !== undefined ? <Text color={HEADING} bold>{row.text}</Text> : <Text dimColor bold>{row.text}</Text>}
+          {row.count !== undefined && <Text dimColor>{String(row.count)}</Text>}
+          {row.note !== undefined && !below && <Text dimColor>{row.note}</Text>}
+          {(row.fold !== undefined || row.actions !== undefined) && <Box flexGrow={1} />}
+          {(row.actions ?? []).map((b) => <Button key={b.key} plain label={b.label} onPress={press($, b.action)} />)}
+          {row.fold !== undefined && <Button key={row.fold.key} plain label={row.fold.label} onPress={press($, row.fold.action)} />}
+        </Box>
+      )
+      return below
+        ? <Box key={row.key} flexDirection="column" marginTop={i > 0 ? 1 : 0}>{head}<Text dimColor wrap="wrap">{row.note}</Text></Box>
+        : head
+    }
     case 'card': return (
       <Box key={row.key} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
         <Box gap={1}>
@@ -2418,7 +2425,9 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
       </Box>
     )
     case 'rule': return hairline(els, row.key)
-    case 'text': return <Text key={`r${i}`} {...toneProps(row.tone)}>{row.text}</Text>
+    case 'text': return row.indent !== undefined && row.indent > 0
+      ? <Box key={`r${i}`} paddingX={row.indent}><Text {...toneProps(row.tone)}>{row.text}</Text></Box>
+      : <Text key={`r${i}`} {...toneProps(row.tone)}>{row.text}</Text>
     case 'button': return <Button key={row.key} plain label={row.label} {...(row.primary ? { variant: 'primary' } : {})} onPress={press($, row.action)} />
     case 'buttons': return (
       <Box key={`b${i}`} gap={2}>
@@ -2481,17 +2490,30 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
         {(row.rules ?? []).map((r, n) => <Text key={`rule${n}`} {...toneProps('warning')} wrap="truncate-end">{`🔒 ${r}`}</Text>)}
       </Box>
     )
-    // A practice on a step: what to do, its tag, where it came from; its layer and × the person's presses.
-    case 'practice': return (
-      <Box key={row.key} gap={1} paddingX={2}>
-        {row.tag !== '' && <Text {...toneProps(row.fresh ? 'warning' : 'dim')}>{row.tag}</Text>}
-        <Box flexShrink={1} minWidth={0}><Text wrap="truncate-end">{row.text}</Text></Box>
-        {row.why !== '' && <Box flexShrink={1} minWidth={0}><Text dimColor wrap="truncate-end">{`— ${row.why}`}</Text></Box>}
-        <Box flexGrow={1} />
-        {row.count !== undefined && <Box flexShrink={0}><Text {...toneProps(row.count.held ? 'success' : 'warning')}>{row.count.text}</Text></Box>}
-        {row.actions.map((b) => <Button key={b.key} plain dimColor label={b.label} onPress={press($, b.action)} />)}
-      </Box>
-    )
+    // A practice on a step, in two lines. Its tag and what to do in one Text, wrapped and never cut, how its themes were
+    // corrected at the end; under it, dim, where it came from and the person's presses: × last, its place kept empty
+    // on a row without one, so the presses stand in the same columns row under row. As many elements as one line drew.
+    case 'practice': {
+      const del = row.actions.find((b) => b.action.op === 'practice-delete')
+      const words = <Text wrap="wrap">{row.tag !== '' && <Text {...toneProps(row.fresh ? 'warning' : 'dim')}>{`${row.tag} `}</Text>}{row.text}</Text>
+      return (
+        <Box key={row.key} flexDirection="column" paddingX={2}>
+          {row.count === undefined ? words : (
+            <Box gap={1}>
+              <Box flexGrow={1} flexShrink={1} minWidth={0}>{words}</Box>
+              <Box flexShrink={0}><Text {...toneProps(row.count.held ? 'success' : 'warning')}>{row.count.text}</Text></Box>
+            </Box>
+          )}
+          {(row.why !== '' || row.actions.length > 0) && (
+            <Box gap={1}>
+              <Box flexGrow={1} flexShrink={1} minWidth={0}>{row.why !== '' && <Text dimColor wrap="truncate-end">{row.why}</Text>}</Box>
+              {row.actions.filter((b) => b !== del).map((b) => <Button key={b.key} plain dimColor label={b.label} onPress={press($, b.action)} />)}
+              {row.actions.length > 0 && <Box width={2} flexShrink={0}>{del !== undefined && <Button key={del.key} plain dimColor label={del.label} onPress={press($, del.action)} />}</Box>}
+            </Box>
+          )}
+        </Box>
+      )
+    }
     case 'tool': return (
       <Box key={row.key} gap={2} paddingX={1}>
         <Box {...(toolWidth !== undefined && toolWidth > 0 ? { width: toolWidth } : {})} flexShrink={0} overflow="hidden">
