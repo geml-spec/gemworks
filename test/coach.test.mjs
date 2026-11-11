@@ -187,15 +187,15 @@ test("the manual's practices: listed on the flow opened, each on its step, its t
   assert.deepEqual(rows.filter((r) => r.kind === "practice").map((r) => r.text), ["用真实内容"]);
   const bug = manualRows(items, flows, practices, t, { focus: null, expanded: ["bugfix", "*"], now: "2026-10-26T00:00:00Z" });
   const listed = bug.filter((r) => r.kind === "practice");
-  // The presses in one order, × last: a row without it keeps its place empty, and the presses line up.
+  // The presses said as what they do, in one order, 删除 last: they start at the left, and one missing at the end moves none.
   assert.deepEqual(listed.map((r) => [r.text, r.tag, r.actions.map((b) => b.label)]), [
-    ["修之前先复现", "从记忆搬来", ["个人", "分享给团队", "×"]], ["同一现象再现，先回头读引擎契约", "新学到", ["项目", "改成规定", "分享给团队", "×"]], ["过四道门", "团队", []], ["回复用中文", "从记忆搬来", ["个人", "写进 CLAUDE.md", "×"]],
+    ["修之前先复现", "从记忆搬来", ["改成项目", "分享给团队", "删除"]], ["同一现象再现，先回头读引擎契约", "新学到", ["改成个人", "改成规定", "分享给团队", "删除"]], ["过四道门", "团队", []], ["回复用中文", "从记忆搬来", ["改成项目", "写进 CLAUDE.md", "删除"]],
   ]);
   assert.equal(listed[2].why, "10-22 页签连死四次 · CLAUDE.md#build-and-check");
   assert.deepEqual(listed[0].actions[0].action, { op: "practice-layer", id: "p2", layer: "project" });
   assert.deepEqual(listed[1].actions[3].action, { op: "practice-delete", id: "p1" });
-  // A flow's heading keeps its note on a line of its own; 这类活都要： stands where the steps' names do.
-  assert.equal(bug.find((r) => r.key === "manual-bugfix").below, true);
+  // A flow's heading keeps its note on a line of its own, its presses drawn as presses; 这类活都要： stands where the steps' names do.
+  assert.deepEqual([bug.find((r) => r.key === "manual-bugfix").below, bug.find((r) => r.key === "manual-bugfix").accent, bug.find((r) => r.key === "manual-anywhere").accent], [true, true, true]);
   assert.deepEqual(bug.find((r) => r.kind === "text" && r.text === "这类活都要："), { kind: "text", text: "这类活都要：", tone: "dim", indent: 1 });
   const own = readCoachFlow("bugfix", readFileSync(new URL("../coach/bugfix.geml", import.meta.url), "utf8").replace('"fix":', '"gates": { "title": "过三道门", "description": "三项都过" }, "fix":').replace(/"reproduce": \{[^}]*\},/, ""), flow("bugfix"));
   assert.deepEqual(own.diff, { added: ["过三道门"], removed: ["复现"] });

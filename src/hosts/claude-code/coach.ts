@@ -259,13 +259,14 @@ function practiceRow(p: Practice, t: T, now: string | undefined, count?: Practic
   const fresh = now !== undefined && isNew(p, now);
   const tag = p.layer === "team" ? t("团队") : fresh ? t("新学到") : p.by === "memory" ? t("从记忆搬来") : "";
   const actions: Pressable[] = p.layer === "team" ? [] : [
-    { key: `practice-layer-${p.id}`, label: p.layer === "personal" ? t("个人") : t("项目"), action: { op: "practice-layer", id: p.id, layer: p.layer === "personal" ? "project" : "personal" } },
+    // Said as what a press does: a layer's name alone read as a fact about the practice, not as a press.
+    { key: `practice-layer-${p.id}`, label: p.layer === "personal" ? t("改成项目") : t("改成个人"), action: { op: "practice-layer", id: p.id, layer: p.layer === "personal" ? "project" : "personal" } },
     // Only a practice on a step can hold calls until that step is met: those get 改成规定.
     ...(p.flow !== "*" && p.step !== "*" ? [{ key: `practice-rule-${p.id}`, label: t("改成规定"), action: { op: "practice-rule" as const, id: p.id } }] : []),
     // Shared: a step's practice into the team's file in the repository; one for every time, into CLAUDE.md (read every turn), shown to the person first.
     p.flow !== "*" ? { key: `practice-share-${p.id}`, label: t("分享给团队"), action: { op: "practice-share" as const, id: p.id } } : { key: `practice-claude-${p.id}`, label: t("写进 CLAUDE.md"), action: { op: "practice-claude-md" as const, id: p.id } },
-    // Last: a row without it keeps its place empty (hooks/register.tsx), so the presses before it line up.
-    ...(fresh || p.by === "memory" ? [{ key: `practice-delete-${p.id}`, label: "×", action: { op: "practice-delete" as const, id: p.id } }] : []),
+    // Last: the presses start at the row's left edge, so one missing at the end moves none of the others.
+    ...(fresh || p.by === "memory" ? [{ key: `practice-delete-${p.id}`, label: t("删除"), action: { op: "practice-delete" as const, id: p.id } }] : []),
   ];
   return {
     kind: "practice", key: `practice-${p.id}`, text: p.text, why: [p.why, p.ref ?? ""].filter((x) => x !== "").join(" · "), tag, fresh, actions,
@@ -356,7 +357,7 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
       kind: "section", key: `manual-${f.name}`, text: f.title, note: [n > 0 ? t("{0} 件在走", n) : "", diff !== "" ? t("本项目改过：{0}", diff) : ""].filter((x) => x !== "").join(" · "),
       actions: [{ key: `flow-share-${f.name}`, label: t("分享给团队"), action: { op: "flow-share", flow: f.name } }, { key: `flow-export-${f.name}`, label: t("导出"), action: { op: "flow-export", flow: f.name } }],
       ...(mine.length > 0 ? { fold: { key: `manual-fold-${f.name}`, label: listed ? t("收起做法") : t("做法 {0} 条", mine.length), action: { op: "manual-open", flow: f.name, open: !listed } } } : {}),
-      below: true,
+      below: true, accent: true,
     });
     if (listed) {
       const wide = mine.filter((p) => p.step === "*");
@@ -392,7 +393,7 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
   const anywhere = live.filter((p) => p.flow === "*");
   if (anywhere.length > 0) {
     const listed = expanded.includes("*");
-    rows.push({ kind: "section", key: "manual-anywhere", text: t("所有时候的做法"), count: anywhere.length, fold: { key: "manual-fold-anywhere", label: listed ? t("收起") : t("展开"), action: { op: "manual-open", flow: "*", open: !listed } } });
+    rows.push({ kind: "section", key: "manual-anywhere", text: t("所有时候的做法"), count: anywhere.length, fold: { key: "manual-fold-anywhere", label: listed ? t("收起") : t("展开"), action: { op: "manual-open", flow: "*", open: !listed } }, accent: true });
     if (listed) rows.push(...anywhere.map((p) => practiceRow(p, t, o.now, o.ledger?.counts[p.id])));
   }
   // A reference imported: an exported flow's file, or another project's .gemworks/ — only to compare and take steps back from.

@@ -364,10 +364,12 @@ const spanOf = (el: Drawn | string, key: string, path: Drawn[] = []): Drawn | un
 const shown = (el: Drawn | string, out: string[] = []): string[] => {
   if (typeof el === 'string') { if (el.trim() !== '') out.push(el.trim()); return out }
   if (el.props?.display === 'none') return out
-  // A button with only its label, drawn as the label alone or (one size down, budget.ts stepDown) as one Text of it.
+  // A button with only its label, drawn as the label alone or (one size down, budget.ts stepDown) as one Text of it,
+  // plain or in the accent colour (a press drawn as words, register.tsx wordPress).
   const only = el.children ?? []
   const first = only[0]
-  const sized = first !== undefined && typeof first !== 'string' && first.type === 'Text' && JSON.stringify(first.props) === JSON.stringify({ size: 'footnote' })
+  const plainText = (p: unknown): boolean => [JSON.stringify({ size: 'footnote' }), JSON.stringify({ color: 'suggestion', size: 'footnote' })].includes(JSON.stringify(p))
+  const sized = first !== undefined && typeof first !== 'string' && first.type === 'Text' && plainText(first.props)
   const labelOnly = only.length === 0 || (only.length === 1 && sized && typeof first !== 'string' && (first.children ?? []).length === 1 && first.children?.[0] === el.props?.label)
   if (el.type === 'Button' && labelOnly) { out.push(`[${String(el.props?.label)}]`); return out }
   for (const c of el.children ?? []) shown(c, out)
@@ -987,19 +989,28 @@ test('新学到 n 条 on the band is a press: the flow tab opens with the flows 
   const words = shown((await pane.drawn()) as unknown as Drawn).join(' ')
   expect(words, 'on the flow tab, its flow unfolded: the practice listed under its step').toContain('修之前先读引擎契约')
   expect(words).toContain('新学到')
-  // A practice in two lines: its words whole on the first, wrapped and never cut; where it came from and the presses
-  // under them, × last, its place kept empty on a row with none, so the presses stand in the same columns.
+  // A practice in two lines: what it says on the first (its words and, dim, where it came from), wrapped and never
+  // cut; its presses alone on the second, in the accent colour, from the left in one order, 删除 last.
   const tree = (await pane.drawn()) as unknown as Drawn
   const lines = (id: string): Drawn[] => ((findKey(tree, `practice-${id}`)?.children ?? []) as Drawn[])
   const presses = (el: Drawn | string): string[] => typeof el === 'string' ? [] : el.type === 'Button' ? [String(keyOf(el))] : (el.children ?? []).flatMap(presses)
-  expect(lines('p2').map((l) => shown(l).join(' '))).toEqual(['一版只试一个猜测，几个猜测混在一起就不知道是哪个修好的', '10-22 页签连死四次 [项目] [改成规定] [分享给团队]'])
+  expect(lines('p2').map((l) => shown(l).join(' '))).toEqual(['一版只试一个猜测，几个猜测混在一起就不知道是哪个修好的 · 10-22 页签连死四次', '[改成个人] [改成规定] [分享给团队]'])
+  expect(lines('p1').map((l) => shown(l).join(' '))).toEqual(['新学到 修之前先读引擎契约', '[改成项目] [改成规定] [分享给团队] [删除]'])
+  expect(presses(lines('p1')[0] as Drawn), 'nothing on the first line is a press').toEqual([])
   expect(presses(lines('p1')[1] as Drawn)).toEqual(['practice-layer-p1', 'practice-rule-p1', 'practice-share-p1', 'practice-delete-p1'])
-  const lastCell = (id: string): Drawn => ((lines(id)[1] as Drawn).children ?? []).at(-1) as Drawn
-  expect([lastCell('p1').props?.width, lastCell('p2').props?.width, (lastCell('p2').children ?? []).length]).toEqual([2, 2, 0])
-  // As many elements as the one line drew (its box, the words in theirs, where it came from in its, a spacer, three
-  // presses each with its label): now its box, the words, the second line, where it came from in its box, the three
-  // presses, ×'s place. The pane's budget lists as many practices as before.
-  expect(nodesOf(findKey(tree, 'practice-p2') as Drawn)).toBe(12)
+  // Every press on the tab's practices and headings is drawn in the accent colour; no word that is not one is.
+  const colours = (el: Drawn | string, inPress = false, out: [boolean, unknown][] = []): [boolean, unknown][] => {
+    if (typeof el === 'string') return out
+    if (el.type === 'Text') out.push([inPress, el.props?.color])
+    for (const c of el.children ?? []) colours(c, inPress || el.type === 'Button', out)
+    return out
+  }
+  const drawn = [...colours(findKey(tree, 'practice-p1') as Drawn), ...colours(findKey(tree, 'practice-p2') as Drawn), ...colours(findKey(tree, 'manual-bugfix') as Drawn)]
+  expect(drawn.filter(([p]) => p).every(([, c]) => c === 'suggestion'), 'presses in the accent colour').toBe(true)
+  expect(drawn.filter(([p]) => !p).some(([, c]) => c === 'suggestion'), 'words not in it').toBe(false)
+  // Fewer elements than the one line drew (its box, the words in theirs, where it came from in its, a spacer, three
+  // presses each with its label: twelve): its box, the words with where it came from, the presses' line and the three.
+  expect(nodesOf(findKey(tree, 'practice-p2') as Drawn)).toBe(10)
   await pane.unmount()
 })
 

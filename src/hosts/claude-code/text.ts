@@ -552,6 +552,8 @@ export const WORDS: Readonly<Record<string, Entry>> = {
   "读不出参考：{0}": { en: "Cannot read a reference from {0}", ja: "参考を読めません：{0}" },
   "已导入 {0} 份参考，它有的步骤在流程页上提议": { en: "Imported {0} references; their steps are proposed on the flow tab", ja: "参考を {0} 件取り込みました。そのステップはフロータブで提案されます" },
   "改成规定": { en: "Make it a rule", ja: "規則にする" },
+  "改成个人": { en: "Make it mine", ja: "個人にする" },
+  "改成项目": { en: "Make it the project's", ja: "プロジェクトにする" },
   "提议": { en: "Proposal", ja: "提案" },
   // --- the ledger of corrections, on the flow tab ---
   "纠正 {0} → {1}": { en: "corrected {0} → {1}", ja: "訂正 {0} → {1}" },

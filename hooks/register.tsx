@@ -2142,6 +2142,12 @@ function press($: EngineInterface, action: BoardAction): (e: { surface: string }
 type Els = { Box: any; Text: any; Button: any; Link?: any; Input?: any; Select?: any; Svg?: any; Markdown?: any }
 
 /** A link that opens `href`; its words and the address where the surface draws no links. */
+/** A press drawn as words in the accent colour, where the words beside it are not presses: it reads as one at a glance. */
+function wordPress($: EngineInterface, els: Els, b: Pressable): unknown {
+  const { Button, Text } = els
+  return <Button key={b.key} plain label={b.label} onPress={press($, b.action)}><Text color="suggestion">{b.label}</Text></Button>
+}
+
 function drawLink(els: Els, key: string, href: string, label: string): unknown {
   const { Link, Text } = els
   return Link !== undefined ? <Link key={key} href={href} label={label} /> : <Text key={key} dimColor>{label}: {href}</Text>
@@ -2309,8 +2315,8 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
           {row.count !== undefined && <Text dimColor>{String(row.count)}</Text>}
           {row.note !== undefined && !below && <Text dimColor>{row.note}</Text>}
           {(row.fold !== undefined || row.actions !== undefined) && <Box flexGrow={1} />}
-          {(row.actions ?? []).map((b) => <Button key={b.key} plain label={b.label} onPress={press($, b.action)} />)}
-          {row.fold !== undefined && <Button key={row.fold.key} plain label={row.fold.label} onPress={press($, row.fold.action)} />}
+          {(row.actions ?? []).map((b) => row.accent === true ? wordPress($, els, b) : <Button key={b.key} plain label={b.label} onPress={press($, b.action)} />)}
+          {row.fold !== undefined && (row.accent === true ? wordPress($, els, row.fold) : <Button key={row.fold.key} plain label={row.fold.label} onPress={press($, row.fold.action)} />)}
         </Box>
       )
       return below
@@ -2490,12 +2496,17 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
         {(row.rules ?? []).map((r, n) => <Text key={`rule${n}`} {...toneProps('warning')} wrap="truncate-end">{`🔒 ${r}`}</Text>)}
       </Box>
     )
-    // A practice on a step, in two lines. Its tag and what to do in one Text, wrapped and never cut, how its themes were
-    // corrected at the end; under it, dim, where it came from and the person's presses: × last, its place kept empty
-    // on a row without one, so the presses stand in the same columns row under row. As many elements as one line drew.
+    // A practice on a step: what it says on its first line, the presses on their own line under it. Its tag, what to
+    // do and where it came from (dim) in one Text, wrapped and never cut, how its themes were corrected at the end; then
+    // the presses in the accent colour, from the left edge in one order (删除 last), so they line up row under row.
     case 'practice': {
-      const del = row.actions.find((b) => b.action.op === 'practice-delete')
-      const words = <Text wrap="wrap">{row.tag !== '' && <Text {...toneProps(row.fresh ? 'warning' : 'dim')}>{`${row.tag} `}</Text>}{row.text}</Text>
+      const words = (
+        <Text wrap="wrap">
+          {row.tag !== '' && <Text {...toneProps(row.fresh ? 'warning' : 'dim')}>{`${row.tag} `}</Text>}
+          {row.text}
+          {row.why !== '' && <Text dimColor>{` · ${row.why}`}</Text>}
+        </Text>
+      )
       return (
         <Box key={row.key} flexDirection="column" paddingX={2}>
           {row.count === undefined ? words : (
@@ -2504,13 +2515,7 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
               <Box flexShrink={0}><Text {...toneProps(row.count.held ? 'success' : 'warning')}>{row.count.text}</Text></Box>
             </Box>
           )}
-          {(row.why !== '' || row.actions.length > 0) && (
-            <Box gap={1}>
-              <Box flexGrow={1} flexShrink={1} minWidth={0}>{row.why !== '' && <Text dimColor wrap="truncate-end">{row.why}</Text>}</Box>
-              {row.actions.filter((b) => b !== del).map((b) => <Button key={b.key} plain dimColor label={b.label} onPress={press($, b.action)} />)}
-              {row.actions.length > 0 && <Box width={2} flexShrink={0}>{del !== undefined && <Button key={del.key} plain dimColor label={del.label} onPress={press($, del.action)} />}</Box>}
-            </Box>
-          )}
+          {row.actions.length > 0 && <Box gap={2}>{row.actions.map((b) => wordPress($, els, b))}</Box>}
         </Box>
       )
     }

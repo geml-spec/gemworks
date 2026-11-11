@@ -81,8 +81,9 @@ export type BoardRow =
   /**
    * A group's heading: its words, how many it holds when that is worth saying, and a press that lists or folds it.
    * `below`: the note on a line of its own under the words and presses, so a long note never pushes them apart.
+   * `accent`: its presses drawn in the accent colour, as on the flow tab, where every press is so and no word is.
    */
-  | { kind: "section"; key: string; text: string; count?: number; fold?: Pressable; note?: string; actions?: Pressable[]; below?: true }
+  | { kind: "section"; key: string; text: string; count?: number; fold?: Pressable; note?: string; actions?: Pressable[]; below?: true; accent?: true }
   /**
    * One thing waiting on the person (the work items tab's top group): the icon
    * for what it asks, its verb and name, a tag (what the work made, or the
@@ -124,7 +125,7 @@ export type BoardRow =
   | { kind: "step"; key: string; title: string; need: string; judge: string; judgeKind: Judge; prevents: string; here: boolean; final: boolean; rules?: string[] }
   /**
    * A practice on a step: what to do, where it came from, its tag (新学到, 从记忆搬来, 团队), the presses on it in a
-   * fixed order (its layer, 改成规定, sharing, × last), so they stand in the same columns row under row.
+   * fixed order (its layer, 改成规定, sharing, 删除 last), so they stand in the same columns row under row.
    */
   /** `count`: the corrections of its themes before it was written and since (纠正 2 → 0), green while none came since, amber once one did. */
   | { kind: "practice"; key: string; text: string; why: string; tag: string; fresh: boolean; actions: Pressable[]; count?: { text: string; held: boolean } };
