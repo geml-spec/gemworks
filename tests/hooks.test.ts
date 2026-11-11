@@ -972,13 +972,14 @@ test('新学到 n 条 on the band is a press: the flow tab opens with the flows 
   w.practices = { list: [
     { id: 'p1', flow: 'bugfix', step: 'fix', text: '修之前先读引擎契约', why: '', at: new Date().toISOString(), by: 'model', layer: 'personal' },
     { id: 'p2', flow: 'bugfix', step: 'fix', text: '一版只试一个猜测，几个猜测混在一起就不知道是哪个修好的', why: '10-22 页签连死四次', at: '2026-10-01T00:00:00.000Z', by: 'person', layer: 'project' },
+    { id: 'p3', flow: '*', step: '*', text: '长时间跑的命令给每条命令设超时', why: '11-01 卡了十多分钟', at: new Date().toISOString(), by: 'model', layer: 'personal' },
   ], memoryMoved: true }
   const clock = await start($, on)
   // The light flows are read behind the start.
   await clock.settle()
   const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
   const learned = await band.find({ type: 'Button', key: 'band-learned' })
-  expect(learned?.props?.label).toBe('新学到 1 条')
+  expect(learned?.props?.label).toBe('新学到 2 条')
   const opened = w.opened
   await band.press({ key: 'band-learned' })
   expect(w.opened, 'the press opens the board').toBe(opened + 1)
@@ -998,6 +999,12 @@ test('新学到 n 条 on the band is a press: the flow tab opens with the flows 
   expect(shown(findKey(tree, 'practice-p1') as Drawn).join(' ')).toBe('新学到： 修之前先读引擎契约 [改成规定] [×] [⋯]')
   const buttons = (el: Drawn | string): Drawn[] => typeof el === 'string' ? [] : el.type === 'Button' ? [el] : (el.children ?? []).flatMap(buttons)
   expect(buttons(findKey(tree, 'practice-p1') as Drawn).map((b) => [keyOf(b), b.props?.plain]), 'buttons, not words').toEqual([['practice-rule-p1', undefined], ['practice-delete-p1', undefined], ['manual-menu-practice:p1', undefined]])
+  // A practice for every time, under 所有时候的做法: a block of its own with the bar, drawn as a step's practices are.
+  const block = findKey(tree, 'practice-p3-block') as Drawn
+  const top = (block.children ?? [])[0] as Drawn
+  expect([top.props?.position, ((top.children ?? [])[0] as Drawn).type], 'the bar, laid over the block').toEqual(['absolute', 'Svg'])
+  expect(holds(block, 'practice-delete-p3')).toBe(true)
+  expect(shown(findKey(tree, 'practice-p3') as Drawn).join(' ')).toBe('新学到： 长时间跑的命令给每条命令设超时 — 11-01 卡了十多分钟 [×] [⋯]')
   // Fewer elements than the row of 0.3.13 (ten): its box, the words in theirs with the tag and where it came from, two presses.
   expect(nodesOf(findKey(tree, 'practice-p2') as Drawn)).toBe(9)
   // ⋯ opens the rest under the practice, inside the step's block: its layer, sharing, 取消.

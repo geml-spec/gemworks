@@ -88,6 +88,25 @@ export function drawPractice($: EngineInterface, els: Els, row: Row<'practice'>,
 }
 
 /**
+ * Practices that stand under no step (所有时候的做法) as a block of their own, drawn as a step's practices are: a bar
+ * down its left edge where the surface draws pictures, the same inset, each practice and its menu inside.
+ */
+export function drawPracticeBlock($: EngineInterface, els: Els, key: string, inner: readonly BoardRow[], draw: (r: BoardRow, n: number) => unknown): unknown {
+  const { Box, Svg } = els
+  const pictures = Svg !== undefined
+  return (
+    <Box key={`${key}-block`} flexDirection="column" paddingLeft={pictures ? 2 : 1} paddingRight={1} {...(pictures ? { marginTop: 'xs', paddingY: 'xs' } : {})}>
+      {pictures && (
+        <Box key={`${key}-bar`} position="absolute" top={0} bottom={0} left={0} overflow="hidden">
+          <Svg source={BAR} alt="│" width={3} height={2000} />
+        </Box>
+      )}
+      {inner.map((x, n) => (x.kind === 'practice' ? drawPractice($, els, x, 0) : draw(x, n)))}
+    </Box>
+  )
+}
+
+/**
  * A step as a block: its title, the requirement to leave it and who judges it, what it prevents, the rules on it, then
  * its own rows (its practices, a practice's menu) and the press that lists its practices on a flow folded. Where the
  * surface draws pictures, a bar down its left edge (dashed on the last step) in a box laid over the block's height,
