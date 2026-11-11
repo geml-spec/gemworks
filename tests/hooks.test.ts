@@ -364,12 +364,10 @@ const spanOf = (el: Drawn | string, key: string, path: Drawn[] = []): Drawn | un
 const shown = (el: Drawn | string, out: string[] = []): string[] => {
   if (typeof el === 'string') { if (el.trim() !== '') out.push(el.trim()); return out }
   if (el.props?.display === 'none') return out
-  // A button with only its label, drawn as the label alone or (one size down, budget.ts stepDown) as one Text of it,
-  // plain or in the accent colour (a press drawn as words, register.tsx wordPress).
+  // A button with only its label, drawn as the label alone or (one size down, budget.ts stepDown) as one Text of it.
   const only = el.children ?? []
   const first = only[0]
-  const plainText = (p: unknown): boolean => [JSON.stringify({ size: 'footnote' }), JSON.stringify({ color: 'suggestion', size: 'footnote' })].includes(JSON.stringify(p))
-  const sized = first !== undefined && typeof first !== 'string' && first.type === 'Text' && plainText(first.props)
+  const sized = first !== undefined && typeof first !== 'string' && first.type === 'Text' && JSON.stringify(first.props) === JSON.stringify({ size: 'footnote' })
   const labelOnly = only.length === 0 || (only.length === 1 && sized && typeof first !== 'string' && (first.children ?? []).length === 1 && first.children?.[0] === el.props?.label)
   if (el.type === 'Button' && labelOnly) { out.push(`[${String(el.props?.label)}]`); return out }
   for (const c of el.children ?? []) shown(c, out)
@@ -989,29 +987,32 @@ test('新学到 n 条 on the band is a press: the flow tab opens with the flows 
   const words = shown((await pane.drawn()) as unknown as Drawn).join(' ')
   expect(words, 'on the flow tab, its flow unfolded: the practice listed under its step').toContain('修之前先读引擎契约')
   expect(words).toContain('新学到')
-  // A practice in two lines: what it says on the first (its words and, dim, where it came from), wrapped and never
-  // cut; its presses alone on the second, in the accent colour, from the left in one order, 删除 last.
-  const tree = (await pane.drawn()) as unknown as Drawn
-  const lines = (id: string): Drawn[] => ((findKey(tree, `practice-${id}`)?.children ?? []) as Drawn[])
-  const presses = (el: Drawn | string): string[] => typeof el === 'string' ? [] : el.type === 'Button' ? [String(keyOf(el))] : (el.children ?? []).flatMap(presses)
-  expect(lines('p2').map((l) => shown(l).join(' '))).toEqual(['一版只试一个猜测，几个猜测混在一起就不知道是哪个修好的 · 10-22 页签连死四次', '[改成个人] [改成规定] [分享给团队]'])
-  expect(lines('p1').map((l) => shown(l).join(' '))).toEqual(['新学到 修之前先读引擎契约', '[改成项目] [改成规定] [分享给团队] [删除]'])
-  expect(presses(lines('p1')[0] as Drawn), 'nothing on the first line is a press').toEqual([])
-  expect(presses(lines('p1')[1] as Drawn)).toEqual(['practice-layer-p1', 'practice-rule-p1', 'practice-share-p1', 'practice-delete-p1'])
-  // Every press on the tab's practices and headings is drawn in the accent colour; no word that is not one is.
-  const colours = (el: Drawn | string, inPress = false, out: [boolean, unknown][] = []): [boolean, unknown][] => {
-    if (typeof el === 'string') return out
-    if (el.type === 'Text') out.push([inPress, el.props?.color])
-    for (const c of el.children ?? []) colours(c, inPress || el.type === 'Button', out)
-    return out
-  }
-  const drawn = [...colours(findKey(tree, 'practice-p1') as Drawn), ...colours(findKey(tree, 'practice-p2') as Drawn), ...colours(findKey(tree, 'manual-bugfix') as Drawn)]
-  expect(drawn.filter(([p]) => p).every(([, c]) => c === 'suggestion'), 'presses in the accent colour').toBe(true)
-  expect(drawn.filter(([p]) => !p).some(([, c]) => c === 'suggestion'), 'words not in it').toBe(false)
-  // Fewer elements than the one line drew (its box, the words in theirs, where it came from in its, a spacer, three
-  // presses each with its label: twelve): its box, the words with where it came from, the presses' line and the three.
-  expect(nodesOf(findKey(tree, 'practice-p2') as Drawn)).toBe(10)
+  // As the design has it: a step is a block with a bar down its left edge and who judges it as a chip; its practices
+  // inside it, each its tag, its words and (dim) where it came from, with 改成规定, × and ⋯ beside them as buttons.
+  let tree = (await pane.drawn()) as unknown as Drawn
+  const fix = findKey(tree, 'step-bugfix-fix') as Drawn
+  const first = (fix.children ?? [])[0] as Drawn
+  expect([first.props?.position, ((first.children ?? [])[0] as Drawn).type], 'the bar, laid over the block').toEqual(['absolute', 'Svg'])
+  expect(holds(fix, 'practice-rule-p1') && holds(fix, 'practice-rule-p2'), 'its practices in its block').toBe(true)
+  expect(shown(findKey(tree, 'practice-p2') as Drawn).join(' ')).toBe('做法： 一版只试一个猜测，几个猜测混在一起就不知道是哪个修好的 — 10-22 页签连死四次 [改成规定] [⋯]')
+  expect(shown(findKey(tree, 'practice-p1') as Drawn).join(' ')).toBe('新学到： 修之前先读引擎契约 [改成规定] [×] [⋯]')
+  const buttons = (el: Drawn | string): Drawn[] => typeof el === 'string' ? [] : el.type === 'Button' ? [el] : (el.children ?? []).flatMap(buttons)
+  expect(buttons(findKey(tree, 'practice-p1') as Drawn).map((b) => [keyOf(b), b.props?.plain]), 'buttons, not words').toEqual([['practice-rule-p1', undefined], ['practice-delete-p1', undefined], ['manual-menu-practice:p1', undefined]])
+  // Fewer elements than the row of 0.3.13 (ten): its box, the words in theirs with the tag and where it came from, two presses.
+  expect(nodesOf(findKey(tree, 'practice-p2') as Drawn)).toBe(9)
+  // ⋯ opens the rest under the practice, inside the step's block: its layer, sharing, 取消.
+  await pane.press({ key: 'manual-menu-practice:p2' })
   await pane.unmount()
+  const again = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+  tree = (await again.drawn()) as unknown as Drawn
+  const menu = findKey(tree, 'manual-menu-row-practice:p2') as Drawn
+  expect(buttons(menu).map((b) => keyOf(b))).toEqual(['practice-layer-p2', 'practice-share-p2', 'manual-menu-close-practice:p2'])
+  expect(holds(findKey(tree, 'step-bugfix-fix') as Drawn, 'practice-layer-p2')).toBe(true)
+  await again.press({ key: 'practice-layer-p2' })
+  await again.unmount()
+  const closed = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+  expect(findKey((await closed.drawn()) as unknown as Drawn, 'manual-menu-row-practice:p2'), 'an entry pressed closes the menu').toBeUndefined()
+  await closed.unmount()
 })
 
 test('the band offers the board whenever there is a workflow, nothing waiting or not; a press opens it', async ($, on) => {
@@ -1920,8 +1921,7 @@ test('the coach: the model reports the steps met with the work tool; the work it
   await pane.unmount()
   pane = await mount()
   expect(await words(), 'the manual: where it came from').toMatch(/从「导出跳过不留」过来 · 卡在「你确认」/)
-  expect(await words(), 'how many are on the way, on a line of its own under the heading and its presses').toMatch(/bugfix \[分享给团队\] \[导出\] 1 件在走/)
-  expect((findKey((await pane.drawn()) as unknown as Drawn, 'manual-bugfix')?.children ?? []).map((l) => shown(l).join(' '))).toEqual(['bugfix [分享给团队] [导出]', '1 件在走'])
+  expect(await words(), 'how many are on the way, after its name; its presses in the menu under ⋯').toMatch(/bugfix 1 件在走 \[⋯\]/)
   expect(await words(), 'each step, its requirement, who judges it').toMatch(/你确认 · 你按过说对 你/)
   await pane.unmount()
   // Where the surface draws no pictures, the step it stands at is marked.

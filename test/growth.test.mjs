@@ -90,7 +90,7 @@ test("the manual shows the proposals on their flow and a new kind of work on top
   const cards = rows.filter((r) => r.kind === "card").map((r) => [r.title, r.actions.map((b) => b.label)]);
   assert.deepEqual(cards, [["新的一类活「发版」：升版本", ["加上", "不用"]], ["在「验证」后面加一步「过三道门」", ["加上", "不用"]], ["「复现」最近 5 件里 4 件跳过了，删掉这一步吗？", ["删掉", "留着"]]]);
   assert.deepEqual(rows.find((r) => r.key === "step-bugfix-verify").rules, ["规定：三道门都过才同步 · 拦过 2 次"]);
-  assert.deepEqual(rows.find((r) => r.key === "practice-p1").actions.map((b) => [b.label, b.action]), [["项目", { op: "practice-layer", id: "p1", layer: "personal" }], ["改成规定", { op: "practice-rule", id: "p1" }], ["分享给团队", { op: "practice-share", id: "p1" }]]);
+  assert.deepEqual(rows.find((r) => r.key === "practice-p1").actions.map((b) => [b.label, b.action]), [["改成规定", { op: "practice-rule", id: "p1" }], ["⋯", { op: "manual-menu", key: "practice:p1" }]]);
 });
 
 test("a flow exported is one GEML file: its route reads back as the flow, its practices and rules ride along, the person's own stay home", async () => {
@@ -141,9 +141,13 @@ test("the manual offers to share and export each flow, to share a step's practic
   const { inputAction } = await import("../dist/hosts/claude-code/board.js");
   const practices = [{ id: "p1", flow: "bugfix", step: "fix", text: "先读契约", why: "", at: "x", by: "person", layer: "project" }, { id: "p2", flow: "*", step: "*", text: "回复用中文", why: "", at: "x", by: "person", layer: "personal" }];
   const rows = manualRows([item({})], flows, practices, t, { focus: null, expanded: ["bugfix", "*"] });
-  assert.deepEqual(rows.find((r) => r.key === "manual-bugfix").actions.map((b) => [b.label, b.action]), [["分享给团队", { op: "flow-share", flow: "bugfix" }], ["导出", { op: "flow-export", flow: "bugfix" }]]);
-  assert.deepEqual(rows.find((r) => r.key === "practice-p1").actions.map((b) => b.label), ["项目", "改成规定", "分享给团队"]);
-  assert.deepEqual(rows.find((r) => r.key === "practice-p2").actions.map((b) => [b.label, b.action.op]), [["个人", "practice-layer"], ["写进 CLAUDE.md", "practice-claude-md"]]);
+  // Each in a menu under a ⋯: the flow's on its heading, a practice's on its row.
+  const menu = (key, row) => { const r = manualRows([item({})], flows, practices, t, { focus: null, expanded: ["bugfix", "*"], menu: key }); return r[r.findIndex((x) => x.key === row) + 1].items.map((b) => [b.label, b.action.op]); };
+  assert.deepEqual(rows.find((r) => r.key === "manual-bugfix").actions.map((b) => b.label), ["⋯"]);
+  assert.deepEqual(menu("flow:bugfix", "manual-bugfix"), [["分享给团队", "flow-share"], ["导出", "flow-export"], ["收起做法", "manual-open"], ["取消", "manual-menu"]]);
+  assert.deepEqual(rows.find((r) => r.key === "practice-p1").actions.map((b) => b.label), ["改成规定", "⋯"]);
+  assert.deepEqual(menu("practice:p1", "practice-p1"), [["改成个人", "practice-layer"], ["分享给团队", "practice-share"], ["取消", "manual-menu"]]);
+  assert.deepEqual(menu("practice:p2", "practice-p2"), [["改成项目", "practice-layer"], ["写进 CLAUDE.md", "practice-claude-md"], ["取消", "manual-menu"]]);
   assert.equal(rows.at(-1).field, "import-reference");
   assert.deepEqual(inputAction("import-reference", "  ../other/.gemworks  "), { op: "reference-import", path: "../other/.gemworks" });
 });

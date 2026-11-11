@@ -49,8 +49,11 @@ export function tabs(t: T = ZH, ids: readonly BoardTab[] = TAB_IDS): { id: Board
 export type InputField = "add-tool" | "import-workflow" | "tool-search" | "new-use" | "memory-hook" | "import-reference";
 
 export type BoardRow =
-  /** `indent`: the cells it starts in by, a label over rows that are themselves indented (这类活都要：). */
-  | { kind: "text"; text: string; tone: Tone; indent?: number }
+  | { kind: "text"; text: string; tone: Tone }
+  /** Who judges a step, each word as a chip with what it means beside it (the flow tab's first line). */
+  | { kind: "judges"; lead: string; items: { judge: Judge; word: string; means: string }[] }
+  /** Words, then presses after them on the same line (没有在走的：优化 ▸). */
+  | { kind: "presses"; key: string; lead: string; items: Pressable[] }
   | { kind: "button"; key: string; label: string; action: BoardAction; primary?: boolean }
   /** Several buttons on one line. */
   | { kind: "buttons"; items: Pressable[]; end?: true }
@@ -80,10 +83,10 @@ export type BoardRow =
   | { kind: "flow"; key: string; ranks: FlowStateRow[][]; edges: FlowEdgeRow[]; svg: string }
   /**
    * A group's heading: its words, how many it holds when that is worth saying, and a press that lists or folds it.
-   * `below`: the note on a line of its own under the words and presses, so a long note never pushes them apart.
-   * `accent`: its presses drawn in the accent colour, as on the flow tab, where every press is so and no word is.
+   * `tucked`: its note runs on after the words, wrapped, and its presses show under the pointer where a surface has
+   * one (a flow's heading on the flow tab, as its design has it: the heading reads as a heading).
    */
-  | { kind: "section"; key: string; text: string; count?: number; fold?: Pressable; note?: string; actions?: Pressable[]; below?: true; accent?: true }
+  | { kind: "section"; key: string; text: string; count?: number; fold?: Pressable; note?: string; actions?: Pressable[]; tucked?: true }
   /**
    * One thing waiting on the person (the work items tab's top group): the icon
    * for what it asks, its verb and name, a tag (what the work made, or the
@@ -121,11 +124,15 @@ export type BoardRow =
   /** A work item on the way (coach.ts): its flow (`flow` the file name, `tag` its words), its name, its steps as cells, what it needs or what comes next, the presses that are the person's, and the arrow to its flow. */
   /** `made`: the press to what it made (产物 n ›, the 产物 tab with its own alone), beside the arrow; none when it made none. */
   | { kind: "work"; key: string; flow: string; tag: string; title: string; cells: { title: string; cell: Cell }[]; detail: string; actions: Pressable[]; go: Pressable; open?: Pressable; made?: Pressable }
-  /** A flow's step in the manual (coach.ts manualRows): its title, the requirement to leave it, who judges it (`judge` in words), what it prevents; `here` the step the focused item stands at. */
-  | { kind: "step"; key: string; title: string; need: string; judge: string; judgeKind: Judge; prevents: string; here: boolean; final: boolean; rules?: string[] }
   /**
-   * A practice on a step: what to do, where it came from, its tag (新学到, 从记忆搬来, 团队), the presses on it in a
-   * fixed order (its layer, 改成规定, sharing, 删除 last), so they stand in the same columns row under row.
+   * A flow's step in the manual (coach.ts manualRows): its title, the requirement to leave it, who judges it (`judge`
+   * in words), what it prevents; `here` the step the focused item stands at. The practice rows after it are its own,
+   * drawn in its block; `more`, on a flow whose practices are folded, the press that lists them (2 条做法 ▾).
+   */
+  | { kind: "step"; key: string; title: string; need: string; judge: string; judgeKind: Judge; prevents: string; here: boolean; final: boolean; rules?: string[]; more?: Pressable }
+  /**
+   * A practice on a step: what to do, where it came from, its tag (做法, 新学到, 从记忆搬来, 团队), the presses on it:
+   * × and 改成规定 beside its words, its layer and sharing under the pointer where a surface has one.
    */
   /** `count`: the corrections of its themes before it was written and since (纠正 2 → 0), green while none came since, amber once one did. */
   | { kind: "practice"; key: string; text: string; why: string; tag: string; fresh: boolean; actions: Pressable[]; count?: { text: string; held: boolean } };
@@ -306,7 +313,7 @@ export interface PaneInput {
   /** The state the flow tab shows below its picture, or null for the current one. */
   flowState: string | null;
   /** The coach (coach.ts): the work items the sessions reported, the light flows, and the item whose arrow was pressed. */
-  coach?: { items: readonly WorkItem[]; flows: readonly CoachFlow[]; focus: CoachFocus | null; asks?: readonly Asked[]; own?: string; open?: readonly WorkGroup[]; practices?: readonly Practice[]; expanded?: readonly string[] | null; unfolded?: string | null; sessions?: readonly SessionSummary[]; proposals?: readonly Proposal[]; rules?: readonly Rule[]; skipped?: readonly { flow: string; step: string; skipped: number }[]; gone?: readonly GoneOn[]; doing?: Doing | null; ledger?: ManualOptions["ledger"] };
+  coach?: { items: readonly WorkItem[]; flows: readonly CoachFlow[]; focus: CoachFocus | null; asks?: readonly Asked[]; own?: string; open?: readonly WorkGroup[]; practices?: readonly Practice[]; expanded?: readonly string[] | null; menu?: string | null; unfolded?: string | null; sessions?: readonly SessionSummary[]; proposals?: readonly Proposal[]; rules?: readonly Rule[]; skipped?: readonly { flow: string; step: string; skipped: number }[]; gone?: readonly GoneOn[]; doing?: Doing | null; ledger?: ManualOptions["ledger"] };
   /** Whether the flow tab lists the workflows to switch to; and those workflows, once read. */
   switching: boolean;
   workflows: { bundled: string[]; installed: string[] } | null;
@@ -374,7 +381,7 @@ export function paneRows(o: PaneInput): BoardRow[] {
     ? workRows(o.coach.items, o.coach.flows, t, { asks: o.coach.asks ?? [], ...(o.coach.own !== undefined ? { own: o.coach.own } : {}), ...(o.coach.open !== undefined ? { open: o.coach.open } : {}), ...(o.coach.unfolded !== undefined ? { unfolded: o.coach.unfolded } : {}), ...(o.coach.sessions !== undefined ? { sessions: o.coach.sessions } : {}), ...(o.coach.gone !== undefined ? { gone: o.coach.gone } : {}), ...(o.coach.doing !== undefined ? { doing: o.coach.doing } : {}), ...(o.madeAll != null ? { made: o.madeAll.entries } : {}), ...(o.now !== undefined ? { now: o.now } : {}) })
     : [];
   const coached = o.coach !== undefined && o.tab === "flow"
-    ? manualRows(o.coach.items, o.coach.flows, o.coach.practices ?? [], t, { focus: o.coach.focus, expanded: o.coach.expanded ?? null, ...(o.now !== undefined ? { now: o.now } : {}), ...(o.coach.proposals !== undefined ? { proposals: o.coach.proposals } : {}), ...(o.coach.rules !== undefined ? { rules: o.coach.rules } : {}), ...(o.coach.skipped !== undefined ? { skipped: o.coach.skipped } : {}), ...(o.coach.ledger !== undefined ? { ledger: o.coach.ledger } : {}) })
+    ? manualRows(o.coach.items, o.coach.flows, o.coach.practices ?? [], t, { focus: o.coach.focus, expanded: o.coach.expanded ?? null, menu: o.coach.menu ?? null, ...(o.now !== undefined ? { now: o.now } : {}), ...(o.coach.proposals !== undefined ? { proposals: o.coach.proposals } : {}), ...(o.coach.rules !== undefined ? { rules: o.coach.rules } : {}), ...(o.coach.skipped !== undefined ? { skipped: o.coach.skipped } : {}), ...(o.coach.ledger !== undefined ? { ledger: o.coach.ledger } : {}) })
     : [];
   if (o.tab === "items") return [...head, ...work, ...itemRows({ board: o.board, status, inbox: o.inbox, columns, t, now: o.now, doneOpen: o.doneOpen, droppedOpen: o.droppedOpen === true, dismissed: o.dismissed, suggestions, artifactMenu: o.artifactMenu ?? null, docsOpen: o.docsOpen === true }), ...wait];
   if (o.tab === "made") {

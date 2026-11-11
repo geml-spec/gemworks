@@ -88,6 +88,7 @@ import type { Judgement, JudgeOption } from '../dist/hosts/claude-code/judge.js'
 import { langOf, wordsFor } from '../dist/hosts/claude-code/text.js'
 import type { T } from '../dist/hosts/claude-code/text.js'
 import { act } from './act.tsx'
+import { drawHeading, drawJudges, drawPractice, drawPresses, drawStep } from './manual.tsx'
 
 const shellAtom = atom({ plugin: 'gemworks', key: 'shell' } as const, null as GemworksJson)
 const problemAtom = atom({ plugin: 'gemworks', key: 'problem' } as const, null as string | null)
@@ -233,6 +234,7 @@ const correctionsAtom = atom({ plugin: 'gemworks', key: 'corrections' } as const
 const memoryAskedAtom = atom({ plugin: 'gemworks', key: 'memoryAsked' } as const, false)
 /** The flows of the flow tab whose practices are listed (`*` those for every flow); null: the first flow's. */
 const manualExpandedAtom = atom({ plugin: 'gemworks', key: 'manualExpanded' } as const, null as string[] | null)
+const manualMenuAtom = atom({ plugin: 'gemworks', key: 'manualMenu' } as const, null as string | null)
 /** The work item unfolded under its row on the work items tab (its history). */
 const workUnfoldedAtom = atom({ plugin: 'gemworks', key: 'workUnfolded' } as const, null as string | null)
 /** The 好，做吧 the person pressed, on their way until their own turn ends (coach.ts GoneOn). */
@@ -2142,12 +2144,6 @@ function press($: EngineInterface, action: BoardAction): (e: { surface: string }
 type Els = { Box: any; Text: any; Button: any; Link?: any; Input?: any; Select?: any; Svg?: any; Markdown?: any }
 
 /** A link that opens `href`; its words and the address where the surface draws no links. */
-/** A press drawn as words in the accent colour, where the words beside it are not presses: it reads as one at a glance. */
-function wordPress($: EngineInterface, els: Els, b: Pressable): unknown {
-  const { Button, Text } = els
-  return <Button key={b.key} plain label={b.label} onPress={press($, b.action)}><Text color="suggestion">{b.label}</Text></Button>
-}
-
 function drawLink(els: Els, key: string, href: string, label: string): unknown {
   const { Link, Text } = els
   return Link !== undefined ? <Link key={key} href={href} label={label} /> : <Text key={key} dimColor>{label}: {href}</Text>
@@ -2269,6 +2265,13 @@ function drawRows($: EngineInterface, els: Els, rows: BoardRow[], columns: numbe
       )
       continue
     }
+    // A step of the flow tab's manual takes its practices and their menus into its block (manual.tsx).
+    if (r.kind === 'step') {
+      const inner: BoardRow[] = []
+      while (i + 1 < rows.length && ['practice', 'menu'].includes((rows[i + 1] as BoardRow).kind)) inner.push(rows[++i] as BoardRow)
+      out.push(drawStep($, els, r, inner, (x, n) => safeRow($, els, x, n)))
+      continue
+    }
     if (r.kind !== 'entry') { out.push(safeRow($, els, r, i)); continue }
     const run: Extract<BoardRow, { kind: 'entry' }>[] = []
     while (i < rows.length && (rows[i] as BoardRow).kind === 'entry') run.push(rows[i++] as Extract<BoardRow, { kind: 'entry' }>)
@@ -2306,23 +2309,18 @@ function drawTool($: EngineInterface, els: Els, row: Extract<BoardRow, { kind: '
 function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWidth?: number): unknown {
   const { Box, Text, Button, Link, Input } = els
   switch (row.kind) {
-    case 'section': {
-      // A long note under the words and presses, on a line of its own: never wrapped in between them.
-      const below = row.below === true && row.note !== undefined && row.note !== ''
-      const head = (
-        <Box key={below ? `${row.key}-head` : row.key} gap={1} {...(below ? {} : { marginTop: i > 0 ? 1 : 0 })} {...(row.actions !== undefined ? { flexWrap: 'wrap' as const } : {})}>
-          {els.Svg !== undefined ? <Text color={HEADING} bold>{row.text}</Text> : <Text dimColor bold>{row.text}</Text>}
-          {row.count !== undefined && <Text dimColor>{String(row.count)}</Text>}
-          {row.note !== undefined && !below && <Text dimColor>{row.note}</Text>}
-          {(row.fold !== undefined || row.actions !== undefined) && <Box flexGrow={1} />}
-          {(row.actions ?? []).map((b) => row.accent === true ? wordPress($, els, b) : <Button key={b.key} plain label={b.label} onPress={press($, b.action)} />)}
-          {row.fold !== undefined && (row.accent === true ? wordPress($, els, row.fold) : <Button key={row.fold.key} plain label={row.fold.label} onPress={press($, row.fold.action)} />)}
-        </Box>
-      )
-      return below
-        ? <Box key={row.key} flexDirection="column" marginTop={i > 0 ? 1 : 0}>{head}<Text dimColor wrap="wrap">{row.note}</Text></Box>
-        : head
-    }
+    case 'section': return row.tucked === true ? drawHeading($, els, row, i) : (
+      <Box key={row.key} gap={1} marginTop={i > 0 ? 1 : 0} {...(row.actions !== undefined ? { flexWrap: 'wrap' as const } : {})}>
+        {els.Svg !== undefined ? <Text color={HEADING} bold>{row.text}</Text> : <Text dimColor bold>{row.text}</Text>}
+        {row.count !== undefined && <Text dimColor>{String(row.count)}</Text>}
+        {row.note !== undefined && <Text dimColor>{row.note}</Text>}
+        {(row.fold !== undefined || row.actions !== undefined) && <Box flexGrow={1} />}
+        {(row.actions ?? []).map((b) => <Button key={b.key} plain label={b.label} onPress={press($, b.action)} />)}
+        {row.fold !== undefined && <Button key={row.fold.key} plain label={row.fold.label} onPress={press($, row.fold.action)} />}
+      </Box>
+    )
+    case 'judges': return drawJudges(els, row, i)
+    case 'presses': return drawPresses($, els, row)
     case 'card': return (
       <Box key={row.key} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
         <Box gap={1}>
@@ -2431,9 +2429,7 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
       </Box>
     )
     case 'rule': return hairline(els, row.key)
-    case 'text': return row.indent !== undefined && row.indent > 0
-      ? <Box key={`r${i}`} paddingX={row.indent}><Text {...toneProps(row.tone)}>{row.text}</Text></Box>
-      : <Text key={`r${i}`} {...toneProps(row.tone)}>{row.text}</Text>
+    case 'text': return <Text key={`r${i}`} {...toneProps(row.tone)}>{row.text}</Text>
     case 'button': return <Button key={row.key} plain label={row.label} {...(row.primary ? { variant: 'primary' } : {})} onPress={press($, row.action)} />
     case 'buttons': return (
       <Box key={`b${i}`} gap={2}>
@@ -2483,42 +2479,9 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
         )}
       </Box>
     )
-    // A flow's step in the manual: its title, the requirement to leave it, who judges it; under it what it prevents.
-    case 'step': return (
-      <Box key={row.key} flexDirection="column" paddingX={1} {...(row.here && els.Svg !== undefined ? { backgroundColor: SELECTED } : {})}>
-        <Box gap={1}>
-          <Text {...(row.final ? { dimColor: true } : row.here ? { bold: true } : {})}>{row.here && els.Svg === undefined ? `▸${row.title}` : row.title}</Text>
-          {row.need !== '' && <Box flexShrink={1} minWidth={0}><Text dimColor wrap="truncate-end">{`· ${row.need}`}</Text></Box>}
-          <Box flexGrow={1} />
-          {row.judge !== '' && <Text {...toneProps(row.judgeKind === 'fact' ? 'success' : row.judgeKind === 'you' ? 'warning' : 'dim')}>{row.judge}</Text>}
-        </Box>
-        {row.prevents !== '' && <Text dimColor wrap="truncate-end">{row.prevents}</Text>}
-        {(row.rules ?? []).map((r, n) => <Text key={`rule${n}`} {...toneProps('warning')} wrap="truncate-end">{`🔒 ${r}`}</Text>)}
-      </Box>
-    )
-    // A practice on a step: what it says on its first line, the presses on their own line under it. Its tag, what to
-    // do and where it came from (dim) in one Text, wrapped and never cut, how its themes were corrected at the end; then
-    // the presses in the accent colour, from the left edge in one order (删除 last), so they line up row under row.
-    case 'practice': {
-      const words = (
-        <Text wrap="wrap">
-          {row.tag !== '' && <Text {...toneProps(row.fresh ? 'warning' : 'dim')}>{`${row.tag} `}</Text>}
-          {row.text}
-          {row.why !== '' && <Text dimColor>{` · ${row.why}`}</Text>}
-        </Text>
-      )
-      return (
-        <Box key={row.key} flexDirection="column" paddingX={2}>
-          {row.count === undefined ? words : (
-            <Box gap={1}>
-              <Box flexGrow={1} flexShrink={1} minWidth={0}>{words}</Box>
-              <Box flexShrink={0}><Text {...toneProps(row.count.held ? 'success' : 'warning')}>{row.count.text}</Text></Box>
-            </Box>
-          )}
-          {row.actions.length > 0 && <Box gap={2}>{row.actions.map((b) => wordPress($, els, b))}</Box>}
-        </Box>
-      )
-    }
+    // The flow tab's manual (manual.tsx): a step alone where its practices are drawn on their own (the terminal).
+    case 'step': return drawStep($, els, row, [], (x, n) => safeRow($, els, x, n))
+    case 'practice': return drawPractice($, els, row, 2)
     case 'tool': return (
       <Box key={row.key} gap={2} paddingX={1}>
         <Box {...(toolWidth !== undefined && toolWidth > 0 ? { width: toolWidth } : {})} flexShrink={0} overflow="hidden">
@@ -2899,7 +2862,7 @@ async function tabRows($: EngineInterface, e: { surface: string; props: { bodyCo
     ...(tab === 'items' || tab === 'flow' || tab === 'made' ? { coach: {
       items: await workItems($), flows: await coachFlowsKept($), focus: (await read($, coachFocusAtom)) as unknown as CoachFocus | null, asks: tab === 'items' ? await openAsks($) : [],
       own: await $.session.id().catch(() => ''), open: ((await read($, workOpenAtom)) ?? []) as WorkGroup[],
-      practices: (await practicesKept($))?.list ?? [], expanded: (await read($, manualExpandedAtom)) as string[] | null,
+      practices: (await practicesKept($))?.list ?? [], expanded: (await read($, manualExpandedAtom)) as string[] | null, menu: (await read($, manualMenuAtom)) as string | null,
       unfolded: (await read($, workUnfoldedAtom)) as string | null, sessions: ((await read($, projectSessionsAtom)) as unknown as SessionSummary[] | null) ?? [],
       proposals: await proposalsKept($), rules: await rulesKept($), skipped: skippedSteps(await workItems($), await coachFlowsKept($), await proposalsKept($)),
       gone: await goneOnKept($), doing: await doingKept($),
@@ -3721,7 +3684,7 @@ export {
   QUEUED_MATCH_MS, STORE_SETTINGS, TURNS_SHOWN, answerOf, appendOwn, attentionOnPrompt, bridge, checkLatest,
   coachFlows, coachFlowsKept, correctionsKept, dismissedOf, exportText, gemlDir, loadBoard, loadCorrections,
   loadGrowth, loadMade, loadMemory, loadPractices, loadProjectSessions, loadWorkflows, nowIso, openBoard,
-  openDialog, openFile, otherSessionText, practicesKept, proposalsKept, readAttention, readBoard, readPrompts,
+  openDialog, openFile, otherSessionText, practicesKept, press, proposalsKept, readAttention, readBoard, readPrompts,
   readSettings, reasonOf, rulesKept, saveProposals, saveRules, sessionText, setQueued, share, startBridge,
   storePrompts, takeOption, themeLedger, trace, turnBusy, words, workItems, writeOwnFlow,
 }

@@ -108,6 +108,8 @@ export type BoardAction =
   | { op: "work-go-on"; id: string; next: string; at: string }
   /** A flow of the flow tab opened (its practices listed, or a flow with none on the way shown whole), or folded; `*` the practices for every flow. */
   | { op: "manual-open"; flow: string; open: boolean }
+  /** The flow tab's ⋯ on a practice (`practice:<id>`) or a flow's heading (`flow:<name>`): its menu opened, or closed (null). */
+  | { op: "manual-menu"; key: string | null }
   /** A practice taken out by the person (kept as a tombstone, so it is not learned again). */
   | { op: "practice-delete"; id: string }
   /** A practice moved between the person's layer and the project's. */

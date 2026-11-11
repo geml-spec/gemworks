@@ -252,26 +252,45 @@ export function itemHistory(id: string, sessions: readonly SessionSummary[], flo
 export const HISTORY_SHOWN = 8;
 
 /** The flow tab's options: the work item whose arrow was pressed, the flows whose practices are listed (null: the first flow's), now. */
-export interface ManualOptions { focus: CoachFocus | null; expanded: readonly string[] | null; now?: string; proposals?: readonly Proposal[]; rules?: readonly Rule[]; skipped?: readonly { flow: string; step: string; skipped: number }[]; ledger?: { cards: readonly LedgerCard[]; counts: Readonly<Record<string, PracticeCount>> } }
+export interface ManualOptions { focus: CoachFocus | null; expanded: readonly string[] | null; now?: string; menu?: string | null; proposals?: readonly Proposal[]; rules?: readonly Rule[]; skipped?: readonly { flow: string; step: string; skipped: number }[]; ledger?: { cards: readonly LedgerCard[]; counts: Readonly<Record<string, PracticeCount>> } }
 
-/** A practice as a row: what to do, where it came from, its tag (新学到, 从记忆搬来, 团队), and the presses the person has on it. */
-function practiceRow(p: Practice, t: T, now: string | undefined, count?: PracticeCount): BoardRow {
-  const fresh = now !== undefined && isNew(p, now);
-  const tag = p.layer === "team" ? t("团队") : fresh ? t("新学到") : p.by === "memory" ? t("从记忆搬来") : "";
+/** A ⋯ press that opens the menu `key` names, or closes it when it is the one open. */
+function menuPress(key: string, open: string | null | undefined): Pressable {
+  return { key: `manual-menu-${key}`, label: "⋯", action: { op: "manual-menu", key: open === key ? null : key } };
+}
+
+/** A menu under a row of the flow tab: its presses, then 取消. */
+function menuRow(key: string, items: Pressable[], t: T): BoardRow {
+  return { kind: "menu", key: `manual-menu-row-${key}`, items: [...items, { key: `manual-menu-close-${key}`, label: t("取消"), tone: "quiet", action: { op: "manual-menu", key: null } }] };
+}
+
+/**
+ * A practice as a row, as the flow tab's design has it: its tag (做法, 新学到, 从记忆搬来, 团队), what to do, where it came
+ * from, and beside them 改成规定 (a practice on a step), × (one learned or moved in, the person's to take out) and ⋯;
+ * ⋯ opens the rest under it (its layer, sharing), so the row carries only what the design shows.
+ */
+function practiceRows(p: Practice, t: T, o: ManualOptions): BoardRow[] {
+  const fresh = o.now !== undefined && isNew(p, o.now);
+  const count = o.ledger?.counts[p.id];
+  const tag = p.layer === "team" ? t("团队") : fresh ? t("新学到") : p.by === "memory" ? t("从记忆搬来") : t("做法");
+  const key = `practice:${p.id}`;
   const actions: Pressable[] = p.layer === "team" ? [] : [
-    // Said as what a press does: a layer's name alone read as a fact about the practice, not as a press.
-    { key: `practice-layer-${p.id}`, label: p.layer === "personal" ? t("改成项目") : t("改成个人"), action: { op: "practice-layer", id: p.id, layer: p.layer === "personal" ? "project" : "personal" } },
     // Only a practice on a step can hold calls until that step is met: those get 改成规定.
     ...(p.flow !== "*" && p.step !== "*" ? [{ key: `practice-rule-${p.id}`, label: t("改成规定"), action: { op: "practice-rule" as const, id: p.id } }] : []),
-    // Shared: a step's practice into the team's file in the repository; one for every time, into CLAUDE.md (read every turn), shown to the person first.
-    p.flow !== "*" ? { key: `practice-share-${p.id}`, label: t("分享给团队"), action: { op: "practice-share" as const, id: p.id } } : { key: `practice-claude-${p.id}`, label: t("写进 CLAUDE.md"), action: { op: "practice-claude-md" as const, id: p.id } },
-    // Last: the presses start at the row's left edge, so one missing at the end moves none of the others.
-    ...(fresh || p.by === "memory" ? [{ key: `practice-delete-${p.id}`, label: t("删除"), action: { op: "practice-delete" as const, id: p.id } }] : []),
+    ...(fresh || p.by === "memory" ? [{ key: `practice-delete-${p.id}`, label: "×", action: { op: "practice-delete" as const, id: p.id } }] : []),
+    menuPress(key, o.menu),
   ];
-  return {
+  const row: BoardRow = {
     kind: "practice", key: `practice-${p.id}`, text: p.text, why: [p.why, p.ref ?? ""].filter((x) => x !== "").join(" · "), tag, fresh, actions,
     ...(count !== undefined && count.before + count.after > 0 ? { count: { text: t("纠正 {0} → {1}", count.before, count.after), held: count.after === 0 } } : {}),
   };
+  if (p.layer === "team" || o.menu !== key) return [row];
+  return [row, menuRow(key, [
+    // Said as what a press does: a layer's name alone read as a fact about the practice, not as a press.
+    { key: `practice-layer-${p.id}`, label: p.layer === "personal" ? t("改成项目") : t("改成个人"), action: { op: "practice-layer", id: p.id, layer: p.layer === "personal" ? "project" : "personal" } },
+    // Shared: a step's practice into the team's file in the repository; one for every time, into CLAUDE.md (read every turn), shown to the person first.
+    p.flow !== "*" ? { key: `practice-share-${p.id}`, label: t("分享给团队"), action: { op: "practice-share" as const, id: p.id } } : { key: `practice-claude-${p.id}`, label: t("写进 CLAUDE.md"), action: { op: "practice-claude-md" as const, id: p.id } },
+  ], t)];
 }
 
 /** The corrections a card quotes, one line a day: `10-28「…」「…」`. */
@@ -334,7 +353,10 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
   const expanded = o.expanded ?? [busy[0]?.name ?? ""];
   const shown = [...busy, ...flows.filter((f) => latest(f) === "" && expanded.includes(f.name))];
   const judgeWords: Record<Judge, string> = { fact: t("事实"), you: t("你"), model: t("模型") };
-  const rows: BoardRow[] = [{ kind: "text", text: t("谁判：事实＝插件查得到 · 你＝要你点头 · 模型＝我判断"), tone: "dim" }, ...ledgerCardRows(o.ledger?.cards ?? [], flows, t)];
+  const rows: BoardRow[] = [
+    { kind: "judges", lead: t("谁判："), items: [{ judge: "fact", word: judgeWords.fact, means: t("插件查得到") }, { judge: "you", word: judgeWords.you, means: t("要你点头") }, { judge: "model", word: judgeWords.model, means: t("我判断") }] },
+    ...ledgerCardRows(o.ledger?.cards ?? [], flows, t),
+  ];
   const waiting = (o.proposals ?? []).filter((p) => p.status === "open");
   // A new kind of work proposed: on top, before the flows.
   for (const p of waiting.filter((x) => x.kind === "new-flow")) {
@@ -346,28 +368,40 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
   if (focused !== undefined && focusFlow !== undefined && focusHere !== null) {
     rows.push({ kind: "text", text: t("从「{0}」过来 · 卡在「{1}」", focused.title, focusFlow.states.find((s) => s.id === focusHere)?.title ?? focusHere), tone: "dim" });
   }
-  for (const f of shown) {
+  for (const [at, f] of shown.entries()) {
     const n = open.filter((i) => i.flow === f.name).length;
     const mine = live.filter((p) => p.flow === f.name);
     const listed = expanded.includes(f.name);
+    // A practice listed on its step; on a flow folded, a press under the step that lists them all (2 条做法 ▾).
+    const more = (step: string): Pick<Extract<BoardRow, { kind: "step" }>, "more"> => {
+      const k = listed ? 0 : mine.filter((p) => p.step === step).length;
+      return k > 0 ? { more: { key: `manual-more-${f.name}-${step}`, label: `${t("{0} 条做法", k)} ▾`, action: { op: "manual-open", flow: f.name, open: true } } } : {};
+    };
+    const own = (step: string): BoardRow[] => (listed ? mine.filter((p) => p.step === step).flatMap((p) => practiceRows(p, t, o)) : []);
+    if (at > 0) rows.push({ kind: "rule", key: `manual-rule-${f.name}` });
     const diff = f.diff !== undefined && (f.diff.added.length > 0 || f.diff.removed.length > 0)
       ? [f.diff.added.length > 0 ? t("比参考多{0}", f.diff.added.map((x) => `「${x}」`).join("")) : "", f.diff.removed.length > 0 ? t("比参考少{0}", f.diff.removed.map((x) => `「${x}」`).join("")) : ""].filter((x) => x !== "").join("，")
       : "";
+    // Its heading reads as one: its name and how it stands, and a ⋯ whose menu holds sharing, exporting and folding.
+    const key = `flow:${f.name}`;
     rows.push({
       kind: "section", key: `manual-${f.name}`, text: f.title, note: [n > 0 ? t("{0} 件在走", n) : "", diff !== "" ? t("本项目改过：{0}", diff) : ""].filter((x) => x !== "").join(" · "),
-      actions: [{ key: `flow-share-${f.name}`, label: t("分享给团队"), action: { op: "flow-share", flow: f.name } }, { key: `flow-export-${f.name}`, label: t("导出"), action: { op: "flow-export", flow: f.name } }],
-      ...(mine.length > 0 ? { fold: { key: `manual-fold-${f.name}`, label: listed ? t("收起做法") : t("做法 {0} 条", mine.length), action: { op: "manual-open", flow: f.name, open: !listed } } } : {}),
-      below: true, accent: true,
+      actions: [menuPress(key, o.menu)], tucked: true,
     });
-    if (listed) {
-      const wide = mine.filter((p) => p.step === "*");
-      // The label stands where the steps' names do, its practices under it as theirs are under them.
-      if (wide.length > 0) rows.push({ kind: "text", text: t("这类活都要："), tone: "dim", indent: 1 }, ...wide.map((p) => practiceRow(p, t, o.now, o.ledger?.counts[p.id])));
+    if (o.menu === key) {
+      rows.push(menuRow(key, [
+        { key: `flow-share-${f.name}`, label: t("分享给团队"), action: { op: "flow-share", flow: f.name } }, { key: `flow-export-${f.name}`, label: t("导出"), action: { op: "flow-export", flow: f.name } },
+        ...(mine.length > 0 ? [{ key: `manual-fold-${f.name}`, label: listed ? t("收起做法") : t("展开做法"), action: { op: "manual-open" as const, flow: f.name, open: !listed } }] : []),
+      ], t));
+    }
+    // The flow's own practices, for every step: a block of their own before the steps, as a step's are under it.
+    if (mine.some((p) => p.step === "*")) {
+      rows.push({ kind: "step", key: `step-${f.name}-*`, title: t("这类活都要："), need: "", judge: "", judgeKind: "model", prevents: "", here: false, final: false, ...more("*") }, ...own("*"));
     }
     for (const s of f.states) {
       const held = (o.rules ?? []).filter((r) => (r.flow === f.name || r.flow === "*") && r.requires === s.id).map((r) => t("规定：{0}", r.text) + (r.held !== undefined && r.held > 0 ? ` · ${t("拦过 {0} 次", r.held)}` : ""));
-      rows.push({ kind: "step", key: `step-${f.name}-${s.id}`, title: s.title, need: s.need, judge: s.final ? "" : judgeWords[s.judge], judgeKind: s.judge, prevents: s.prevents !== "" ? t("防：{0}", s.prevents) : "", here: focused?.flow === f.name && focusHere === s.id, final: s.final, ...(held.length > 0 ? { rules: held } : {}) });
-      if (listed) rows.push(...mine.filter((p) => p.step === s.id).map((p) => practiceRow(p, t, o.now, o.ledger?.counts[p.id])));
+      rows.push({ kind: "step", key: `step-${f.name}-${s.id}`, title: s.title, need: s.need, judge: s.final ? "" : judgeWords[s.judge], judgeKind: s.judge, prevents: s.prevents !== "" ? t("防：{0}", s.prevents) : "", here: focused?.flow === f.name && focusHere === s.id, final: s.final, ...(held.length > 0 ? { rules: held } : {}), ...more(s.id) });
+      rows.push(...own(s.id));
       for (const e of f.edges.filter((x) => x.back && x.from === s.id)) {
         const target = f.states.find((x) => x.id === e.to)?.title ?? e.to;
         rows.push({ kind: "text", text: e.label !== "" ? `↩ ${t("{0}，回到{1}", e.label, target)}` : `↩ ${t("回到{0}", target)}`, tone: "dim" });
@@ -386,15 +420,16 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
     }
   }
   const idle = flows.filter((f) => latest(f) === "" && !expanded.includes(f.name));
+  // The flows with none on the way: one line of their names, each a press that opens it.
   if (idle.length > 0) {
-    rows.push({ kind: "section", key: "manual-idle", text: t("现在没有事项在走") });
-    for (const f of idle) rows.push({ kind: "entry", key: `manual-idle-${f.name}`, title: f.title, tag: t("{0} 步", f.states.filter((s) => !s.final).length), tone: "dim", action: { op: "manual-open", flow: f.name, open: true } });
+    if (shown.length > 0) rows.push({ kind: "rule", key: "manual-rule-idle" });
+    rows.push({ kind: "presses", key: "manual-idle", lead: t("没有在走的："), items: idle.map((f) => ({ key: `manual-idle-${f.name}`, label: `${f.title} ▸`, action: { op: "manual-open", flow: f.name, open: true } })) });
   }
   const anywhere = live.filter((p) => p.flow === "*");
   if (anywhere.length > 0) {
     const listed = expanded.includes("*");
-    rows.push({ kind: "section", key: "manual-anywhere", text: t("所有时候的做法"), count: anywhere.length, fold: { key: "manual-fold-anywhere", label: listed ? t("收起") : t("展开"), action: { op: "manual-open", flow: "*", open: !listed } }, accent: true });
-    if (listed) rows.push(...anywhere.map((p) => practiceRow(p, t, o.now, o.ledger?.counts[p.id])));
+    rows.push({ kind: "section", key: "manual-anywhere", text: t("所有时候的做法"), count: anywhere.length, fold: { key: "manual-fold-anywhere", label: listed ? t("收起") : t("展开"), action: { op: "manual-open", flow: "*", open: !listed } } });
+    if (listed) rows.push(...anywhere.flatMap((p) => practiceRows(p, t, o)));
   }
   // A reference imported: an exported flow's file, or another project's .gemworks/ — only to compare and take steps back from.
   rows.push({ kind: "input", key: "import-reference", placeholder: t("导入参考：导出的流程文件，或另一个项目的 .gemworks/"), field: "import-reference" });
