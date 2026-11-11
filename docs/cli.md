@@ -24,6 +24,10 @@ usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmar
   antigravity <Event> | install           the Antigravity editor's hook (one event on stdin), or put its hooks and MCP server in place
   cursor [install]                        Cursor's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place
   qwen [install]                          Qwen Code's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place
+  opencode [install]                      what OpenCode's Gemworks plugin asks (one event on stdin, the answer on stdout, exit 0 always), or put the plugin in place
+  devin [install]                         Devin's hook, Devin Desktop (formerly Windsurf) and the CLI (one event on stdin, its answer on stdout), or put its hooks and MCP server in place
+  trae [install]                          TRAE's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks in place and print its MCP server's entry
+  kiro [install [dir]]                    Kiro's hook, IDE and CLI V3 (one event on stdin, its answer on stdout), or put its hooks (and dir's) and MCP server in place
   mcp [--host h] [--root dir]             the model's tools over stdio MCP (host default: mcp)
   corrections [--baseline a..b] [--trial a..b] [--since day] [--by work] [--json]
                                           how often you corrected the agent, per 100 prompts, by kind and by week
@@ -87,6 +91,33 @@ usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmar
   0 whatever happens. `qwen install` writes its hooks and the MCP server into
   `~/.qwen/settings.json`, and exits 1 without writing when that file is not
   plain JSON. `cursor install` does the same with its two files.
+- `opencode` is what OpenCode's Gemworks plugin runs on each hook
+  ([OpenCode](hosts.md#opencode)): one event on stdin, the answer on stdout —
+  nothing when there is nothing to say — and exit 0 whatever happens.
+  `opencode install` writes the plugin into OpenCode's global plugins folder,
+  `~/.config/opencode/plugins/gemworks/` (under `$XDG_CONFIG_HOME` when that is
+  set).
+- `devin` is Devin's hook ([Devin](hosts.md#devin-formerly-windsurf)), for
+  Devin Desktop (formerly Windsurf) and the Devin CLI: one event on stdin, its
+  answer on stdout — nothing when there is nothing to say. A refusal exits 2
+  with the reason on stderr, as Devin blocks a call; anything else exits 0.
+  `devin install` writes its hooks under `hooks` in `~/.config/devin/config.json`
+  and the MCP server into `~/.config/devin/mcp_config.json`
+  (`%APPDATA%\devin\` on Windows), and exits 1 without writing when either is
+  not plain JSON.
+- `trae` is TRAE's hook ([TRAE](hosts.md#trae)): one event on stdin, its
+  answer on stdout — nothing when there is nothing to say — and exit 0
+  whatever happens. `trae install` writes its hooks into `~/.trae/hooks.json`
+  and `~/.trae-cn/hooks.json` (the ones that are there, both when neither is),
+  exits 1 without writing when one is not plain JSON, and prints the MCP
+  server's entry to add under TRAE's Settings → MCP.
+- `kiro` is Kiro's hook ([Kiro](hosts.md#kiro)), for the IDE and CLI V3: one
+  event on stdin, what the agent should read on stdout as plain text. A
+  refusal exits 2 with the reason on stderr; anything else exits 0.
+  `kiro install [dir]` writes the hook file `~/.kiro/hooks/gemworks.json`, and
+  `<dir>/.kiro/hooks/gemworks.json` when a project is named, and the MCP server
+  into `~/.kiro/settings/mcp.json`; it exits 1 without writing when that file
+  is not plain JSON.
 - `mcp` serves the model's tools over stdio MCP — a strict flow's `status`,
   `move` and `set`, the `note` tool, and the work loop's `work`, `practice`,
   `propose`, `answer`, `ask` and `artifact` — for hosts with no Gemworks shell

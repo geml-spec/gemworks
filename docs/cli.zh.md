@@ -24,6 +24,10 @@ usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmar
   antigravity <Event> | install           the Antigravity editor's hook (one event on stdin), or put its hooks and MCP server in place
   cursor [install]                        Cursor's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place
   qwen [install]                          Qwen Code's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place
+  opencode [install]                      what OpenCode's Gemworks plugin asks (one event on stdin, the answer on stdout, exit 0 always), or put the plugin in place
+  devin [install]                         Devin's hook, Devin Desktop (formerly Windsurf) and the CLI (one event on stdin, its answer on stdout), or put its hooks and MCP server in place
+  trae [install]                          TRAE's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks in place and print its MCP server's entry
+  kiro [install [dir]]                    Kiro's hook, IDE and CLI V3 (one event on stdin, its answer on stdout), or put its hooks (and dir's) and MCP server in place
   mcp [--host h] [--root dir]             the model's tools over stdio MCP (host default: mcp)
   corrections [--baseline a..b] [--trial a..b] [--since day] [--by work] [--json]
                                           how often you corrected the agent, per 100 prompts, by kind and by week
@@ -71,6 +75,19 @@ usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmar
 - `qwen` 是 Qwen Code 的 hook（[Qwen Code](hosts.zh.md#qwen-code)）：stdin 一个事件，stdout 给应答，
   没话说就什么也不输出，不论出什么事都以 0 退出。`qwen install` 把它的 hooks 和 MCP 服务写进
   `~/.qwen/settings.json`；这个文件不是纯 JSON 时什么也不写，以 1 退出。`cursor install` 对它那两个文件也一样。
+- `opencode` 是 OpenCode 的 Gemworks 插件在每个 hook 上调用的命令（[OpenCode](hosts.zh.md#opencode)）：
+  stdin 一个事件，stdout 给应答，没话说就什么也不输出，不论出什么事都以 0 退出。`opencode install`
+  把插件写进 OpenCode 的全局插件文件夹 `~/.config/opencode/plugins/gemworks/`（设了 `$XDG_CONFIG_HOME` 就放在它下面）。
+- `devin` 是 Devin 的 hook（[Devin](hosts.zh.md#devin原-windsurf)），Devin Desktop（原 Windsurf）和 Devin CLI 都用它：
+  stdin 一个事件，stdout 给应答，没话说就什么也不输出。拒绝一个调用时以 2 退出，原因写在 stderr，这是 Devin 拦调用的方式；
+  其余情况都以 0 退出。`devin install` 把 hooks 写进 `~/.config/devin/config.json` 的 `hooks` 下，把 MCP 服务写进
+  `~/.config/devin/mcp_config.json`（Windows 上在 `%APPDATA%\devin\`）；其中任何一个不是纯 JSON 时什么也不写，以 1 退出。
+- `trae` 是 TRAE 的 hook（[TRAE](hosts.zh.md#trae)）：stdin 一个事件，stdout 给应答，没话说就什么也不输出，不论出什么事都以 0 退出。
+  `trae install` 把 hooks 写进 `~/.trae/hooks.json` 和 `~/.trae-cn/hooks.json`（有哪个写哪个，两个都没有就都写）；其中有不是纯 JSON
+  的就什么也不写，以 1 退出；最后打印 MCP 服务的配置，让你在 TRAE 的「设置 → MCP」里手动添加。
+- `kiro` 是 Kiro 的 hook（[Kiro](hosts.zh.md#kiro)），IDE 和 CLI V3 都用它：stdin 一个事件，要给 agent 看的内容以纯文本写到 stdout。
+  拒绝时以 2 退出，原因写在 stderr；其余都以 0 退出。`kiro install [dir]` 写 hook 文件 `~/.kiro/hooks/gemworks.json`，给了项目目录
+  就再写一份 `<dir>/.kiro/hooks/gemworks.json`，并把 MCP 服务写进 `~/.kiro/settings/mcp.json`；这个文件不是纯 JSON 时什么也不写，以 1 退出。
 - `mcp` 用 stdio MCP 提供模型可调的工具——固化流程的 `status`、`move`、`set`，`note`，
   以及工作循环的 `work`、`practice`、`propose`、`answer`、`ask`、`artifact`——给没有自己的
   Gemworks 外壳的宿主用（`--host` 指定词典里的 `Bash(…)` 键对应哪个宿主的工具名，默认

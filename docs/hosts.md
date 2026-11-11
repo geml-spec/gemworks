@@ -322,6 +322,126 @@ Qwen Code names its tools `run_shell_command`, `write_file`, `edit`, `notebook_e
 more. The project is `QWEN_PROJECT_DIR`, the folder Qwen Code was started in; the MCP server starts there too. As on
 Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here.
 
+### OpenCode
+
+```sh
+npm install -g @geml/gemworks
+gemworks opencode install
+```
+
+The second line writes a small plugin into OpenCode's global plugins folder, `~/.config/opencode/plugins/gemworks/`
+(under `$XDG_CONFIG_HOME` when that is set), pointing at the `gemworks` you just installed and the Node that ran it, and
+prints its files. Running it again replaces them; deleting the folder removes gemworks. The plugin registers the
+gemworks MCP server itself, so your `opencode.json` is not touched. Start OpenCode again afterwards. This is for
+OpenCode 2 (`@opencode/cli`); OpenCode 1's plugins are another API.
+
+OpenCode runs its plugins in its own process, so the plugin asks `gemworks opencode` on each hook and does what it
+says. It gets what Qwen Code gets: the work loop's tools and the flows' steps when a session's first prompt comes (OpenCode
+has no session-start hook); the work items on the way, the step's practices, other sessions' decisions and a new stage
+text with each prompt, in the system part of every model request of that turn; the GEML board page above; and the
+gate. A command a fenced use or a person owns is refused with the reason, which OpenCode hands the model as the
+tool's error; a tool's default parameters are filled in; a shell command whose exit status is evidence is wrapped to
+print it last (`[gemworks exit N]`, not on Windows), and the shell tool's own exit status is read when it is not; what
+the model should read after a call is added to its result; the files the agent writes and the commits it made go into
+the project's session record; when the session would go idle after a turn that changed things and reported no work
+item, a synthetic message sends it back once. OpenCode's idle hook gives no answer text, so the turn's answer is not
+in the record.
+
+OpenCode names its tools `shell`, `write`, `edit`, `patch`, `read`, `grep`, `glob`, `webfetch`, `websearch`,
+`todowrite`, `subagent` and `<server>.<tool>`. The gate reads them by Claude Code's names (`Bash`, `Write`, `Edit` —
+a patch by its first file —, `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, `TodoWrite`, `Task`, and an MCP tool by
+its own name), so the bundled dictionaries need nothing more. The project is the folder OpenCode was opened in. As on
+Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here.
+
+### Devin (formerly Windsurf)
+
+```sh
+npm install -g @geml/gemworks
+gemworks devin install
+```
+
+Windsurf is now Devin Desktop, and it shares its hooks with the Devin CLI. The second line writes gemworks' hooks under
+`hooks` in `~/.config/devin/config.json` and its MCP server into `~/.config/devin/mcp_config.json` (both in
+`%APPDATA%\devin\` on Windows), pointing at the `gemworks` you just installed, and prints the two files. Your own
+hooks, servers and settings are kept; running it again replaces the earlier install. If either file has comments in
+it, neither is touched: the command says so, and the hooks go in by hand. Start Devin again afterwards; `/hooks` lists
+what it loaded.
+
+Devin's hooks are Claude Code's, so it gets what Qwen Code gets: the work loop's tools and the flows' steps at the
+session's start; the work items on the way, the step's practices, other sessions' decisions and a new stage text beside
+each prompt; the GEML board page above; and the gate. A command a fenced use or a person owns is refused with the reason
+(the hook exits 2, as Devin blocks a call); a tool's default parameters are filled in; a shell command whose exit status
+is evidence is wrapped to print it last (`[gemworks exit N]`, not on Windows) — Devin reports no exit status of its own,
+so an unwrapped command's is unknown; the files the agent writes, the turn's answer and the commits it made go into the
+project's session record; a turn that changed things and reported no work item is sent back once.
+
+Devin names its tools `exec`, `write`, `edit`, `apply_patch`, `notebook_edit`, `read`, `grep`, `glob`, `webfetch`,
+`todo_write`, `run_subagent` and `mcp__<server>__<tool>`. The gate reads them by Claude Code's names (`Bash`, `Write`,
+`Edit` — a patch by its first file —, `NotebookEdit`, `Read`, `Grep`, `Glob`, `WebFetch`, `TodoWrite`, `Task`, and an
+MCP tool by its own name), so the bundled dictionaries need nothing more. The project is `DEVIN_PROJECT_DIR`. Devin's
+docs do not say where an MCP server starts, so when the server's own folder has no `.geml/` it works in the project
+and session the hooks last saw. As on Codex there is no band and no board button; "Make it a rule" and the
+corrections ledger are not here.
+
+### TRAE
+
+```sh
+npm install -g @geml/gemworks
+gemworks trae install
+```
+
+The second line writes gemworks' hooks into `~/.trae/hooks.json` and `~/.trae-cn/hooks.json` — the international and
+the China build: the ones that are there, both when neither is — pointing at the `gemworks` you just installed, and
+prints the files. Your own hooks are kept; running it again replaces the earlier install; a file with comments in it is
+left alone. TRAE keeps its MCP servers in its own settings, so the command also prints the gemworks server's entry: add
+it under Settings → MCP → Add manually. Start TRAE again afterwards.
+
+TRAE's hooks are Claude Code's, so it gets what Qwen Code gets: the work loop's tools and the flows' steps at the
+session's start; the work items on the way, the step's practices, other sessions' decisions and a new stage text beside
+each prompt; the GEML board page above; and the gate. A command a fenced use or a person owns is refused with the
+reason; a tool's default parameters are filled in; a shell command whose exit status is evidence is wrapped to print it
+last (`[gemworks exit N]`, not on Windows); the files the agent writes, the turn's answer and the commits it made go
+into the project's session record; a turn that changed things and reported no work item is sent back once. TRAE still
+asks you to confirm a call the gate lets through when that tool is set to ask.
+
+TRAE names its tools by Claude Code's names already (`Read`, `Write`, `Edit`, `Glob`, `Grep`, `LS`, `WebSearch`,
+`WebFetch`, `Skill`, `mcp__<server>__<tool>`), but for the shell, `RunCommand`, which the gate reads as `Bash`; the
+bundled dictionaries need nothing more. The project is the workspace root holding a `.geml/`, else the folder TRAE
+opened. TRAE's docs do not say where an MCP server starts, so when the server's own folder has no `.geml/` it works in
+the project and session the hooks last saw. As on Codex there is no band and no board button; "Make it a rule" and the
+corrections ledger are not here.
+
+### Kiro
+
+```sh
+npm install -g @geml/gemworks
+gemworks kiro install            # Kiro CLI V3: every workspace
+gemworks kiro install .          # the Kiro IDE: this project too
+```
+
+The command writes the hook file `~/.kiro/hooks/gemworks.json`, which Kiro CLI V3 runs in every workspace, and the MCP
+server into `~/.kiro/settings/mcp.json` beside your other servers. The Kiro IDE reads only a workspace's own
+`.kiro/hooks/`, so name the project (`.` above) to write `<project>/.kiro/hooks/gemworks.json` as well; it holds this
+machine's path to `gemworks`, so keep it out of git if others share the repository. Running it again replaces the
+files; an MCP config with comments in it leaves everything alone. Start Kiro again afterwards.
+
+Kiro's hooks do less than Claude Code's, so it gets less than Qwen Code: what a hook prints on success is added to the
+agent's context as plain text, and a hook that fails has its error sent to the agent, blocking the call before a tool
+runs. So the work loop's tools and the flows' steps come at the session's start, and the work items on the way, the
+step's practices, other sessions' decisions and a new stage text with each prompt; a command a fenced use or a person
+owns is refused with the reason; the files the agent writes and the commits it made go into the project's session
+record. A hook cannot change a call's input, so no default parameter is filled and no command is wrapped: a test
+command's exit status is the one the shell tool's result reports. At the turn's end a turn that changed things and
+reported no work item gets the reminder once — Kiro's docs say the agent reads it, not that it takes another turn for
+it.
+
+Kiro names its tools differently in its surfaces — `shell`, `execute_bash`, `executeBash`; `write`, `fs_write`,
+`fsWrite`, `strReplace`; `read`, `fs_read`, `readFile`; `grep`, `glob`, `web_fetch`, `web_search`, `subagent`, and
+`mcp_<server>_<tool>` — and the gate reads every spelling by Claude Code's name, so the bundled dictionaries need
+nothing more. The project is the folder Kiro runs the hook in, the project root. Kiro's docs do not say where an MCP
+server starts, so when the server's own folder has no `.geml/` it works in the project and session the hooks last
+saw. As on Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here.
+
 ### DeepSeek Harness
 
 ```sh

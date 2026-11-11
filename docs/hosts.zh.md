@@ -235,6 +235,104 @@ Qwen Code 的工具叫 `run_shell_command`、`write_file`、`edit`、`notebook_e
 `Glob`，MCP 工具按它自己的名字），所以自带的词典不用改。项目是 `QWEN_PROJECT_DIR`，也就是启动 Qwen Code 的那个
 文件夹；MCP 服务也在那里启动。和 Codex 一样，没有状态带和看板按钮；「改成规定」和纠正账本这里都没有。
 
+### OpenCode
+
+```sh
+npm install -g @geml/gemworks
+gemworks opencode install
+```
+
+第二行把一个小插件写进 OpenCode 的全局插件文件夹 `~/.config/opencode/plugins/gemworks/`（设了 `$XDG_CONFIG_HOME`
+就放在它下面），指向刚装的这份 `gemworks` 和运行它的 Node，并打印写下的文件。再跑一次会替换它们，删掉这个文件夹就
+卸掉了 gemworks。MCP 服务由插件自己注册，所以你的 `opencode.json` 不会被改。装完重新启动 OpenCode。这是给 OpenCode 2
+（`@opencode/cli`）的；OpenCode 1 的插件是另一套 API。
+
+OpenCode 在自己的进程里跑插件，所以插件在每个 hook 上问 `gemworks opencode`，照它说的做。它拿到的和 Qwen Code 一样：
+会话的第一条提示词到来时交代工作循环的工具和流程的步骤（OpenCode 没有会话开始的 hook）；每条提示词带上进行中的工作项、
+这一步的做法、别的会话定下的事和新的阶段文本，放在这一轮每次模型请求的系统部分里；上面那页 GEML 看板；还有闸门。
+围起来的用途和只归人的命令会被拒并说明原因，OpenCode 把原因当作工具的错误交给模型；工具的默认参数会补上；退出码算证据的
+shell 命令会包一层，最后打印 `[gemworks exit N]`（Windows 上不包），没包的时候读 shell 工具自己给的退出码；调用之后
+模型该看的内容附在结果后面；agent 写的文件和它做的提交进项目的会话记录；一轮改了东西却没报工作项，会话要空闲时会用一条
+合成消息送回去一次。OpenCode 的空闲 hook 不给回答的文本，所以这一轮的回答不进记录。
+
+OpenCode 的工具叫 `shell`、`write`、`edit`、`patch`、`read`、`grep`、`glob`、`webfetch`、`websearch`、`todowrite`、
+`subagent` 和 `<服务>.<工具>`。闸门按 Claude Code 的名字读（`Bash`、`Write`、`Edit`——patch 按它的第一个文件——、
+`Read`、`Grep`、`Glob`、`WebFetch`、`WebSearch`、`TodoWrite`、`Task`，MCP 工具按它自己的名字），所以自带的词典不用改。
+项目是打开 OpenCode 的那个文件夹。和 Codex 一样，没有状态带和看板按钮；「改成规定」和纠正账本这里都没有。
+
+### Devin（原 Windsurf）
+
+```sh
+npm install -g @geml/gemworks
+gemworks devin install
+```
+
+Windsurf 现在叫 Devin Desktop，它和 Devin CLI 共用一套 hooks。第二行把 gemworks 的 hooks 写进
+`~/.config/devin/config.json` 的 `hooks` 下，把 MCP 服务写进 `~/.config/devin/mcp_config.json`（Windows 上两个都在
+`%APPDATA%\devin\`），都指向刚装的这份 `gemworks`，并打印这两个文件。你自己的 hooks、MCP 服务和其他设置都保留，
+再跑一次会替换上一次装的。两个文件里任何一个有注释，两个都不动：命令会说明，hooks 要手工加。装完重新启动 Devin；
+`/hooks` 会列出它加载了哪些。
+
+Devin 的 hooks 就是 Claude Code 那一套，所以它拿到的和 Qwen Code 一样：会话开始时交代工作循环的工具和流程的步骤；
+每条提示词旁边带上进行中的工作项、这一步的做法、别的会话定下的事和新的阶段文本；上面那页 GEML 看板；还有闸门。
+围起来的用途和只归人的命令会被拒并说明原因（hook 以 2 退出，这是 Devin 拦调用的方式）；工具的默认参数会补上；
+退出码算证据的 shell 命令会包一层，最后打印 `[gemworks exit N]`（Windows 上不包）——Devin 自己不报退出码，所以没包的
+命令退出码未知；agent 写的文件、这一轮的回答和它做的提交进项目的会话记录；一轮改了东西却没报工作项，会送回去一次。
+
+Devin 的工具叫 `exec`、`write`、`edit`、`apply_patch`、`notebook_edit`、`read`、`grep`、`glob`、`webfetch`、
+`todo_write`、`run_subagent` 和 `mcp__<服务>__<工具>`。闸门按 Claude Code 的名字读（`Bash`、`Write`、`Edit`——
+patch 按它的第一个文件——、`NotebookEdit`、`Read`、`Grep`、`Glob`、`WebFetch`、`TodoWrite`、`Task`，MCP 工具按它自己的
+名字），所以自带的词典不用改。项目是 `DEVIN_PROJECT_DIR`。Devin 的文档没说 MCP 服务在哪个文件夹启动，所以服务自己的
+文件夹里没有 `.geml/` 时，它就用 hooks 最后看到的那个项目和会话。和 Codex 一样，没有状态带和看板按钮；「改成规定」和
+纠正账本这里都没有。
+
+### TRAE
+
+```sh
+npm install -g @geml/gemworks
+gemworks trae install
+```
+
+第二行把 gemworks 的 hooks 写进 `~/.trae/hooks.json` 和 `~/.trae-cn/hooks.json`——国际版和国内版，有哪个写哪个，两个都没有就都写——
+指向刚装的这份 `gemworks`，并打印这些文件。你自己的 hooks 都保留，再跑一次会替换上一次装的；文件里有注释的话不会动它。TRAE 的
+MCP 服务存在它自己的设置里，所以命令最后还会打印 gemworks 服务的配置：在「设置 → MCP → 手动添加」里加上。装完重新启动 TRAE。
+
+TRAE 的 hooks 就是 Claude Code 那一套，所以它拿到的和 Qwen Code 一样：会话开始时交代工作循环的工具和流程的步骤；每条提示词旁边
+带上进行中的工作项、这一步的做法、别的会话定下的事和新的阶段文本；上面那页 GEML 看板；还有闸门。围起来的用途和只归人的命令会被拒
+并说明原因；工具的默认参数会补上；退出码算证据的 shell 命令会包一层，最后打印 `[gemworks exit N]`（Windows 上不包）；agent 写的文件、
+这一轮的回答和它做的提交进项目的会话记录；一轮改了东西却没报工作项，会送回去一次。闸门放行的调用，如果那个工具设成了要确认，TRAE
+照样会请你确认。
+
+TRAE 的工具本来就用 Claude Code 的名字（`Read`、`Write`、`Edit`、`Glob`、`Grep`、`LS`、`WebSearch`、`WebFetch`、`Skill`、
+`mcp__<服务>__<工具>`），只有 shell 叫 `RunCommand`，闸门按 `Bash` 读它；自带的词典不用改。项目是含 `.geml/` 的那个工作区根目录，
+没有的话就是 TRAE 打开的文件夹。TRAE 的文档没说 MCP 服务在哪个文件夹启动，所以服务自己的文件夹里没有 `.geml/` 时，它用 hooks
+最后看到的那个项目和会话。和 Codex 一样，没有状态带和看板按钮；「改成规定」和纠正账本这里都没有。
+
+### Kiro
+
+```sh
+npm install -g @geml/gemworks
+gemworks kiro install            # Kiro CLI V3：所有工作区
+gemworks kiro install .          # Kiro IDE：再加上这个项目
+```
+
+命令写 hook 文件 `~/.kiro/hooks/gemworks.json`，Kiro CLI V3 会在每个工作区运行它；再把 MCP 服务写进 `~/.kiro/settings/mcp.json`，
+和你别的服务放在一起。Kiro IDE 只读工作区自己的 `.kiro/hooks/`，所以要给出项目目录（上面的 `.`），再写一份
+`<项目>/.kiro/hooks/gemworks.json`；这份文件里是本机 `gemworks` 的路径，仓库和别人共用的话别提交它。再跑一次会替换这些文件；
+MCP 配置里有注释的话，什么都不动。装完重新启动 Kiro。
+
+Kiro 的 hooks 能做的比 Claude Code 少，所以它拿到的比 Qwen Code 少：hook 成功时打印的内容以纯文本加进 agent 的上下文，hook 失败时
+错误会发给 agent，在工具运行前失败就拦下这次调用。所以会话开始时交代工作循环的工具和流程的步骤，每条提示词带上进行中的工作项、
+这一步的做法、别的会话定下的事和新的阶段文本；围起来的用途和只归人的命令会被拒并说明原因；agent 写的文件和它做的提交进项目的
+会话记录。hook 改不了调用的输入，所以不补默认参数，也不包命令：测试命令的退出码只能看 shell 工具结果里报的。一轮结束时，改了东西
+却没报工作项的，会收到一次提醒——Kiro 的文档说 agent 会读到它，没说 agent 会为它再跑一轮。
+
+Kiro 在不同界面里给工具起的名字不一样——`shell`、`execute_bash`、`executeBash`；`write`、`fs_write`、`fsWrite`、`strReplace`；
+`read`、`fs_read`、`readFile`；`grep`、`glob`、`web_fetch`、`web_search`、`subagent`，以及 `mcp_<服务>_<工具>`——闸门把每种写法
+都按 Claude Code 的名字读，所以自带的词典不用改。项目是 Kiro 运行 hook 的那个文件夹，也就是项目根目录。Kiro 的文档没说 MCP 服务在
+哪个文件夹启动，所以服务自己的文件夹里没有 `.geml/` 时，它用 hooks 最后看到的那个项目和会话。和 Codex 一样，没有状态带和看板按钮；
+「改成规定」和纠正账本这里都没有。
+
 ### DeepSeek Harness
 
 ```sh

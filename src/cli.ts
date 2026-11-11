@@ -22,6 +22,10 @@ import { runCodex } from "./codex.js";
 import { installAntigravity, runAntigravity } from "./antigravity.js";
 import { installCursor, runCursor } from "./cursor.js";
 import { installQwen, runQwen } from "./qwen.js";
+import { installOpencode, runOpencode } from "./opencode.js";
+import { installDevin, runDevin } from "./devin.js";
+import { installTrae, mcpEntry as traeMcpEntry, runTrae } from "./trae.js";
+import { installKiro, runKiro } from "./kiro.js";
 import { serveMcp } from "./mcp.js";
 import { decodeRequest, type BridgeResponse } from "./hosts/claude-code/protocol.js";
 import { docReader, openWorkspace, resolvePromptRef, resolveWorkflow, type Workspace } from "./workspace.js";
@@ -50,6 +54,10 @@ const USAGE = [
   "  antigravity <Event> | install           the Antigravity editor's hook (one event on stdin), or put its hooks and MCP server in place",
   "  cursor [install]                        Cursor's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place",
   "  qwen [install]                          Qwen Code's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks and MCP server in place",
+  "  opencode [install]                      what OpenCode's Gemworks plugin asks (one event on stdin, the answer on stdout, exit 0 always), or put the plugin in place",
+  "  devin [install]                         Devin's hook, Devin Desktop (formerly Windsurf) and the CLI (one event on stdin, its answer on stdout), or put its hooks and MCP server in place",
+  "  trae [install]                          TRAE's hook (one event on stdin, its answer on stdout, exit 0 always), or put its hooks in place and print its MCP server's entry",
+  "  kiro [install [dir]]                    Kiro's hook, IDE and CLI V3 (one event on stdin, its answer on stdout), or put its hooks (and dir's) and MCP server in place",
   "  mcp [--host h] [--root dir]             the model's tools over stdio MCP (host default: mcp)",
   "  corrections [--baseline a..b] [--trial a..b] [--since day] [--by work] [--json]",
   "                                          how often you corrected the agent, per 100 prompts, by kind and by week",
@@ -209,6 +217,73 @@ async function runQwenHook(arg: string | undefined): Promise<number> {
     process.stderr.write(`gemworks qwen: ${e instanceof Error ? e.message : String(e)}\n`);
   }
   return 0;
+}
+
+/** `gemworks opencode`: one request of OpenCode's Gemworks plugin in, its answer out (nothing when there is nothing to say); exit 0 whatever failed. `install` puts the plugin in place. */
+async function runOpencodeHook(arg: string | undefined): Promise<number> {
+  if (arg === "install") return installed("opencode", () => installOpencode(resolve(process.argv[1] ?? "gemworks.mjs")));
+  try {
+    process.stdin.setEncoding("utf8");
+    let text = "";
+    for await (const chunk of process.stdin) text += chunk;
+    process.stdout.write((await runOpencode(text)).stdout);
+  } catch (e) {
+    process.stderr.write(`gemworks opencode: ${e instanceof Error ? e.message : String(e)}\n`);
+  }
+  return 0;
+}
+
+/** `gemworks kiro`: one Kiro hook event in, what the agent should read out; exit 2 with the reason on stderr for a refusal, else 0 whatever failed. `install [dir]` puts the hooks (and dir's) and the MCP server in place. */
+async function runKiroHook(arg: string | undefined, dir: string | undefined): Promise<number> {
+  if (arg === "install") return installed("kiro", () => installKiro(resolve(process.argv[1] ?? "gemworks.mjs"), dir));
+  try {
+    process.stdin.setEncoding("utf8");
+    let text = "";
+    for await (const chunk of process.stdin) text += chunk;
+    const run = await runKiro(text, process.env);
+    process.stdout.write(run.stdout);
+    process.stderr.write(run.stderr);
+    return run.code;
+  } catch (e) {
+    process.stderr.write(`gemworks kiro: ${e instanceof Error ? e.message : String(e)}\n`);
+    return 0;
+  }
+}
+
+/** `gemworks trae`: one TRAE hook event in, its answer out (nothing when there is nothing to say); exit 0 whatever failed. `install` puts the hooks in place and prints the MCP server's entry to add in TRAE's settings. */
+async function runTraeHook(arg: string | undefined): Promise<number> {
+  if (arg === "install") {
+    const bundle = resolve(process.argv[1] ?? "gemworks.mjs");
+    const code = installed("trae", () => installTrae(bundle));
+    if (code === 0) process.stdout.write(`\nTRAE keeps its MCP servers in its own settings: add this under Settings → MCP → Add manually:\n${JSON.stringify(traeMcpEntry(bundle), null, 2)}\n`);
+    return code;
+  }
+  try {
+    process.stdin.setEncoding("utf8");
+    let text = "";
+    for await (const chunk of process.stdin) text += chunk;
+    process.stdout.write((await runTrae(text, process.env)).stdout);
+  } catch (e) {
+    process.stderr.write(`gemworks trae: ${e instanceof Error ? e.message : String(e)}\n`);
+  }
+  return 0;
+}
+
+/** `gemworks devin`: one Devin hook event in, its answer out; exit 2 with the reason on stderr for a refusal, else 0 whatever failed. `install` puts the hooks and the MCP server in place. */
+async function runDevinHook(arg: string | undefined): Promise<number> {
+  if (arg === "install") return installed("devin", () => installDevin(resolve(process.argv[1] ?? "gemworks.mjs")));
+  try {
+    process.stdin.setEncoding("utf8");
+    let text = "";
+    for await (const chunk of process.stdin) text += chunk;
+    const run = await runDevin(text, process.env);
+    process.stdout.write(run.stdout);
+    process.stderr.write(run.stderr);
+    return run.code;
+  } catch (e) {
+    process.stderr.write(`gemworks devin: ${e instanceof Error ? e.message : String(e)}\n`);
+    return 0;
+  }
 }
 
 /** `gemworks cursor`: one Cursor hook event in, its answer out; exit 0 and `{}` whatever failed, since Cursor blocks a permission hook whose output is no JSON. `install` puts the hooks and the MCP server in place. */
@@ -494,6 +569,10 @@ else if (argv[0] === "codex") void runCodexHook().then((code) => { process.exitC
 else if (argv[0] === "antigravity") void runAntigravityHook(argv[1]).then((code) => { process.exitCode = code; });
 else if (argv[0] === "cursor") void runCursorHook(argv[1]).then((code) => { process.exitCode = code; });
 else if (argv[0] === "qwen") void runQwenHook(argv[1]).then((code) => { process.exitCode = code; });
+else if (argv[0] === "kiro") void runKiroHook(argv[1], argv[2]).then((code) => { process.exitCode = code; });
+else if (argv[0] === "trae") void runTraeHook(argv[1]).then((code) => { process.exitCode = code; });
+else if (argv[0] === "devin") void runDevinHook(argv[1]).then((code) => { process.exitCode = code; });
+else if (argv[0] === "opencode") void runOpencodeHook(argv[1]).then((code) => { process.exitCode = code; });
 else if (argv[0] === "mcp") {
   const rest = argv.slice(1);
   if (positionals("mcp", rest, [], ["--host", "--root"]).length > 0) fail(USAGE, 2);
