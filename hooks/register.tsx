@@ -88,7 +88,7 @@ import type { Judgement, JudgeOption } from '../dist/hosts/claude-code/judge.js'
 import { langOf, wordsFor } from '../dist/hosts/claude-code/text.js'
 import type { T } from '../dist/hosts/claude-code/text.js'
 import { act } from './act.tsx'
-import { drawHeading, drawJudges, drawPractice, drawPresses, drawStep } from './manual.tsx'
+import { drawHeading, drawJudges, drawPractice, drawPracticeBlock, drawPresses, drawStep } from './manual.tsx'
 
 const shellAtom = atom({ plugin: 'gemworks', key: 'shell' } as const, null as GemworksJson)
 const problemAtom = atom({ plugin: 'gemworks', key: 'problem' } as const, null as string | null)
@@ -2270,6 +2270,13 @@ function drawRows($: EngineInterface, els: Els, rows: BoardRow[], columns: numbe
       const inner: BoardRow[] = []
       while (i + 1 < rows.length && ['practice', 'menu'].includes((rows[i + 1] as BoardRow).kind)) inner.push(rows[++i] as BoardRow)
       out.push(drawStep($, els, r, inner, (x, n) => safeRow($, els, x, n)))
+      continue
+    }
+    // Practices under no step (所有时候的做法, after its heading): a block of their own, as a step's are in its block.
+    if (r.kind === 'practice') {
+      const inner: BoardRow[] = [r]
+      while (i + 1 < rows.length && ['practice', 'menu'].includes((rows[i + 1] as BoardRow).kind)) inner.push(rows[++i] as BoardRow)
+      out.push(drawPracticeBlock($, els, r.key, inner, (x, n) => safeRow($, els, x, n)))
       continue
     }
     if (r.kind !== 'entry') { out.push(safeRow($, els, r, i)); continue }

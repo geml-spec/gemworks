@@ -197,7 +197,7 @@ export function branchesElsewhere(open, own) {
 }
 /** A host's name for the line beside a prompt. */
 export function hostLabel(host) {
-    return { "claude-code": "Claude", codex: "Codex", cursor: "Cursor", qwen: "Qwen", gemini: "Gemini", dsh: "DeepSeek", pi: "pi" }[host] ?? host;
+    return { "claude-code": "Claude", codex: "Codex", cursor: "Cursor", qwen: "Qwen", opencode: "OpenCode", devin: "Devin", trae: "TRAE", kiro: "Kiro", gemini: "Gemini", dsh: "DeepSeek", pi: "pi" }[host] ?? host;
 }
 /** Whether a shell command makes a commit. */
 export function commits(command) {

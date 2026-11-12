@@ -1,6 +1,6 @@
 export declare const QWEN_HOST = "qwen";
 /** Where the adapter keeps a session's state. */
-export declare function stateDir(home?: string): string;
+export declare const stateDir: (home?: string) => string;
 /** The project: `QWEN_PROJECT_DIR`, else the event's `cwd`. */
 export declare function projectOf(env: NodeJS.ProcessEnv, cwd: string | undefined): string | undefined;
 export interface QwenRun {

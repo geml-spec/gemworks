@@ -2146,7 +2146,7 @@ function branchesElsewhere(open, own) {
   return out;
 }
 function hostLabel(host) {
-  return { "claude-code": "Claude", codex: "Codex", cursor: "Cursor", qwen: "Qwen", gemini: "Gemini", dsh: "DeepSeek", pi: "pi" }[host] ?? host;
+  return { "claude-code": "Claude", codex: "Codex", cursor: "Cursor", qwen: "Qwen", opencode: "OpenCode", devin: "Devin", trae: "TRAE", kiro: "Kiro", gemini: "Gemini", dsh: "DeepSeek", pi: "pi" }[host] ?? host;
 }
 function commits(command) {
   return /\bgit\b[^\n|;&]*\bcommit\b/.test(command);

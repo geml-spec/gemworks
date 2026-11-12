@@ -24,6 +24,11 @@ import { decisionsFor, hostLabel, latestSessionOf, recordDecisions } from "./ses
 import { activeOf, ANTIGRAVITY_HOST } from "./antigravity.js";
 import { activeOf as cursorActiveOf, CURSOR_HOST } from "./cursor.js";
 import { QWEN_HOST } from "./qwen.js";
+import { OPENCODE_HOST } from "./opencode.js";
+import { DEVIN_HOST, mcpRootOf as devinRootOf } from "./devin.js";
+import { TRAE_HOST } from "./trae.js";
+import { KIRO_HOST } from "./kiro.js";
+import { mcpRootOf as hookedMcpRootOf } from "./hooked.js";
 import { ghOncePerBranch } from "./host-git.js";
 import { runVerb } from "./verbs.js";
 import { openWorkspace } from "./workspace.js";
@@ -38,7 +43,7 @@ function packageVersion() {
 }
 const PROTOCOLS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
 /** The hosts whose hooks say beside each prompt what an MCP-only host reads in this server's results. */
-const HOOKED = new Set(["codex", ANTIGRAVITY_HOST, CURSOR_HOST, QWEN_HOST]);
+const HOOKED = new Set(["codex", ANTIGRAVITY_HOST, CURSOR_HOST, QWEN_HOST, OPENCODE_HOST, DEVIN_HOST, TRAE_HOST, KIRO_HOST]);
 const result = (id, value) => ({ jsonrpc: "2.0", id, result: value });
 const failure = (id, code, message) => ({ jsonrpc: "2.0", id, error: { code, message } });
 const text = (id, body, isError) => result(id, { content: [{ type: "text", text: body }], ...(isError ? { isError: true } : {}) });
@@ -95,7 +100,9 @@ export async function answer(msg, o) {
     const name = m?.params?.["name"];
     // The note: the session the call names (Codex), else this host's session that asked last (a host with hooks names it in the record), else one of the server's own.
     // Antigravity, Cursor and Codex start the server outside the project: Antigravity's and Cursor's is the one their hooks last saw, Codex's the one the call names.
-    const active = o.host === ANTIGRAVITY_HOST ? activeOf() : o.host === CURSOR_HOST ? cursorActiveOf() : undefined;
+    // Devin, TRAE and Kiro start it where their docs do not say: the project the hooks last saw, when the server's own folder has no `.geml/`.
+    const hooked = o.host === DEVIN_HOST ? devinRootOf(o.root) : o.host === TRAE_HOST || o.host === KIRO_HOST ? hookedMcpRootOf(o.host, o.root) : undefined;
+    const active = o.host === ANTIGRAVITY_HOST ? activeOf() : o.host === CURSOR_HOST ? cursorActiveOf() : hooked !== undefined ? { conversationId: hooked.session, root: hooked.root } : undefined;
     const codex = codexTurnOf(m?.params);
     const root = active?.root ?? codex.root ?? o.root;
     const sessionOf = () => active?.conversationId ?? codex.session ?? latestSessionOf(root, o.host) ?? `mcp-${process.pid}`;
