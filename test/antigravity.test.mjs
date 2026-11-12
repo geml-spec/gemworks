@@ -109,3 +109,28 @@ test("the work loop through Antigravity's hooks: a new prompt's transient messag
   assert.match(pre.injectSteps[0].ephemeralMessage, /^\[gemworks\] work items on the way: #\S+ «看板» \(feature: at mockup 样稿, needs 你看样稿\)/);
   assert.match(readFileSync(join(root, ".geml", "board.geml"), "utf8"), /看板/);
 });
+
+test("the Antigravity plugin in this folder: its manifest has what the Marketplace asks, its hooks and MCP server run the bundle it ships, its skills are only the ones skills/ lacks", async () => {
+  const { hooksFor } = await import("../dist/antigravity.js");
+  const { existsSync, readdirSync } = await import("node:fs");
+  const at = (p) => new URL(`../${p}`, import.meta.url);
+  const json = (p) => JSON.parse(readFileSync(at(p), "utf8"));
+  const m = json(".antigravity-plugin/plugin.json");
+  assert.equal(m.name, "gemworks");
+  assert.equal(m.displayName, "Gemworks", "no Antigravity/Gemini/Claude/Cursor in front, no Plugin or MCP behind");
+  assert.ok(m.description.length >= 120 && m.description.length <= 160, `the Marketplace's 120 to 160 characters: ${m.description.length}`);
+  for (const k of ["version", "author", "license", "logo"]) assert.ok(m[k] !== undefined, k);
+  const logo = readFileSync(at(m.logo), "utf8");
+  const [, , w, h] = /viewBox="([^"]+)"/.exec(logo)[1].split(/\s+/).map(Number);
+  assert.equal(w, h, "a square logo");
+  assert.match(logo, /width="128" height="128"/, "at least 128 pixels");
+  // Claude Code's skills/ is read by Antigravity too: the manifest adds only the geml plugin's two, so no name comes twice.
+  const own = readdirSync(at("skills"));
+  for (const s of m.skills) {
+    assert.ok(existsSync(at(`${s.slice(2)}/SKILL.md`)), s);
+    assert.ok(!own.includes(s.split("/").pop()), `${s} is not also in skills/`);
+  }
+  // The hooks run from the plugin's root, on the bundle the package ships: the commands the global install writes, with the path relative.
+  assert.deepEqual(json("hooks.json"), { gemworks: hooksFor("node ./dist/gemworks.mjs") });
+  assert.deepEqual(json("mcp_config.json"), { mcpServers: { gemworks: { command: "node", args: ["${PLUGIN_ROOT}/dist/gemworks.mjs", "mcp", "--host", "antigravity"] } } });
+});

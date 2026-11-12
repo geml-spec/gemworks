@@ -1,0 +1,25 @@
+{
+  "name": "gemworks",
+  "displayName": "Gemworks",
+  "description": "A workbench beside your agent chat: it keeps your artifacts in order, sums up what you've learned, remembers your decisions, and lets your workflow grow.",
+  "version": "0.3.19",
+  "logo": "assets/logo.svg",
+  "author": {
+    "name": "geml-spec",
+    "url": "https://github.com/geml-spec"
+  },
+  "homepage": "https://github.com/geml-spec/gemworks",
+  "repository": "https://github.com/geml-spec/gemworks",
+  "license": "AGPL-3.0-only",
+  "keywords": [
+    "geml",
+    "workflow",
+    "statechart",
+    "journal",
+    "mcp"
+  ],
+  "skills": [
+    "./host-skills/geml",
+    "./host-skills/geml-code-graph"
+  ]
+}

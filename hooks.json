@@ -1,0 +1,37 @@
+{
+  "gemworks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node ./dist/gemworks.mjs antigravity SessionStart",
+        "timeout": 20
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node ./dist/gemworks.mjs antigravity PreInvocation",
+        "timeout": 20
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./dist/gemworks.mjs antigravity PostToolUse",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node ./dist/gemworks.mjs antigravity Stop",
+        "timeout": 20
+      }
+    ]
+  }
+}

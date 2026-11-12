@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "gemworks": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/dist/gemworks.mjs",
+        "mcp",
+        "--host",
+        "antigravity"
+      ]
+    }
+  }
+}

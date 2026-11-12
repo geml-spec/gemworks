@@ -1,4 +1,4 @@
-// Bump the version everywhere it is named: package.json, the lockfile's head (twice), and the two plugin manifests. The
+// Bump the version everywhere it is named: package.json, the lockfile's head (twice), and the three plugin manifests. The
 // board shows the plugin's version, and the smoke test fails when any of these disagree.
 // Usage: node scripts/bump.mjs <version>   (e.g. 0.2.89)
 import { readFileSync, writeFileSync } from "node:fs";
@@ -20,4 +20,5 @@ edit("package.json", 1);
 edit("package-lock.json", 2);
 edit(".claude-plugin/plugin.json", 1);
 edit(".codex-plugin/plugin.json", 1);
+edit(".antigravity-plugin/plugin.json", 1);
 console.log(`${from} -> ${to}`);

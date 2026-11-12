@@ -1,6 +1,6 @@
 {
   "name": "@geml/gemworks",
-  "version": "0.3.18",
+  "version": "0.3.19",
   "description": "A workbench right beside your agent chat: it keeps your artifacts in order, sums up what you've learned, remembers what you've decided, and lets your workflow grow on its own. A Claude Code plugin, adapters for Codex, Antigravity, DeepSeek Harness and Pi, an MCP server for other hosts, and a CLI.",
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -35,7 +35,7 @@
     "journal",
     "mcp"
   ],
-  "files": ["dist", "spec", "skills", "examples", "workflows", "coach", "host-skills", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md", ".claude-plugin/plugin.json", "hooks", "types", "cordis.patch.yml", "LICENSE", ".codex-plugin/plugin.json", "codex", ".codexignore", "client.js"],
+  "files": ["dist", "spec", "skills", "examples", "workflows", "coach", "host-skills", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md", ".claude-plugin/plugin.json", "hooks", "types", "cordis.patch.yml", "LICENSE", ".codex-plugin/plugin.json", "codex", ".codexignore", "client.js", ".antigravity-plugin/plugin.json", "hooks.json", "mcp_config.json", "assets"],
   "scripts": {
     "build": "tsc && node scripts/bundle.mjs",
     "test": "npm run build && node test/all.mjs",

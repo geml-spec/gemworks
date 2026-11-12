@@ -11,15 +11,16 @@ test("package identity: the renamed bundle", () => {
   const lock = JSON.parse(readFileSync(new URL("../package-lock.json", here), "utf8"));
   const claude = JSON.parse(readFileSync(new URL("../.claude-plugin/plugin.json", here), "utf8"));
   const codex = JSON.parse(readFileSync(new URL("../.codex-plugin/plugin.json", here), "utf8"));
-  assert.deepEqual([lock.version, lock.packages[""].version, claude.version, codex.version], Array(4).fill(pkg.version), "every manifest names the package's version: the board shows the plugin's, so a bump that missed one would say the wrong version");
-  assert.deepEqual([claude.license, codex.license], [pkg.license, pkg.license], "every manifest names the package's license");
+  const antigravity = JSON.parse(readFileSync(new URL("../.antigravity-plugin/plugin.json", here), "utf8"));
+  assert.deepEqual([lock.version, lock.packages[""].version, claude.version, codex.version, antigravity.version], Array(5).fill(pkg.version), "every manifest names the package's version: the board shows the plugin's, so a bump that missed one would say the wrong version");
+  assert.deepEqual([claude.license, codex.license, antigravity.license], [pkg.license, pkg.license, pkg.license], "every manifest names the package's license");
   const hooks = readFileSync(new URL("../hooks/register.tsx", here), "utf8");
   assert.ok(hooks.includes(`const LICENSE = '${pkg.license}'`), "the about dialog says the package's license");
   assert.ok(hooks.includes(`const REPO = '${pkg.homepage}'`), "the about and upgrade dialogs link this project's repository");
   assert.equal(pkg.bugs, `${pkg.homepage}/issues`, "the about dialog's feedback link is the package's bugs page");
   assert.equal(pkg.bin["gemworks"], "dist/cli.js");
   assert.equal(pkg.dsh.bundle.patch, "./cordis.patch.yml");
-  assert.deepEqual([...pkg.files].sort(), [".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".codexignore", "CHANGELOG.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "client.js", "coach", "codex", "cordis.patch.yml", "dist", "examples", "hooks", "host-skills", "skills", "spec", "types", "workflows"]);
+  assert.deepEqual([...pkg.files].sort(), [".antigravity-plugin/plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".codexignore", "CHANGELOG.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "assets", "client.js", "coach", "codex", "cordis.patch.yml", "dist", "examples", "hooks", "hooks.json", "host-skills", "mcp_config.json", "skills", "spec", "types", "workflows"]);
   assert.equal(pkg.scripts.postinstall, undefined, "no lifecycle scripts: installing must never need allowBuilds");
 });
 
