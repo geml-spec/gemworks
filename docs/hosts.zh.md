@@ -153,9 +153,10 @@ Codex 照上面拿到 MCP 工具和那一页 GEML 看板，hooks 信任之后还
 和闸：插件的 `.codex-plugin/plugin.json` 指向 `host-skills/`、`codex/mcp.json`
 （`node ./dist/gemworks.mjs mcp --host codex`）和 `codex/hooks.json`——SessionStart、
 UserPromptSubmit、PreToolUse、PostToolUse、Stop 都跑 `node "${PLUGIN_ROOT}/dist/gemworks.mjs" codex`。
-从本仓库的 Codex marketplace（`.agents/plugins/marketplace.json`，本地来源，就是仓库本身，
-先在仓库里 `npm install`、`npm run build`）装：Codex 里 `/plugins` 安装，再 `/hooks`
-逐条审阅、信任这五个 hook——装插件不等于信任，没信任的 hook 一声不响地跳过。
+从本仓库的 Codex marketplace（`.agents/plugins/marketplace.json`，它从 npm 装 `@geml/gemworks`，
+所以本机要有 npm）装：终端里先 `codex plugin marketplace add geml-spec/gemworks`，再
+`codex plugin add gemworks@gemworks`，然后在 Codex 里 `/hooks` 逐条审阅、信任这五个 hook——
+装插件不等于信任，没信任的 hook 一声不响地跳过。
 
 hooks 信任之后，Codex 上有的就是 Claude Code 上的减去状态带和看板面板：会话开始时告诉
 模型工作循环的工具和各条流程的步骤，有进行中的工作项就打开那一页看板；每条提示词带上

@@ -218,11 +218,12 @@ are trusted — the work loop beside each prompt and the gate: the plugin's
 (`node ./dist/gemworks.mjs mcp --host codex`) and at `codex/hooks.json`, where
 SessionStart, UserPromptSubmit, PreToolUse, PostToolUse and Stop all run
 `node "${PLUGIN_ROOT}/dist/gemworks.mjs" codex`. Installed from this
-repository's Codex marketplace (`.agents/plugins/marketplace.json`, a local
-source, the repository itself: run `npm install` and `npm run build` in it
-first), then `/plugins` in Codex to install and `/hooks` to review and trust
-the five hooks — installing a plugin trusts none of them, and an untrusted hook
-is skipped without a word.
+repository's Codex marketplace (`.agents/plugins/marketplace.json`, which
+installs `@geml/gemworks` from npm, so npm must be on the machine): run
+`codex plugin marketplace add geml-spec/gemworks` and then
+`codex plugin add gemworks@gemworks` in a terminal, then `/hooks` in Codex to
+review and trust the five hooks — installing a plugin trusts none of them, and
+an untrusted hook is skipped without a word.
 
 With the hooks trusted, Codex gets what Claude Code gets minus the line above
 the prompt and the board panel: the session's start tells the model the work
