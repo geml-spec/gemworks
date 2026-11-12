@@ -15,9 +15,12 @@ test("the plugin manifest names gemworks, keeps the package's version and points
   assert.equal(plugin.mcpServers, undefined, "the hooks module serves the flow_* tools; a manifest MCP server would list them twice");
 });
 
-test("hooks.json names the one hooks module", () => {
-  assert.deepEqual(json("hooks/hooks.json"), { modules: ["./register.tsx"] });
+test("the manifest names the hooks module's file, and that file names the one hooks module", () => {
+  // Not hooks/hooks.json: Antigravity reads this same folder and warns about every hooks.json away from the plugin root.
+  assert.equal(json(".claude-plugin/plugin.json").hooks, "./hooks/modules.json");
+  assert.deepEqual(json("hooks/modules.json"), { modules: ["./register.tsx"] });
   assert.ok(existsSync(at("hooks/register.tsx")));
+  assert.ok(!existsSync(at("hooks/hooks.json")), "a hooks/hooks.json would load the module a second time and bring Antigravity's warning back");
 });
 
 test("no skill shares its name with a command the hooks module registers", () => {
