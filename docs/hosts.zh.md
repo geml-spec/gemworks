@@ -170,6 +170,16 @@ Codex；Windows 上不包）。这里的编辑器是 `apply_patch`：内置词�
 
 ### Antigravity
 
+作为插件装，Antigravity 的 App、CLI 和 IDE 共用：
+
+```sh
+agy plugin install https://github.com/geml-spec/gemworks/tree/plugin
+```
+
+插件包自带构建好的程序，hooks 和 MCP 服务都在插件目录里运行，不用另装 npm 包。
+
+也可以不装插件，改用全局安装：
+
 ```sh
 npm install -g @geml/gemworks
 gemworks antigravity install
@@ -177,7 +187,7 @@ gemworks antigravity install
 
 第二行把 gemworks 的 hooks 写进 `~/.gemini/config/hooks.json`，把 gemworks 的 MCP server 写进
 `~/.gemini/config/mcp_config.json`，两处都指向刚装的这份 `gemworks`；它会打印这两个文件的路径。
-Antigravity 的 App、CLI 和 IDE 共用这套 hooks。
+Antigravity 的 App、CLI 和 IDE 共用这套 hooks。两种装法只选一种：都装的话，每个事件会跑两遍。
 
 装上之后，模型用 MCP 工具记工作项、做法、提议、产物和定下的事；会话开始时 hook 交代这些工具和
 流程的步骤，每条提示词旁边带上进行中的工作项、这一步的做法和别的会话新定下的事。工作台是上面那页

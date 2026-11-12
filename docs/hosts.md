@@ -246,6 +246,17 @@ and only the paths of a patch are judged, never its text.
 
 ### Antigravity
 
+As a plugin, shared by Antigravity's app, CLI and IDE:
+
+```sh
+agy plugin install https://github.com/geml-spec/gemworks/tree/plugin
+```
+
+The plugin package carries the built program, and its hooks and MCP server run from the plugin's folder, so no
+npm package needs installing.
+
+Or, without the plugin, install globally:
+
 ```sh
 npm install -g @geml/gemworks
 gemworks antigravity install
@@ -253,7 +264,8 @@ gemworks antigravity install
 
 The second line writes gemworks' hooks into `~/.gemini/config/hooks.json` and its MCP server into
 `~/.gemini/config/mcp_config.json`, both pointing at the `gemworks` you just installed, and prints the two
-paths. Antigravity's app, CLI and IDE share these hooks.
+paths. Antigravity's app, CLI and IDE share these hooks. Install one way or the other, not both: with both, every
+event runs twice.
 
 Once installed, the model records work items, practices, proposals, artifacts and decisions through the MCP
 tools; the session's start tells it those tools and the flows' steps, and each prompt carries the work items on
