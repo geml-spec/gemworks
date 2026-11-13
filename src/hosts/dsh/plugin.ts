@@ -25,8 +25,8 @@ import { readDictionaryFile } from "../../dictionary-io.js";
 import { commandOf } from "../../core/command-line.js";
 import { DSH_TOOLS } from "../../core/host-tools.js";
 import { writtenProjectPath } from "../../core/written.js";
-import { decisionsContext, NOTE_TOOL, SESSIONS_PROMPT } from "../../core/session-log.js";
-import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordDecisions, recordFile, recordPrompt } from "../../session-store.js";
+import { decisionsContext, NOTE_TOOL, noteReply, SESSIONS_PROMPT } from "../../core/session-log.js";
+import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordNote, recordPrompt } from "../../session-store.js";
 import { readJournal } from "../../core/journal.js";
 import { actOnSession, boardReply, coachBoardReply, readQuery, type CoachData, type DshAction, type Supervision } from "./board.js";
 import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, workItemsAt } from "../../loop.js";
@@ -180,13 +180,12 @@ export function recordSession(agent: Agent, recorded?: Map<string, string>): voi
   agent.ctx.tools.register(defineTool({
     name: `gemworks_${NOTE_TOOL.name}`,
     description: NOTE_TOOL.description,
-    parameters: { decisions: { type: "array", items: { type: "string" }, required: true, description: "The conclusions and decisions, one short sentence each." } },
+    parameters: dshParameters(NOTE_TOOL.inputSchema as unknown as Record<string, unknown>),
     output: { schema: { type: "object", additionalProperties: false, properties: { text: { type: "string" } } }, render: (_args: unknown, value: unknown) => [{ type: "text", text: JSON.stringify(value) }] },
     execute: (async (args: Record<string, unknown>) => {
-      const given = Array.isArray(args["decisions"]) ? (args["decisions"] as unknown[]).filter((d): d is string => typeof d === "string") : [];
-      const n = recordDecisions(cwd, host, id, given);
-      if (n === 0) throw new Error("Nothing recorded: decisions is a list of short sentences.");
-      return { text: `Recorded ${n} decision${n === 1 ? "" : "s"}; the project's other sessions will see ${n === 1 ? "it" : "them"}.` };
+      const note = recordNote(cwd, host, id, args);
+      if (note.decided.length === 0) throw new Error(noteReply(note));
+      return { text: noteReply(note) };
     }) as never,
   } as never));
   agent.ctx.systemPrompt.section({ name: "gemworks:sessions", order: 401, text: () => SESSIONS_PROMPT.replace("gemworks `note` tool", "`gemworks_note` tool") });

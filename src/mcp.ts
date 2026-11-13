@@ -17,10 +17,10 @@ import { isAbsolute, join } from "node:path";
 import { createInterface } from "node:readline";
 import { HOST_TOOLS, NO_TOOLS } from "./core/host-tools.js";
 import { FLOW_TOOLS } from "./core/verb-specs.js";
-import { decisionsContext, NOTE_TOOL, SESSIONS_PROMPT } from "./core/session-log.js";
+import { decisionsContext, NOTE_TOOL, noteReply, SESSIONS_PROMPT } from "./core/session-log.js";
 import { callLoopTool, coachFlowsAt, isLoopTool, LOOP_TOOLS, loopContext, loopPrompt } from "./loop.js";
 import { boardHasWork, openBoardOnce } from "./board-file.js";
-import { decisionsFor, hostLabel, latestSessionOf, recordDecisions } from "./session-store.js";
+import { decisionsFor, hostLabel, latestSessionOf, recordNote } from "./session-store.js";
 import { activeOf, ANTIGRAVITY_HOST } from "./antigravity.js";
 import { activeOf as cursorActiveOf, CURSOR_HOST } from "./cursor.js";
 import { QWEN_HOST } from "./qwen.js";
@@ -122,13 +122,12 @@ export async function answer(msg: unknown, o: McpOptions): Promise<Reply | undef
   /** The work items on the way and this session's step's practices: what `status` carries on every host. */
   const loopLines = (): string => { try { return loopContext(root, sessionOf()).join("\n"); } catch { return ""; } };
   if (name === NOTE_TOOL.name) {
-    const given = (m?.params?.["arguments"] as { decisions?: unknown } | undefined)?.decisions;
-    const decisions = Array.isArray(given) ? given.filter((d): d is string => typeof d === "string") : [];
     try {
-      const n = recordDecisions(root, o.host, sessionOf(), decisions);
+      const note = recordNote(root, o.host, sessionOf(), m?.params?.["arguments"]);
+      const n = note.decided.length;
       // The GEML board says it now: opened the first time this session records something.
       if (n > 0) openBoardOnce(root, sessionOf());
-      return withNews(n === 0 ? "Nothing recorded: decisions is a list of short sentences." : `Recorded ${n} decision${n === 1 ? "" : "s"}; the project's other sessions will see ${n === 1 ? "it" : "them"}.`, n === 0);
+      return withNews(noteReply(note), n === 0);
     } catch (e) {
       return text(id, `gemworks: ${e instanceof Error ? e.message : String(e)}`, true);
     }

@@ -198,6 +198,6 @@ export function boardPage(i: BoardPageInput): string {
   out.push(...(pictured.length > 0 ? pictured.slice(0, -1) : [t("没有工作项在流程上。")]));
   const decided = i.decisions.slice(-SHOWN.decisions).reverse();
   out.push("", `# ${t("别的会话的决定")} {#decisions}`, "");
-  out.push(...(decided.length > 0 ? decided.map((d) => `- ${t("{0}（{1}，{2}）", literal(d.text), literal(i.hostName(d.host)), i.clock(d.at))}`) : [t("还没有。")]));
+  out.push(...(decided.length > 0 ? decided.map((d) => `- ${t("{0}（{1}，{2}）", t(d.by === "person" ? "你定：{0}" : "模型记：{0}", literal(d.text)), literal(i.hostName(d.host)), i.clock(d.at))}`) : [t("还没有。")]));
   return `${out.join("\n")}\n`;
 }

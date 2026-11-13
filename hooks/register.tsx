@@ -38,8 +38,8 @@ import type { Queued } from '../dist/hosts/claude-code/attention.js'
 import type { AttentionFacts, AttentionMemory } from '../dist/hosts/claude-code/attention.js'
 import { envParts, remoteInPlay } from '../dist/hosts/claude-code/env.js'
 import { captureHint, offersCapture } from '../dist/hosts/claude-code/screenshot.js'
-import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, isStatusLine, legacyLogName, logName, nextTurn, NOTE_TOOL, parseLog, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
-import type { SeenRun, SessionEvent, SessionSummary } from '../dist/core/session-log.js'
+import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, legacyLogName, logName, nextTurn, NOTE_TOOL, noteReply, parseLog, personPrompts, readNote, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
+import type { NoteRead, SeenRun, SessionEvent, SessionSummary } from '../dist/core/session-log.js'
 import { checkRequest, flowRequest, labelRequest, linkKey, promptId, readChecks, readFlowDraft, readLabels, readThemes, themeRequest, typedWords } from '../dist/core/corrections.js'
 import type { LabelledPrompt } from '../dist/core/corrections.js'
 import { ARTIFACT_TOOL, isMadeForPeople, publishedLink } from '../dist/core/artifact-tool.js'
@@ -760,22 +760,24 @@ async function sessionsOnPrompt($: EngineInterface, text: string): Promise<strin
   return [decisionsContext(fresh, (d) => `${hostName(d.host)}${d.branch !== undefined ? ` · ${d.branch}` : ''}，${hhmm(d.at)}`)]
 }
 
-/** The model's note: the decisions into this session's log, under the turn under way. */
+/**
+ * The model's note: the decisions into this session's log, under the turn under way. A choice it says the person made
+ * is theirs only when their words are found in a prompt they gave in this session (readNote); status is left out.
+ */
 async function noteDecisions($: EngineInterface, event: unknown): Promise<ToolCallResult> {
   const args = toolArgs(event as Record<string, unknown>)
-  const offered = Array.isArray(args['decisions']) ? (args['decisions'] as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim() !== '').map((x) => x.trim()) : []
-  if (offered.length === 0) return { result: 'Nothing recorded: decisions is a list of short sentences.' }
-  // Status is no decision: git, the board and the journal hold what was pushed, synced, committed, or what a version does.
-  const status = offered.filter(isStatusLine)
-  const given = offered.filter((x) => !isStatusLine(x))
-  const leftOut = status.length === 0 ? '' : ` ${status.length} left out as status, which git, the board and the journal hold: ${status.map((x) => `"${x.slice(0, 60)}"`).join(', ')}.`
-  if (given.length === 0) return { result: `Nothing recorded:${leftOut} A decision is a choice the person made or a finding other sessions would rediscover.` }
+  // Read once with no prompts to tell an empty note at once; whose each choice is waits for the session's prompts.
+  if (readNote(args, []).decided.length === 0) return { result: noteReply(readNote(args, [])) }
   if ((await read($, sessionsDirAtom)) === null) return { result: 'Nothing recorded: this project has no shared session record yet (gemworks has not read the repository).' }
   const at = await nowIso($)
-  const events = await appendOwn($, (so) => given.map((text): SessionEvent => ({ t: 'decision', turn: currentTurn(so), at, text })))
+  let note: NoteRead = { decided: [], status: [], unfound: [] }
+  const events = await appendOwn($, (so) => {
+    note = readNote(args, personPrompts(so))
+    return note.decided.map((d): SessionEvent => ({ t: 'decision', turn: currentTurn(so), at, text: d.text, by: d.by, ...(d.said !== undefined ? { said: d.said } : {}) }))
+  })
   if (events.length === 0) return { result: 'Nothing recorded: the session record could not be written.' }
   await loadProjectSessions($)
-  return { result: `Recorded ${given.length} decision${given.length === 1 ? '' : 's'}; the project's other sessions will see ${given.length === 1 ? 'it' : 'them'}.${leftOut}` }
+  return { result: noteReply(note) }
 }
 
 /**

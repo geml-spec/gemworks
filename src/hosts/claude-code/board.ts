@@ -1290,7 +1290,8 @@ export function decisionRows(p: ProjectSessions | undefined, t: T = ZH, columns:
   const shown = Math.max(DECISIONS_SHOWN, p.decisionsShown ?? DECISIONS_SHOWN);
   const rows: BoardRow[] = [{ kind: "section", key: "decisions", text: t("决定"), ...(decisions.length > DECISIONS_SHOWN ? { count: decisions.length } : {}) }];
   for (const d of decisions.slice(0, shown)) {
-    rows.push({ kind: "note", key: `decision-${d.session}-${d.at}`, lines: wrapCells(d.text, Math.max(12, columns - 4), DECISION_ROWS), tag: `${label(d.session)} ${whenTag(d.at, now, t)}`, action: { op: "use-decision", text: d.text, from: label(d.session) } });
+    // Whose it is first: the person's own, or one only a model recorded.
+    rows.push({ kind: "note", key: `decision-${d.session}-${d.at}`, lines: wrapCells(t(d.by === "person" ? "你定：{0}" : "模型记：{0}", d.text), Math.max(12, columns - 4), DECISION_ROWS), tag: `${label(d.session)} ${whenTag(d.at, now, t)}`, action: { op: "use-decision", text: d.text, from: label(d.session) } });
   }
   const rest = decisions.length - Math.min(shown, decisions.length);
   const pages: Pressable[] = [

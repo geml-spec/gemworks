@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { GEML_DIR } from "./core/layout.js";
-import { appendEvents, currentTurn, decisionsSince, isLogName, legacyLogName, logName, nextTurn, parseLog, SESSIONS_DIR, SESSIONS_GITIGNORE, summarize, type SessionEvent, type SessionSummary, type SharedDecision } from "./core/session-log.js";
+import { appendEvents, currentTurn, decisionsSince, isLogName, legacyLogName, logName, nextTurn, parseLog, personPrompts, readNote, SESSIONS_DIR, SESSIONS_GITIGNORE, summarize, type NoteRead, type SessionEvent, type SessionSummary, type SharedDecision } from "./core/session-log.js";
 import { commitsOf, journalBaseOf, repoFacts } from "./host-git.js";
 
 /** The directory of a project's session logs, for any of its checkouts. */
@@ -87,11 +87,25 @@ export function recordPrompt(root: string, host: string, id: string, text: strin
   appendSession(root, host, id, (events) => [{ t: "prompt", turn: nextTurn(events), at: now, text }], now);
 }
 
-/** The model's decisions into the log, under the turn under way. */
+/** The model's own decisions into the log, under the turn under way. */
 export function recordDecisions(root: string, host: string, id: string, decisions: readonly string[], now: string = new Date().toISOString()): number {
   const given = decisions.map((d) => d.trim()).filter((d) => d !== "");
-  if (given.length > 0) appendSession(root, host, id, (events) => given.map((text): SessionEvent => ({ t: "decision", turn: currentTurn(events), at: now, text })), now);
+  if (given.length > 0) appendSession(root, host, id, (events) => given.map((text): SessionEvent => ({ t: "decision", turn: currentTurn(events), at: now, text, by: "model" })), now);
   return given.length;
+}
+
+/**
+ * The note tool's arguments into the log, under the turn under way: a choice the model says the person made is theirs
+ * only when their words are found in a prompt they gave in this session (readNote); status is left out.
+ */
+export function recordNote(root: string, host: string, id: string, args: unknown, now: string = new Date().toISOString()): NoteRead {
+  let note = readNote(args, []);
+  if (note.decided.length === 0) return note;
+  appendSession(root, host, id, (events) => {
+    note = readNote(args, personPrompts(events));
+    return note.decided.map((d): SessionEvent => ({ t: "decision", turn: currentTurn(events), at: now, text: d.text, by: d.by, ...(d.said !== undefined ? { said: d.said } : {}) }));
+  }, now);
+  return note;
 }
 
 /** A file the session wrote, once. */

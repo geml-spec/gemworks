@@ -602,7 +602,7 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
       if (action.decisions !== undefined && action.decisions.length > 0) {
         const decided = action.decisions
         const at = await nowIso($)
-        const events = await appendOwn($, (so) => decided.map((text): SessionEvent => ({ t: 'decision', turn: currentTurn(so), at, text })))
+        const events = await appendOwn($, (so) => decided.map((text): SessionEvent => ({ t: 'decision', turn: currentTurn(so), at, text, by: 'person', pressed: true })))
         if (events.length > 0) await loadProjectSessions($)
       }
       return

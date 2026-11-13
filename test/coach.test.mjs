@@ -298,6 +298,7 @@ test("a work item's history across sessions, and what a turn did in words: the s
     { t: "prompt", turn: 1, at: "2026-10-26T09:04:00Z", text: "对得上" },
     ev(1, "2026-10-26T09:05:00Z", { state: "mockup", met: [{ step: "discuss", at: "2026-10-26T09:05:00Z", turn: 1, said: "对得上" }] }),
     { t: "decision", turn: 1, at: "2026-10-26T09:05:00Z", text: "进度放在工作项上" },
+    { t: "decision", turn: 1, at: "2026-10-26T09:05:00Z", text: "流程手册先对一遍", by: "person", said: "对得上" },
   ]);
   const two = log("s2", [
     { t: "prompt", turn: 3, at: "2026-10-26T10:00:00Z", text: "要改" },
@@ -305,12 +306,12 @@ test("a work item's history across sessions, and what a turn did in words: the s
     { t: "prompt", turn: 4, at: "2026-10-26T11:00:00Z", text: "先放一放" },
     ev(4, "2026-10-26T11:01:00Z", { state: "mockup", status: "held", met: [{ step: "discuss", at: "2026-10-26T09:05:00Z", turn: 1, said: "对得上" }] }),
   ]);
-  assert.deepEqual(itemHistory("d1", [one, two], flows, t).map((h) => h.text), ["✓讨论 · 你说「对得上」", "定：进度放在工作项上", "到「出样稿」", "已暂缓"]);
+  assert.deepEqual(itemHistory("d1", [one, two], flows, t).map((h) => h.text), ["✓讨论 · 你说「对得上」", "模型记：进度放在工作项上", "你定：流程手册先对一遍", "到「出样稿」", "已暂缓"]);
   const learned = [{ id: "p", flow: "design", step: "mockup", text: "用真实内容", why: "", at: "x", by: "model", layer: "project", session: "s1", turn: 1 }];
-  assert.deepEqual(turnWords(one.turns[0], flows, learned, t), ["→ 流程手册 ✓讨论 · 你说「对得上」", "定：进度放在工作项上", "新学到：用真实内容"]);
+  assert.deepEqual(turnWords(one.turns[0], flows, learned, t), ["→ 流程手册 ✓讨论 · 你说「对得上」", "模型记：进度放在工作项上", "你定：流程手册先对一遍", "新学到：用真实内容"]);
   const rows = workRows([item({ id: "d1", flow: "design", title: "流程手册", met: [m("discuss")], goal: "一套流程" })], flows, t, { unfolded: "d1", sessions: [one, two] });
   const after = rows.slice(rows.findIndex((r) => r.key === "work-d1") + 1);
-  assert.deepEqual(after.filter((r) => r.kind === "text").map((r) => r.text.replace(/^\d\d:\d\d {2}/, "")), ["✓讨论 · 你说「对得上」", "定：进度放在工作项上", "到「出样稿」", "已暂缓", "最后：一套流程"]);
+  assert.deepEqual(after.filter((r) => r.kind === "text").map((r) => r.text.replace(/^\d\d:\d\d {2}/, "")), ["✓讨论 · 你说「对得上」", "模型记：进度放在工作项上", "你定：流程手册先对一遍", "到「出样稿」", "已暂缓", "最后：一套流程"]);
   assert.deepEqual(after.find((r) => r.kind === "buttons").items.map((b) => [b.label, b.action.op]), [["看这件的提示词", "session-item"], ["看流程", "coach-go"], ["放下", "work-close"]]);
   assert.deepEqual(rows.find((r) => r.key === "work-d1").open.action, { op: "work-unfold", id: null }, "unfolded: its press folds it");
 });

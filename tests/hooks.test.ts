@@ -1819,12 +1819,15 @@ test('the project record: a prompt opens a turn in this session\'s log, the mode
   await clock.advance(1)
   await $.prompt.submit({ text: '按项目组织会话', wait: false, origin: COMPOSER })
   expect(w.files.get(`${LOGS}/.gitignore`)).toBe('*\n')
-  const noted = await $.tool.call({ tool: 'mcp__gemworks__note', tool_use_id: 'n1', decisions: ['每会话一个文件', ' '] })
-  expect(String(noted.text ?? noted.result)).toMatch(/^Recorded 1 decision; the project's other sessions will see it\./)
+  const noted = await $.tool.call({ tool: 'mcp__gemworks__note', tool_use_id: 'n1', decisions: ['每会话一个文件', ' '], theirs: [{ text: '会话按项目组织', said: '按项目组织' }, { text: '编出来的决定', said: '他没说过的话' }] })
+  expect(String(noted.text ?? noted.result)).toMatch(/^Recorded 3 decisions; the project's other sessions will see them\. 1 recorded as yours, not the person's/)
   await $.turn.complete({ answer: '好了，按项目记。', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.advance(1)
-  expect(events(w.files.get(OWN_LOG)).map((x) => [x.t, x.turn ?? null, x.text ?? x.host])).toEqual([
-    ['session', null, 'claude-code'], ['prompt', 1, '按项目组织会话'], ['decision', 1, '每会话一个文件'], ['answer', 1, '好了，按项目记。'],
+  // Whose each is: the person's only where their words are in a prompt they gave in this session.
+  expect(events(w.files.get(OWN_LOG)).map((x) => [x.t, x.turn ?? null, x.text ?? x.host, x.by ?? null])).toEqual([
+    ['session', null, 'claude-code', null], ['prompt', 1, '按项目组织会话', null],
+    ['decision', 1, '每会话一个文件', 'model'], ['decision', 1, '会话按项目组织', 'person'], ['decision', 1, '编出来的决定', 'model'],
+    ['answer', 1, '好了，按项目记。', null],
   ])
 })
 
@@ -2194,7 +2197,7 @@ test("an answer pressed on the band for a registered question is recorded as the
   expect(said.at(-1)).toBe('要推到 origin 吗？：推')
   const log = w.files.get(OWN_LOG) ?? ''
   expect(log, 'the pressed answer is in the record as a decision').toContain('"t":"decision"')
-  expect(log).toContain('"text":"要推到 origin 吗？：推"')
+  expect(log, 'a press is the person\'s own').toContain('"text":"要推到 origin 吗？：推","by":"person","pressed":true')
   // The note tool: a status line is left out, the choice kept.
   const noted = await $.tool.call({ tool: 'mcp__gemworks__note', tool_use_id: 'n1', decisions: ['feat/gemworks is pushed to origin at 2784db74.', '看板按钮总是打开工作项：用户定的'] })
   const text = String(noted.text ?? noted.result)
@@ -2276,14 +2279,16 @@ test('the other sessions\' decisions come beside the person\'s prompt, once each
   const at = new Date(clock.now()).toISOString()
   w.files.set(`${LOGS}/codex-cx1.jsonl`, [
     { t: 'session', id: 'cx1', host: 'codex', at, branch: 'feat/y' },
-    { t: 'prompt', turn: 1, at, text: 'runtime 的 PR 能合吗' },
+    { t: 'prompt', turn: 1, at, text: 'runtime 的 PR 先合，CI 后补' },
     { t: 'decision', turn: 1, at, text: '合并前先跑三平台 CI' },
+    { t: 'decision', turn: 1, at, text: 'runtime 的 PR 先合', by: 'person', said: '先合' },
   ].map((x) => JSON.stringify(x)).join('\n') + '\n')
   await clock.advance(1000)
   await $.prompt.submit({ text: '接着做会话页', wait: false, origin: COMPOSER })
   const first = (contexts.at(-1) ?? []).join('\n')
-  expect(first).toContain('[gemworks] 本项目其他会话记下的决定：')
-  expect(first).toMatch(/- 合并前先跑三平台 CI（Codex · feat\/y，\d\d:\d\d）/)
+  // The person's own first, with their words; an earlier note that names no author is a model's, passed on as reference.
+  expect(first).toMatch(/\[gemworks\] 本项目其他会话里用户定的：\n- runtime 的 PR 先合（用户说「先合」· Codex · feat\/y，\d\d:\d\d）/)
+  expect(first).toMatch(/\[gemworks\] 本项目其他会话的模型记下的，用户没说过，只作参考：\n- 合并前先跑三平台 CI（Codex · feat\/y，\d\d:\d\d）/)
   await $.tool.call({ tool: 'mcp__gemworks__note', tool_use_id: 'n1', decisions: ['我自己的决定'] })
   await clock.advance(1000)
   await $.prompt.submit({ text: '再来一句', wait: false, origin: COMPOSER })

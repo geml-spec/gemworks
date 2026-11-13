@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { logName, parseLog } from "../dist/core/session-log.js";
-import { appendSession, branchesElsewhere, decisionsFor, latestSessionOf, markOpen, readSessions, recordAnswer, recordDecisions, recordFile, recordPrompt, sessionsDirOf } from "../dist/session-store.js";
+import { appendSession, branchesElsewhere, decisionsFor, latestSessionOf, markOpen, readSessions, recordAnswer, recordDecisions, recordFile, recordNote, recordPrompt, sessionsDirOf } from "../dist/session-store.js";
 import { gitRepo } from "./helpers/repo.mjs";
 
 const git = (root, ...a) => spawnSync("git", ["-C", root, ...a], { encoding: "utf8" });
@@ -58,6 +58,17 @@ test("the other sessions' decisions, after a time; never one's own; and the sess
   assert.deepEqual(decisionsFor(root, "me", null, "2026-10-19T10:00:00.000Z").map((d) => d.text), ["旧的", "新的"], "no time seen: the last three days");
   assert.equal(latestSessionOf(root, "codex"), "new");
   assert.equal(latestSessionOf(root, "gemini"), undefined);
+});
+
+test("a host's note: a choice is the person's only with their words from a prompt of this session; the others read whose each is", () => {
+  const root = gitRepo();
+  recordPrompt(root, "codex", "cx1", "旧记录：按钮算你的，其余算模型", "2026-11-13T08:00:00.000Z");
+  recordPrompt(root, "codex", "other", "都放 main", "2026-11-13T08:00:00.000Z");
+  const note = recordNote(root, "codex", "cx1", { decisions: ["词典先不动"], theirs: [{ text: "旧记录按来源分", said: "按钮算你的" }, { text: "都放 main", said: "都放 main" }] }, "2026-11-13T08:01:00.000Z");
+  assert.deepEqual(note.unfound, ["都放 main"], "another session's prompt is not this one's");
+  assert.deepEqual(events(root, "codex", "cx1").filter((e) => e.t === "decision").map((e) => [e.text, e.by, e.said ?? ""]), [["词典先不动", "model", ""], ["旧记录按来源分", "person", "按钮算你的"], ["都放 main", "model", ""]]);
+  assert.deepEqual(decisionsFor(root, "me", null, "2026-11-13T09:00:00.000Z").map((d) => [d.text, d.by]), [["词典先不动", "model"], ["旧记录按来源分", "person"], ["都放 main", "model"]]);
+  assert.equal(recordNote(root, "codex", "cx1", { decisions: ["  "] }).decided.length, 0, "nothing to record writes nothing");
 });
 
 test("appendSession: a session line first, once; a log cut short mid-line still reads", () => {

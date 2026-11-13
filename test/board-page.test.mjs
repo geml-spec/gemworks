@@ -50,7 +50,7 @@ test("what waits on the person: the question with what to say, the step they jud
   assert.ok(page.includes(`| ${t} | 新功能 | **样稿** → 实现 → 验证 → 你确认 | 你看样稿 | 等你定 |`));
   assert.match(page, /=== diagram \{#flow-feature format=mermaid caption="新功能：#\S+ 在样稿"\}/);
   assert.match(page, /s0\["样稿 · 你判"\]:::here --> s1\["实现 · 模型判"\]/);
-  assert.match(page, /- 看板用 GEML 页面（Claude，\d\d:\d\d）/);
+  assert.match(page, /- 模型记：看板用 GEML 页面（Claude，\d\d:\d\d）/, "a model's note says a model recorded it");
   const withPractice = boardPage({ project: "p", updated: "", flows, items: workItemsAt(root, flows), asks: [], proposals: [], practices, artifacts: [], decisions: [], ...fixed });
   assert.match(withPractice, /## 这一步的做法 \{#practices\}\n\n\\#\S+ .* 在「样稿」：\n\n1\. 样稿先画最简单的一版/);
 });

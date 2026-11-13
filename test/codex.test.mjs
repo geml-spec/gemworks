@@ -165,7 +165,7 @@ test("the project's session record through Codex's hooks: the session opens a lo
   recordPrompt(root, "claude-code", "cc1", "另一个会话问的");
   recordDecisions(root, "claude-code", "cc1", ["合并前先跑三平台 CI"]);
   const first = codex(root, { hook_event_name: "UserPromptSubmit", prompt: "接着做 Codex 接法" }, env).out;
-  assert.match(first.hookSpecificOutput.additionalContext, /\[gemworks\] 本项目其他会话记下的决定：\n- 合并前先跑三平台 CI（Claude · feat\/x，\d\d:\d\d）/);
+  assert.match(first.hookSpecificOutput.additionalContext, /\[gemworks\] 本项目其他会话的模型记下的，用户没说过，只作参考：\n- 合并前先跑三平台 CI（Claude · feat\/x，\d\d:\d\d）/, "a model's note is passed on as reference, not the person's word");
   const again = codex(root, { hook_event_name: "UserPromptSubmit", prompt: "再来一句" }, env).out;
   assert.doesNotMatch(again?.hookSpecificOutput?.additionalContext ?? "", /本项目其他会话/, "heard once");
   codex(root, { hook_event_name: "PostToolUse", tool_name: "apply_patch", tool_use_id: "p1", tool_input: { command: "*** Begin Patch\n*** Add File: src/codex-made.ts\n+x\n*** End Patch" }, tool_response: "Done" }, env);

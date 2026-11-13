@@ -228,10 +228,13 @@ export function turnWords(turn: SessionTurn, flows: readonly CoachFlow[], learne
   flows = flowsIn(flows, t);
   return [
     ...(turn.moved ?? []).map((mv) => `→ ${mv.title} ${moveWords(mv, flows, t)}`),
-    ...turn.decisions.map((d) => t("定：{0}", d)),
+    ...turn.decisions.map((d) => decidedWords(turn, d, t)),
     ...learned.map((x) => t("新学到：{0}", x.text)),
   ];
 }
+
+/** A turn's decision in words, saying whose it is: the person's own, or one only the model recorded. */
+const decidedWords = (turn: SessionTurn, d: string, t: T): string => t(turn.byPerson?.includes(d) === true ? "你定：{0}" : "模型记：{0}", d);
 
 /** A work item's history, oldest first, across every session: each turn that moved it — how, and what that turn decided. */
 export function itemHistory(id: string, sessions: readonly SessionSummary[], flows: readonly CoachFlow[], t: T): { at: string; text: string }[] {
@@ -242,7 +245,7 @@ export function itemHistory(id: string, sessions: readonly SessionSummary[], flo
       const mv = (turn.moved ?? []).find((x) => x.id === id);
       if (mv === undefined) continue;
       out.push({ at: mv.at, text: moveWords(mv, flows, t) });
-      for (const d of turn.decisions) out.push({ at: mv.at, text: t("定：{0}", d) });
+      for (const d of turn.decisions) out.push({ at: mv.at, text: decidedWords(turn, d, t) });
     }
   }
   return out.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));

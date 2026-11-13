@@ -56,7 +56,7 @@ test("the decisions section lists the newest twenty, each whole; beyond them the
   const folded = decisionRows({ sessions: [s, session("own")], own: "own", open: null }, t, 80, NOW);
   const notes = folded.filter((r) => r.kind === "note");
   assert.equal(notes.length, 20);
-  assert.equal(notes[0].lines.join(""), s.decisions[24].text, "the newest first, shown whole");
+  assert.equal(notes[0].lines.join(""), `模型记：${s.decisions[24].text}`, "the newest first, shown whole, saying a model recorded it");
   assert.equal(folded.find((r) => r.kind === "section" && r.key === "decisions").count, 25);
   const more = folded.find((r) => r.kind === "buttons" && r.items[0].key === "decisions-more");
   assert.deepEqual(more.items.map((b) => [b.label, b.action]), [["还有 5 条决定", { op: "decisions-more", shown: 40 }]], "a press shows twenty more");

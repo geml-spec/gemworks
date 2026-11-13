@@ -14,13 +14,13 @@ import { waitingOf, type Waiting } from "../../core/board-page.js";
 import type { Proposal } from "../../core/growth.js";
 import { PI_TOOLS } from "../../core/host-tools.js";
 import { practicesAt, type Practice } from "../../core/practices.js";
-import { currentTurn, decisionsContext, NOTE_TOOL, SESSIONS_PROMPT, type SharedDecision } from "../../core/session-log.js";
+import { currentTurn, decisionsContext, NOTE_TOOL, noteReply, SESSIONS_PROMPT, type SharedDecision } from "../../core/session-log.js";
 import { itemProgress, turnItem, WORK_REMINDER, type CoachFlow, type WorkItem } from "../../core/work.js";
 import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, workItemsAt } from "../../loop.js";
 import { readPractices } from "../../practice-store.js";
 import { labelPrompt, type Complete } from "../../ledger-run.js";
 import { typedWords } from "../../core/corrections.js";
-import { appendSession, decisionsFor, hostLabel, readSessions, recordAnswer, recordDecisions, recordPrompt } from "../../session-store.js";
+import { appendSession, decisionsFor, hostLabel, readSessions, recordAnswer, recordNote, recordPrompt } from "../../session-store.js";
 
 export const PI_HOST = "pi";
 
@@ -105,7 +105,7 @@ export function boardLines(d: PiLoopData, width = 100): string[] {
   const decided = d.decisions.slice(-5).reverse();
   if (decided.length > 0) {
     out.push("", "别的会话的决定");
-    for (const x of decided) out.push(fit(`  ${x.text}（${hostLabel(x.host)}，${new Date(x.at).toTimeString().slice(0, 5)}）`, width));
+    for (const x of decided) out.push(fit(`  ${x.by === "person" ? "你定" : "模型记"}：${x.text}（${hostLabel(x.host)}，${new Date(x.at).toTimeString().slice(0, 5)}）`, width));
   }
   return out;
 }
@@ -265,9 +265,9 @@ export function attachLoop(pi: ExtensionAPI, cwd: string): void {
         const args = (params ?? {}) as Record<string, unknown>;
         let text: string;
         if (tool.name === NOTE_TOOL.name) {
-          const n = recordDecisions(cwd, PI_HOST, id, Array.isArray(args["decisions"]) ? (args["decisions"] as unknown[]).filter((x): x is string => typeof x === "string") : []);
-          if (n === 0) throw new Error("Nothing recorded: decisions is a list of short sentences.");
-          text = `Recorded ${n} decision${n === 1 ? "" : "s"}; the project's other sessions will see ${n === 1 ? "it" : "them"}.`;
+          const note = recordNote(cwd, PI_HOST, id, args);
+          if (note.decided.length === 0) throw new Error(noteReply(note));
+          text = noteReply(note);
         } else {
           const r = await callLoopTool(cwd, PI_HOST, id, tool.name, args);
           if (r === undefined || !r.ok) throw new Error(r?.text ?? "gemworks: no such tool");
