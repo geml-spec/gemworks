@@ -2,7 +2,7 @@
   "name": "gemworks",
   "displayName": "Gemworks",
   "description": "A workbench beside your agent chat: it keeps your artifacts in order, sums up what you've learned, remembers your decisions, and lets your workflow grow.",
-  "version": "0.3.20",
+  "version": "0.3.21",
   "logo": "assets/logo.svg",
   "author": {
     "name": "geml-spec",

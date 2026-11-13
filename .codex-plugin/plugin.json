@@ -1,6 +1,6 @@
 {
   "name": "gemworks",
-  "version": "0.3.20",
+  "version": "0.3.21",
   "description": "A workbench right beside your agent chat: it keeps your artifacts in order, sums up what you've learned, remembers what you've decided, and lets your workflow grow on its own. In Codex, the work items, artifacts and flows are on a GEML board page.",
   "author": {
     "name": "geml-spec",

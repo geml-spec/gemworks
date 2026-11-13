@@ -29,6 +29,7 @@ import { blockText } from "./core/blocks.js";
 import { BACKLOG_DOC, CONTEXT_DOC, EXPORTS_DIR, FLOW_FILE, GEML_DIR } from "./core/layout.js";
 import { TOOLS_FILE } from "./core/dictionary.js";
 import { renderDictionary } from "./core/dictionary-file.js";
+import { outwardAllowed } from "./dictionary-io.js";
 import { migrateLayout, projectDocOf, recordedPath, workflowAt } from "./project-home.js";
 import { updateOutline, type OutlineEntry } from "./outline-store.js";
 import { copyPath, artifactsDir, forgetFiles, isUnder, readArtifactRows, recordBytes, recordFile, recordLink, syncDocs, syncWritten } from "./artifacts-store.js";
@@ -857,6 +858,10 @@ function answer(req: BridgeRequest): BridgeResponse {
     }
     const { practices, memoryMoved } = readPractices(root);
     return { v: 1, ok: true, shell: shellAt(req), practices: { list: practices, memoryMoved } };
+  }
+  // The outward actions let through: the project's dictionary, with a workflow or none.
+  if (req.op === "outward") {
+    return { v: 1, ok: true, shell: shellAt(req), outward: outwardAllowed(root, { ...(req.allow !== undefined ? { allow: req.allow } : {}), ...(req.forget !== undefined ? { forget: req.forget } : {}) }) };
   }
   // The person's ledger of corrections: theirs, not the project's; read against this project's practices.
   if (req.op === "corrections" || req.op === "corrections-add" || req.op === "corrections-themes" || req.op === "corrections-dismiss" || req.op === "corrections-check") {

@@ -127,6 +127,8 @@ export type BridgeOp =
   | { op: "corrections-themes"; answer: ThemeAnswer; linked: string }
   /** A card put away, with what it counted. */
   | { op: "corrections-dismiss"; key: string; n: number }
+  /** The keys the project's dictionary lets through in every state (core/outward.ts), after `allow` keys are written in and `forget` ones taken out. */
+  | { op: "outward"; allow?: string[]; forget?: string[] }
   /** Corrections read against their theme's rule (core/corrections.ts checkRequest): each holds, or leaves its theme. */
   | { op: "corrections-check"; verdicts: { id: string; practice: string; holds: boolean }[] };
 
@@ -356,6 +358,8 @@ export type BridgeResponse =
       made?: MadeAll;
       /** corrections and the ops that change the ledger: what the flow tab shows of it. */
       corrections?: CorrectionsView;
+      /** outward: the dictionary's keys that let a call through in every state, outward actions among them. */
+      outward?: string[];
     }
   /** No shell only when the request itself failed — it threw, or did not decode: the hooks module keeps the last shell and shows the error. */
   | { v: 1; ok: false; error: string; shell?: ShellStatus };
@@ -391,7 +395,7 @@ export function unreadableText(exitCode: number, stderr: string, pluginRoot: str
   return `gemworks：桥接的应答无法解析（退出码 ${exitCode}${said ? `：${said}` : ""}）`;
 }
 
-const OPS = new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "signoff", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss", "corrections-check"]);
+const OPS = new Set(["status", "refresh", "before", "after", "verb", "learn", "mark", "advance", "pause", "resume", "rollback", "new-item", "bind", "use", "add", "import", "board", "made", "attention", "export", "artifacts", "artifact", "backfill-list", "backfill-one", "signoff", "turn-ids", "memory", "memory-set", "memory-delete", "practices", "practice-add", "practice-set", "practice-share", "corrections", "corrections-add", "corrections-themes", "corrections-dismiss", "corrections-check", "outward"]);
 const EXPORT_KINDS = new Set(["journal", "workflow", "text"]);
 const EXPORT_FORMATS = new Set(["geml", "md", "json"]);
 const VERBS = new Set(["status", "move", "set"]);
@@ -463,6 +467,8 @@ export function decodeRequest(text: string): BridgeRequest | { error: string } {
     "corrections-themes": () => obj("answer") && Array.isArray((v["answer"] as Record<string, unknown>)["assign"]) && Array.isArray((v["answer"] as Record<string, unknown>)["links"]) && str("linked"),
     "corrections-dismiss": () => str("key") && v["key"] !== "" && Number.isInteger(v["n"]),
     "corrections-check": () => Array.isArray(v["verdicts"]) && (v["verdicts"] as unknown[]).every((x) => isRecord(x) && typeof (x as Record<string, unknown>)["id"] === "string" && typeof (x as Record<string, unknown>)["practice"] === "string" && typeof (x as Record<string, unknown>)["holds"] === "boolean"),
+    // Keys a dictionary row can hold: a line of their own each.
+    outward: () => ["allow", "forget"].every((k) => v[k] === undefined || (Array.isArray(v[k]) && (v[k] as unknown[]).every((x) => typeof x === "string" && x.trim() !== "" && !/[\r\n]/.test(x)))),
   };
   const check = fields[op];
   if (check !== undefined && !check()) return { error: `op ${op}: missing or mistyped fields` };

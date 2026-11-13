@@ -122,6 +122,8 @@ function world(on: On) {
     lessons: [] as unknown[],
     /** When set, the status answer carries these practices, as the CLI's does. */
     practices: null as { list: Record<string, unknown>[]; memoryMoved: boolean } | null,
+    /** When set, the project dictionary's keys allowed everywhere, as the outward op keeps and answers them; null, the op answers none. */
+    outward: null as string[] | null,
     store: new Map<string, unknown>(),
     notified: [] as string[],
     copied: [] as string[],
@@ -196,6 +198,13 @@ function world(on: On) {
   })
   const answer = (req: Req) => {
     w.sent.push(req)
+    // The outward actions let through, workflow or none: the project dictionary's keys, after the request's changes.
+    if (req.op === 'outward' && w.outward !== null) {
+      const forget = (req.forget as string[] | undefined) ?? []
+      const kept = w.outward.filter((k) => !forget.includes(k))
+      w.outward = [...kept, ...((req.allow as string[] | undefined) ?? []).filter((k) => !kept.includes(k))]
+      return { v: 1, ok: true, shell: { status: null, policy: null, contextKey: null }, outward: w.outward }
+    }
     if (!w.workflow) {
       const none = { status: null, policy: null, contextKey: null, problem: { text: 'no workflow here: run `gemworks init`', quiet: true } }
       if (req.op === 'made') return { v: 1, ok: true, shell: none, made: w.made }
@@ -2953,4 +2962,56 @@ test('the screenshot button on Linux with no capture tool installed: a press say
   expect(w.launched, 'flameshot, gnome-screenshot and spectacle are not installed here').toEqual([])
   expect(w.toasts.at(-1)).toBe('没找到截图工具：装 flameshot 或 gnome-screenshot 后再点')
   await linux.unmount()
+})
+
+test('an outward action is asked about before it runs, with no workflow: 这次放行 runs it, 不放行 or a question put away holds it, 以后都放行 runs it unasked after; 删除 on the tools tab asks again', async ($, on) => {
+  const w = world(on)
+  w.workflow = false
+  w.outward = ['Bash(npm test)']
+  const ran: string[] = []
+  on('tool.call', { tool: 'Bash' }, ($, e) => { ran.push(String(e.command)); return { result: { stdout: 'ok', stderr: '', interrupted: false }, text: 'ok' } })
+  const asked: { question: string; header?: string; options: string[] }[] = []
+  const answers: (string | null)[] = ['这次放行', '不放行', null, '以后都放行', '删除']
+  on('tool.call', { tool: 'AskUserQuestion' }, ($, e) => {
+    const q = (e.questions as { question: string; header?: string; options: { label: string }[] }[])[0]!
+    asked.push({ question: q.question, header: q.header, options: q.options.map((o) => o.label) })
+    const a = answers.shift() ?? null
+    // Put away: the engine's question gives no answer.
+    if (a === null) return { deny: 'the person put the question away' }
+    return { result: { questions: e.questions, answers: { [q.question]: a } }, text: a }
+  })
+  const clock = await start($, on)
+  expect(w.sent.some((r) => r.op === 'outward'), 'no session start reads the dictionary').toBe(false)
+  const call = (id: string, command: string) => $.tool.call({ tool: 'Bash', tool_use_id: id, command })
+  await call('b0', 'git status && npm test')
+  expect(asked, 'nothing outward: nothing asked').toEqual([])
+  await call('b1', 'git push origin main')
+  expect(w.sent.filter((r) => r.op === 'outward'), 'read once, when an outward action first comes').toHaveLength(1)
+  expect(asked[0]).toEqual({ question: 'gemworks：推到远端：git push origin main，放行吗？', header: '对外动作', options: ['这次放行', '以后都放行', '不放行'] })
+  expect(ran, '这次放行 runs it').toContain('git push origin main')
+  const held = await call('b2', 'rtk git push')
+  expect(String(held.deny), '不放行 holds it, and the model is told to ask').toMatch(/did not let this outward action through \(Bash\(git push\*\)\): ask them/)
+  const away = await call('b3', 'git push --tags')
+  expect(String(away.deny), 'a question put away holds it too').toMatch(/did not let this outward action through/)
+  expect(ran.filter((c) => c.includes('push')), 'neither ran').toEqual(['git push origin main'])
+  await call('b4', 'git push origin dev')
+  expect(w.outward, '以后都放行 is written into the dictionary').toEqual(['Bash(npm test)', 'Bash(git push*)'])
+  await call('b5', 'git push origin dev')
+  expect(asked, 'let through: not asked again').toHaveLength(4)
+  expect(ran.filter((c) => c === 'git push origin dev')).toHaveLength(2)
+  // The tools tab, with no workflow: the action let through with 删除, which asks first and takes it out.
+  await $.command.run({ command: 'gemworks', args: 'board', origin: COMPOSER, presentation: PRESENTATION })
+  const pane = await $.ui.mount({ plugin: 'gemworks', surface: 'terminal', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+  await pane.press({ key: 'tab-tools' })
+  await clock.settle()
+  expect(await pane.find({ type: 'Text', text: '对外动作' })).toBeDefined()
+  await pane.press({ key: 'outward-forget-Bash(git push*)' })
+  await clock.settle()
+  expect(asked.at(-1)?.question).toMatch(/^删除 .*git push.*？之后它再要运行时会先问你。$/)
+  expect(w.outward, '删除 takes it out').toEqual(['Bash(npm test)'])
+  answers.push('不放行')
+  const again = await call('b6', 'git push origin dev')
+  expect(asked, 'asked again').toHaveLength(6)
+  expect(String(again.deny)).toMatch(/did not let this outward action through/)
+  await pane.unmount()
 })

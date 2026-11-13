@@ -187,6 +187,8 @@ declare module 'claude-code' {
       /** The proposals to change the flows (growth.ts), and the rules: null until read. */
       proposals: GemworksJson
       rules: GemworksJson
+      /** The project dictionary's keys that let a call through in every state (core/outward.ts): null until read. */
+      outward: string[] | null
       /** The practice whose 改成规定 was pressed: the one practice the rule tool may write a rule for. */
       pendingRule: string | null
     }

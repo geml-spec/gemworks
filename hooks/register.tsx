@@ -89,6 +89,7 @@ import { langOf, wordsFor } from '../dist/hosts/claude-code/text.js'
 import type { T } from '../dist/hosts/claude-code/text.js'
 import { act } from './act.tsx'
 import { drawHeading, drawJudges, drawPractice, drawPracticeBlock, drawPresses, drawStep } from './manual.tsx'
+import { loadOutward, outwardHold, outwardKept } from './outward.tsx'
 
 const shellAtom = atom({ plugin: 'gemworks', key: 'shell' } as const, null as GemworksJson)
 const problemAtom = atom({ plugin: 'gemworks', key: 'problem' } as const, null as string | null)
@@ -933,6 +934,8 @@ async function loadGrowth($: EngineInterface): Promise<void> {
 
 async function proposalsKept($: EngineInterface): Promise<Proposal[]> { return ((await read($, proposalsAtom)) as unknown as Proposal[] | null) ?? [] }
 async function rulesKept($: EngineInterface): Promise<Rule[]> { return ((await read($, rulesAtom)) as unknown as Rule[] | null) ?? [] }
+/** The outward actions let through read again, after `change` (outward.tsx): for act, which loads only what this file declares. */
+async function outwardChanged($: EngineInterface, change: { forget?: string[] }): Promise<void> { await loadOutward($, change) }
 
 /** The proposals written back, and kept. */
 async function saveProposals($: EngineInterface, list: readonly Proposal[]): Promise<void> {
@@ -2879,7 +2882,7 @@ async function tabRows($: EngineInterface, e: { surface: string; props: { bodyCo
     } } : {}),
     exportedFor, doneOpen, droppedOpen, sessionItem: sessionFlow as string | null, ...(tab === 'sessions' ? { moved: await movedOf($, t) } : {}), sessionLimit: await read($, turnsShownAtom), picked: ((await read($, pickedAtom)) as string[] | null) ?? [], tidying: (await read($, tidyingAtom)) === true, sessionRuns: (sessionRuns as unknown as string[] | null) ?? [],
     flowState, switching, workflows: workflows as unknown as { bundled: string[]; installed: string[] } | null,
-    usage, dismissed, toolQuery, toolMenu, toolNaming, toolsOpen: (toolsOpen as unknown as string[] | null) ?? [],
+    usage, dismissed, toolQuery, toolMenu, toolNaming, toolsOpen: (toolsOpen as unknown as string[] | null) ?? [], outward: await outwardKept($),
     exported, artifactMenu, docsOpen, ...(memory !== undefined ? { memory } : {}),
   })
   const here = await attention
@@ -3024,9 +3027,11 @@ export const register: Register = (on) => {
     // How often each tool is used: every call is noted under its day as it starts, by the key the dictionary would give it, gemworks's own too.
     await noteUsage($, tool, toolArgs(e as unknown as Record<string, unknown>))
     if (isOwnTool(tool) || tool === `mcp__gemworks__${NOTE_TOOL.name}` || tool === `mcp__gemworks__${ARTIFACT_TOOL.name}` || tool === `mcp__gemworks__${ASK_TOOL.name}` || tool === `mcp__gemworks__${WORK_TOOL.name}` || tool === `mcp__gemworks__${PRACTICE_TOOL.name}` || tool === `mcp__gemworks__${PROPOSE_TOOL.name}` || tool === `mcp__gemworks__${RULE_TOOL.name}`) return next(e)
-    // A rule the person made holds a call while the step it requires is unmet; a check that fails lets the call through.
+    // A rule the person made holds a call while the step it requires is unmet; an outward action not let through is asked
+    // about (outward.tsx); a check that fails lets the call through.
     try {
-      const held = await ruleHold($, tool, toolArgs(e as unknown as Record<string, unknown>))
+      const args = toolArgs(e as unknown as Record<string, unknown>)
+      const held = (await ruleHold($, tool, args)) ?? (await outwardHold($, tool, args))
       if (held !== undefined) return { deny: `gemworks: ${held}` }
     } catch { /* never in the way on its own failure */ }
     await retryStart($)
@@ -3693,7 +3698,7 @@ export {
   QUEUED_MATCH_MS, STORE_SETTINGS, TURNS_SHOWN, answerOf, appendOwn, attentionOnPrompt, bridge, checkLatest,
   coachFlows, coachFlowsKept, correctionsKept, dismissedOf, exportText, gemlDir, loadBoard, loadCorrections,
   loadGrowth, loadMade, loadMemory, loadPractices, loadProjectSessions, loadWorkflows, nowIso, openBoard,
-  openDialog, openFile, otherSessionText, practicesKept, press, proposalsKept, readAttention, readBoard, readPrompts,
+  openDialog, openFile, otherSessionText, outwardChanged, practicesKept, press, proposalsKept, readAttention, readBoard, readPrompts,
   readSettings, reasonOf, rulesKept, saveProposals, saveRules, sessionText, setQueued, share, startBridge,
-  storePrompts, takeOption, themeLedger, trace, turnBusy, words, workItems, writeOwnFlow,
+  storePrompts, takeOption, themeLedger, trace, turnBusy, within, words, workItems, writeOwnFlow,
 }

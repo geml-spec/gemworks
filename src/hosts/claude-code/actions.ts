@@ -29,6 +29,8 @@ export type BoardAction =
   | { op: "resume" }
   /** A person's word about keys, into the dictionary. */
   | { op: "learn"; lessons: Lesson[]; confirm?: Confirm }
+  /** An outward action let through taken out of the project's dictionary: asked about again before it runs (core/outward.ts). */
+  | { op: "outward-forget"; key: string; confirm?: Confirm }
   /** Let the next call judged on these keys through, once; nothing is learned. */
   | { op: "pass-once"; keys: string[] }
   /** Start the bridge again after a failure. */

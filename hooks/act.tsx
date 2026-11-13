@@ -29,7 +29,7 @@ import {
   QUEUED_MATCH_MS, STORE_SETTINGS, TURNS_SHOWN, answerOf, appendOwn, attentionOnPrompt, bridge, checkLatest,
   coachFlows, coachFlowsKept, correctionsKept, dismissedOf, exportText, gemlDir, loadBoard, loadCorrections,
   loadGrowth, loadMade, loadMemory, loadPractices, loadProjectSessions, loadWorkflows, nowIso, openBoard,
-  openDialog, openFile, otherSessionText, practicesKept, proposalsKept, readAttention, readBoard, readPrompts,
+  openDialog, openFile, otherSessionText, outwardChanged, practicesKept, proposalsKept, readAttention, readBoard, readPrompts,
   readSettings, reasonOf, rulesKept, saveProposals, saveRules, sessionText, setQueued, share, startBridge,
   signoffAfter, storePrompts, takeOption, themeLedger, trace, turnBusy, words, workItems, writeOwnFlow,
 } from './register.tsx'
@@ -323,6 +323,8 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
       trace($, `tab is now ${action.tab}`)
       const filter = action.filter
       if (filter !== undefined) await update($, filterAtom, () => filter)
+      // The outward actions let through, read when the tab that lists them is chosen: no session start pays for them.
+      if (action.tab === 'tools') $.clock.after(0, () => { void outwardChanged($, {}).catch(() => undefined) })
       if (action.tab === 'sessions') {
         // Chosen anew, the sessions tab's memory and decisions start on their first page: a page kept from before is a tree the desktop may not take.
         await update($, decisionsShownAtom, () => 20)
@@ -456,6 +458,8 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
       await update($, toolNamingAtom, () => null)
       await loadBoard($)
       return
+    // Taken out of the dictionary: asked about again before it runs.
+    case 'outward-forget': await outwardChanged($, { forget: [action.key] }); return
     case 'pass-once':
       await update($, passesAtom, (was) => [...new Set([...((((was as unknown) as string[] | null) ?? [])), ...action.keys])] as unknown as GemworksJson)
       $.ui.toast(t('放行一次'))

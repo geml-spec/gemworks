@@ -516,6 +516,36 @@ function shellStrings(ws: readonly Word[], at: number): ShellString[] {
   return out;
 }
 
+/**
+ * The commands a line runs, each as its words from the command word on (quotes and backslashes removed): one per
+ * command position — after `;`, `&&`, a pipe, a newline, a subshell, a substitution, a prefix such as `command` — and
+ * those in the strings a shell is handed (`bash -c "…"`, `pwsh -c "…"`, `sudo sh -c "…"`). What a launcher runs
+ * (`sudo git push`, `rtk git push`) is left to the reader, which knows the words it skips. A line that does not
+ * tokenise, a command word built by expansion, a shell nested deeper than the scan reads and PowerShell's strings are
+ * read loosely as well: their words from each one on, so a reader that keeps to the safe side still finds a command.
+ */
+export function commandsRun(line: string, depth = 0): string[][] {
+  const segments = depth > MAX_SHELL_DEPTH ? null : commandSegments(line);
+  if (segments === null) return looseRuns(line);
+  const out: string[][] = [];
+  for (const segment of segments) {
+    const ws = words(segment);
+    const at = commandWordIndex(ws, COMMAND_INTRODUCERS);
+    const head = at < 0 ? undefined : ws[at];
+    if (head === undefined) continue;
+    if (head.expands) { out.push(...looseRuns(segment)); continue; }
+    out.push(ws.slice(at).map((w) => w.text));
+    for (const inner of shellStrings(ws, at)) out.push(...commandsRun(inner.text, depth + 1), ...(inner.powershell ? looseRuns(inner.text) : []));
+  }
+  return out;
+}
+
+/** A line read loosely: its words, split at blanks, quotes and the shell's punctuation, from each word on. */
+function looseRuns(line: string): string[][] {
+  const ws = line.split(/[\s;&|()`$<>{}"']+/).filter((w) => w !== "");
+  return ws.map((_, i) => ws.slice(i));
+}
+
 /** The person-only refusal's words for one verb: what the model reads, whichever scan found the verb. */
 export function personOnlyReason(verb: string): string {
   return `\`gemworks ${verb}\` is for a person, not the model: manual signals and a person's transitions are never taken by the agent`;

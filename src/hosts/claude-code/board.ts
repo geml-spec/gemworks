@@ -2,6 +2,7 @@
 // fields. Pure and Node-free: the hooks module lays the rows out with the
 // surface's elements and runs a button's action.
 import { bindingOf, type DictRow } from "../../core/dictionary.js";
+import { isOutwardKey } from "../../core/outward.js";
 import type { Status } from "../../workspace.js";
 import type { BoardAction, BoardTab, JournalFilter, Pressable } from "./actions.js";
 import type { MemoryList } from "../../memory-store.js";
@@ -324,6 +325,25 @@ export interface PaneInput {
   toolMenu: string | null;
   toolNaming: string | null;
   toolsOpen: readonly string[];
+  /** The project dictionary's keys that let a call through in every state (core/outward.ts): the tools tab lists the outward ones. */
+  outward?: readonly string[];
+}
+
+/**
+ * The tools tab's outward actions let through, with a workflow or none: each key 以后都放行 wrote, and 删除 beside it,
+ * which asks first; with none, a line saying they are asked about.
+ */
+export function outwardRows(keys: readonly string[], t: T = ZH, columns: number): BoardRow[] {
+  const shown = keys.filter(isOutwardKey);
+  const rows: BoardRow[] = [{ kind: "section", key: "outward", text: t("对外动作") }];
+  if (shown.length === 0) return [...rows, text(t("推送、发布、部署、发消息之前都先问你；还没有放行过的。"), columns, "dim")];
+  for (const k of shown) {
+    rows.push({
+      kind: "entry", key: `outward-${k}`, title: keyWords(k), tag: t("已放行"), tone: "normal",
+      extra: { key: `outward-forget-${k}`, label: t("删除"), tone: "danger", action: { op: "outward-forget", key: k, confirm: { question: t("删除 {0}？之后它再要运行时会先问你。", keyWords(k)), yes: t("删除") } } },
+    });
+  }
+  return rows;
 }
 
 /** Where this session runs, after 本会话 on one line: cut to the room its 整理 and 导出 leave. */
@@ -396,9 +416,11 @@ export function paneRows(o: PaneInput): BoardRow[] {
     };
     return [...head, ...madeTabRows(o.madeAll, o.madeView ?? MADE_VIEW, words, t, o.now)];
   }
+  // The outward actions let through are the project's, with a workflow or none.
+  if (o.tab === "tools" && o.board === null) return [...head, ...outwardRows(o.outward ?? [], t, columns)];
   if (o.board === null) return head.length > 0 ? [...head, ...coached] : [...coached, ...wait];
   if (o.tab === "flow") return [...head, ...coached, ...(status !== null && o.coach !== undefined ? [{ kind: "section" as const, key: "strict", text: t("固化流程"), note: t("只能你把事放进去，挂着的规定会真拦") }] : []), ...flowRows({ board: o.board, status, columns, t, ...(o.now !== undefined ? { now: o.now } : {}), selected: o.flowState, switching: o.switching, workflows: o.workflows })];
-  if (o.tab === "tools") return [...head, ...toolRows({ board: o.board, columns, t, usage: o.usage, suggestions, query: o.toolQuery, menu: o.toolMenu, naming: o.toolNaming, open: o.toolsOpen })];
+  if (o.tab === "tools") return [...head, ...toolRows({ board: o.board, columns, t, usage: o.usage, suggestions, query: o.toolQuery, menu: o.toolMenu, naming: o.toolNaming, open: o.toolsOpen }), ...outwardRows(o.outward ?? [], t, columns)];
   // The journal: the work item's events, then the project's memory, then what every session decided, each its own section.
   return [...head, ...journalRows({ board: o.board, status, filter: o.filter, menu: o.expanded, evidence: o.evidence, prompts: o.prompts, columns, maxRows: Math.max(1, o.maxRows - head.length), t, now: o.now }),
     ...memoryRows(o.memory, t, columns, o.now), ...decisionRows(o.project, t, columns, o.now)];
