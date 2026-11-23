@@ -1,9 +1,13 @@
 # Gemworks
 
-**A workbench right beside your agent chat.**
+**A self-evolving visual companion that makes your coding agent actually learn from you.**
 
-It works on the project with you: it keeps your artifacts in order, sums up what you've learned,
-remembers what you've decided, and lets your workflow grow on its own. Right inside the Claude Code you already use.
+No need to install another IDE—just plug it straight into the Claude Code, Codex, Cursor, or MCP
+client you're using. This lightweight plugin keeps progress, cross-session decisions, and versioned
+artifacts at a glance. As you work, it surfaces corrections only at the step they matter—without
+turning `CLAUDE.md` or `AGENTS.md` into a junk drawer—grows your workflow on its own, and lets you
+lock any habit into a hard guardrail with one click. And most importantly, it all runs locally—I
+know, local-first is what makes you feel truly in control.
 
 English | [中文](README.zh.md)
 
