@@ -3,6 +3,7 @@
 // Node-free: the hooks module records a prompt at `prompt.submit` and counts
 // what each turn did.
 import type { SessionSummary } from "../../core/session-log.js";
+import { promptShown } from "../../core/transcript.js";
 import type { T } from "./text.js";
 import { cellWidth, truncate } from "./band.js";
 import { hhmm } from "./time.js";
@@ -30,9 +31,9 @@ export interface PromptRecord {
 
 export interface PromptGroup { state?: string; from: string; to?: string; prompts: PromptRecord[] }
 
-/** The first line of a prompt, at most `max` cells. */
+/** The first line of a prompt as the person typed it (the host's reminders taken out), at most `max` cells. */
 export function promptLine(text: string, max = 72): string {
-  const first = text.replace(/\r\n?/g, "\n").split("\n").find((l) => l.trim() !== "") ?? "";
+  const first = promptShown(text).replace(/\r\n?/g, "\n").split("\n").find((l) => l.trim() !== "") ?? "";
   return truncate(first.trim(), max);
 }
 
@@ -91,7 +92,7 @@ export function sessionExport(prompts: readonly PromptRecord[], format: "geml" |
     const lines = [`# ${t("会话 {0}", session)}`, ""];
     for (const g of promptGroups(prompts)) {
       lines.push(`## ${g.state !== undefined ? `#${g.state}` : t("没有阶段")} · ${hhmm(g.from)}${g.to !== undefined ? ` – ${hhmm(g.to)}` : ""}`, "");
-      for (const p of g.prompts) lines.push(`- **${hhmm(p.at)}** ${p.text.replace(/\r\n?/g, "\n").split("\n").join("\n  ")}${promptTail(p, t) ? `  \n  _${promptTail(p, t)}_` : ""}`);
+      for (const p of g.prompts) lines.push(`- **${hhmm(p.at)}** ${promptShown(p.text).replace(/\r\n?/g, "\n").split("\n").join("\n  ")}${promptTail(p, t) ? `  \n  _${promptTail(p, t)}_` : ""}`);
       lines.push("");
     }
     return lines.join("\n");

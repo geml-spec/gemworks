@@ -1,13 +1,23 @@
 // A Claude Code transcript read into the session record's turns (transcript.ts), and earlier turns put before a log's own (session-log.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { newTurns, readTranscript, slugOf, transcriptEvents } from "../dist/core/transcript.js";
+import { newTurns, promptShown, promptWords, readTranscript, slugOf, transcriptEvents } from "../dist/core/transcript.js";
 import { parseLog, formatLog, summarize, withEarlierTurns } from "../dist/core/session-log.js";
 
 const rec = (o) => JSON.stringify({ sessionId: "s-1", cwd: "C:\\agentProjects\\geml-spec", gitBranch: "main", isSidechain: false, ...o });
 const user = (uuid, at, text, over = {}) => rec({ type: "user", uuid, timestamp: at, message: { content: text }, ...over });
 const assistant = (at, content) => rec({ type: "assistant", timestamp: at, message: { content } });
 const result = (at, id, text) => rec({ type: "user", timestamp: at, message: { content: [{ type: "tool_result", tool_use_id: id, content: text }] } });
+
+test("a prompt's words: the host's reminders out, one cut short running to the end; only a reminder shows its own words", () => {
+  const typed = "<system-reminder>\nLinked sessions now: top is idle\n</system-reminder>\n\n\n产物还是 WIP 哪个好？";
+  assert.equal(promptWords(typed), "产物还是 WIP 哪个好？");
+  assert.equal(promptShown(typed), "产物还是 WIP 哪个好？");
+  assert.equal(promptWords("做个看板\n<system-reminder>\nLinked sessions now: a report clipped befo"), "做个看板");
+  assert.equal(promptWords("<system-reminder>only this</system-reminder>"), "");
+  assert.equal(promptShown("<system-reminder>only this</system-reminder>"), "only this");
+  assert.equal(promptShown("  就这一句  "), "就这一句");
+});
 
 test("the slug: Claude Code's folder for a directory", () => {
   assert.equal(slugOf("C:\\agentProjects\\geml-spec"), "C--agentProjects-geml-spec");

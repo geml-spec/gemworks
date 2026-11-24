@@ -51,7 +51,7 @@ import { isNew, newPractices, type Practice } from '../dist/core/practices.js'
 import { expireEvent, expiring, exportText as flowExport, flowText, GROWTH_PROMPT, isRulesFile, newProposals, parseProposals, parseRules, PROPOSE_TOOL, proposalsText, RULE_TOOL, ruleRefusal, rulesText, skippedSteps, type Proposal, type Rule } from '../dist/hosts/claude-code/growth.js'
 import { keysOf } from '../dist/core/dictionary.js'
 import { isVisualTool, visualFileName, visualPage } from '../dist/hosts/claude-code/visual.js'
-import { transcriptEvents, type Transcript } from '../dist/core/transcript.js'
+import { promptShown, transcriptEvents, type Transcript } from '../dist/core/transcript.js'
 import type { Asked } from '../dist/core/ask-tool.js'
 import type { AttachedClient, HostInfo } from '../dist/hosts/claude-code/env.js'
 import { BROWSER_PROGID_ARGV, baseName, browserCommandArgv, browserExeOf, openersFor, opensInBrowser, progIdOf } from '../dist/hosts/claude-code/open-file.js'
@@ -3235,7 +3235,9 @@ export const register: Register = (on) => {
       } catch { /* the button stays */ }
     }
     // The first prompt of a conversation carries the standing instructions, where the system prompt did not.
-    const news = [...(await prefaceFor($)), ...(person ? [...(await attentionOnPrompt($, e.text)), ...(await sessionsOnPrompt($, e.text).catch(() => [] as string[]))] : [])]
+    // The record and the log keep the words the person typed, not the reminders the host put before them.
+    const heard = promptShown(e.text)
+    const news = [...(await prefaceFor($)), ...(person ? [...(await attentionOnPrompt($, e.text)), ...(await sessionsOnPrompt($, heard).catch(() => [] as string[]))] : [])]
     // The work items on the way, by id, so the turn's report updates them rather than reporting them anew.
     try { news.push(...workContext(await workItems($), await coachFlows($))) } catch { /* the model reports them anew */ }
     // The practices of the step this session's work item stands at; on a project's first start, the ask to move its memory onto the steps.
@@ -3265,7 +3267,7 @@ export const register: Register = (on) => {
     if (person) {
       const s = (await readShell($))?.status
       const record: PromptRecord = {
-        id: `p${(await readPrompts($)).length + 1}-${Date.now().toString(36)}`, at: await nowIso($), text: e.text,
+        id: `p${(await readPrompts($)).length + 1}-${Date.now().toString(36)}`, at: await nowIso($), text: heard,
         ...(s?.item.kind === 'item' ? { item: s.item.id, itemTitle: s.title ?? s.item.id } : {}), ...(s?.state !== undefined ? { state: s.state.id } : {}),
         ...(s?.workflow !== undefined ? { flow: s.workflow.title } : {}),
         tools: 0, refusals: 0, entered: [], signals: [],

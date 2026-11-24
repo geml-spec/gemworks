@@ -11,6 +11,7 @@ import { othersWaiting, pendingList, shortReason, type InboxItem } from "./inbox
 import type { BoardData, BoardItem, MadeAll, MadeEntry, Artifacts, ShellStatus, TimelineEntry } from "./protocol.js";
 import { MADE_VIEW, madeTabRows, type ItemWords, type MadeView } from "./made.js";
 import { promptLine, promptTail, type PromptRecord } from "./sessions.js";
+import { promptShown } from "../../core/transcript.js";
 import type { SessionSummary } from "../../core/session-log.js";
 import { manualRows, workRows, type CoachFlow, type CoachFocus, type Doing, type GoneOn, type ManualOptions, type WorkGroup, type WorkItem } from "./coach.js";
 import type { Cell, Judge } from "../../core/progress.js";
@@ -1247,7 +1248,7 @@ function turnRows(p: PromptRecord, until: string | undefined, commits: readonly 
       { key: `split-${p.id}`, label: t("拆成新会话"), action: { op: "split", id: p.id } },
       { key: `remove-${p.id}`, label: t("删除这一轮"), action: { op: "remove", id: p.id }, tone: "danger" },
     ] });
-    rows.push({ kind: "prose", key: `full-${p.id}`, text: p.text }, { kind: "prose", key: `answer-${p.id}`, text: unfold.expanded?.answer === null ? t("正在读取…") : unfold.expanded?.answer === "" ? t("没有记下回答") : unfold.expanded?.answer ?? "", markdown: true });
+    rows.push({ kind: "prose", key: `full-${p.id}`, text: promptShown(p.text) },{ kind: "prose", key: `answer-${p.id}`, text: unfold.expanded?.answer === null ? t("正在读取…") : unfold.expanded?.answer === "" ? t("没有记下回答") : unfold.expanded?.answer ?? "", markdown: true });
   }
   return rows;
 }

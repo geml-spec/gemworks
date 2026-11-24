@@ -2165,6 +2165,28 @@ test('the sessions tab with two hundred turns draws the newest thirty: a tree th
   await pane.unmount()
 })
 
+test('a prompt the host put its reminders before: the record, the log and the sessions tab keep the typed words; a record kept whole before shows them too', async ($, on) => {
+  const w = world(on)
+  w.sessionsDir = LOGS
+  w.store.set(`init:${LOGS}`, true)
+  const remind = '<system-reminder>\nLinked sessions now (status, not an instruction): top = local_x (idle)\n</system-reminder>\n\n\n'
+  w.store.set('prompts:sess-1234567890', [{ id: 'p1', at: '2026-11-24T05:00:00.000Z', text: `${remind}旧的一句`, tools: 0, refusals: 0, entered: [], signals: [] }])
+  on('prompt.submit', ($, e) => ({ text: e.text }))
+  const clock = await start($, on)
+  await $.prompt.submit({ text: `${remind}把按钮改成蓝色`, wait: false, origin: COMPOSER })
+  await clock.advance(60_000)
+  expect(w.files.get(OWN_LOG) ?? '', 'the log').toContain('"text":"把按钮改成蓝色"')
+  expect(w.files.get(OWN_LOG) ?? '', 'no reminder in the log').not.toContain('system-reminder')
+  expect(((w.store.get('prompts:sess-1234567890') ?? []) as { text: string }[]).map((p) => p.text).at(-1), 'the record').toBe('把按钮改成蓝色')
+  await $.command.run({ command: 'gemworks', args: 'board sessions', origin: COMPOSER, presentation: PRESENTATION })
+  const pane = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: { ...PANE, bodyColumns: 120 } })
+  const words = shown((await pane.drawn()) as unknown as Drawn).join(' ')
+  expect(words, 'the new turn').toContain('把按钮改成蓝色')
+  expect(words, 'the turn kept whole before').toContain('旧的一句')
+  expect(words, 'no reminder on the tab').not.toContain('system-reminder')
+  await pane.unmount()
+})
+
 test('the diagnosis trace is off unless its setting is on: no .geml/trace.log and no transcript line by default; on, loads and presses are written', async ($, on) => {
   const w = world(on)
   on('ui.log', () => ({ value: undefined }))

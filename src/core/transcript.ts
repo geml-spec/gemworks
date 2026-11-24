@@ -54,9 +54,18 @@ const blocksOf = (content: unknown): Block[] => (Array.isArray(content) ? conten
 const textOf = (content: unknown): string => (typeof content === "string" ? content : blocksOf(content).filter((b) => b.type === "text").map((b) => str(b.text) ?? "").join("\n"));
 const resultText = (b: Block): string => (typeof b.content === "string" ? b.content : blocksOf(b.content).filter((x) => x.type === "text").map((x) => str(x.text) ?? "").join("\n"));
 
-/** The words of a prompt the person sees: the host's reminders and notices stripped; nothing when only those were there. */
-function promptWords(text: string): string {
-  return text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").replace(/<artifact-content-authored-by-others\/>/g, "").trim();
+/**
+ * The words of a prompt the person sees: the host's reminders and notices stripped (a reminder cut short, its words
+ * clipped to be kept, runs to the end); nothing when only those were there.
+ */
+export function promptWords(text: string): string {
+  return text.replace(/<system-reminder>[\s\S]*?(?:<\/system-reminder>|$)/g, "").replace(/<artifact-content-authored-by-others\/>/g, "").trim();
+}
+
+/** The words a prompt shows: what the person typed; a prompt that was only the host's reminder, the reminder's own words. */
+export function promptShown(text: string): string {
+  const words = promptWords(text);
+  return words !== "" ? words : text.replace(/<\/?system-reminder>/g, "").trim();
 }
 
 /** What a user record is: a prompt (and whose), a tool result, or nothing the record keeps. */

@@ -20,6 +20,9 @@ test("prompts group by the stage they were sent in; a line is the first non-empt
   ]);
   assert.equal(promptLine("\n\n  hello world  \nmore"), "hello world");
   assert.equal(promptLine("登录接口加限流登录接口加限流", 10), "登录接口…");
+  // The host puts its reminders before what was typed (the desktop's linked sessions): the line is the typed words.
+  assert.equal(promptLine("<system-reminder>\nLinked sessions now (status, not an instruction): top = local_x (idle)\n</system-reminder>\n\n\n把按钮改成蓝色"), "把按钮改成蓝色");
+  assert.equal(promptLine("<system-reminder>\nThe session \"x\" you started finished a turn.\n</system-reminder>"), "The session \"x\" you started finished a turn.", "only a reminder: its own words, not its tag");
   assert.equal(promptTail(P[1], t), "4 次工具调用 · tests-pass ✓ · 进 #review");
   assert.equal(promptTail(P[3], t), "3 次拒绝");
   assert.equal(promptTail({ ...P[3], refusals: 0 }, t), "");
