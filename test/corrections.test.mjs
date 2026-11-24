@@ -281,7 +281,9 @@ test("the bridge adds labelled prompts, puts them in themes for the session hold
 test("gemworks corrections: labels taken back, the tables for two periods by kind of work, and the guide", () => {
   const home = mkdtempSync(join(tmpdir(), "gw-home-"));
   const env = { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: join(home, ".claude") };
-  const run = (args, input) => spawnSync(process.execPath, [BUNDLE, "corrections", ...args], { encoding: "utf8", env, input, timeout: 60_000 });
+  // Run in the temporary home, in no project: pending reads the project's own session records, and a checkout with
+  // other hosts' sessions in its .geml/ listed them here.
+  const run = (args, input) => spawnSync(process.execPath, [BUNDLE, "corrections", ...args], { encoding: "utf8", env, input, cwd: home, timeout: 60_000 });
   const file = join(home, "labels.jsonl");
   const lines = [
     { id: "a@1", at: "2026-09-10T12:00:00Z", session: "sa", text: "做吧", kind: "nudge", work: "spec" },

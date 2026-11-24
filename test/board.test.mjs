@@ -93,7 +93,7 @@ test("the board's id, the dialog's, and its five tabs in order, opening on the w
   assert.deepEqual(TAB_IDS, ["sessions", "items", "made", "flow", "tools"], "记录 is gone; 产物 has its own");
   assert.equal(HOME_TAB, "items");
   assert.deepEqual(tabs().map((x) => [x.id, x.label]), [["sessions", "会话"], ["items", "工作项"], ["made", "产物"], ["flow", "流程"], ["tools", "工具"]]);
-  assert.deepEqual(tabs(wordsFor("en")).map((x) => x.label), ["Session", "Items", "Artifacts", "Flow", "Tools"]);
+  assert.deepEqual(tabs(wordsFor("en")).map((x) => x.label), ["Session", "Work items", "Artifacts", "Flow", "Tools"]);
 });
 
 test("流程: the flow by its title, the picture, a row of its states, and the one picked — its uses and their tools, what it may not use, what runs everywhere", () => {

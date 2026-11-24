@@ -51,14 +51,14 @@ What you get:
   deploy configuration such as wrangler, fly, vercel or a Dockerfile: dev; a
   build manifest such as package.json or Cargo.toml: coding; nothing
   recognisable: dev).
-- **The board**, five tabs, opening on Items. **Session**: this session's
+- **The board**, five tabs, opening on Work items. **Session**: this session's
   turns, what you asked and what each turn did; a turn can be scrolled to in
   the conversation, and under 整理 the turns you pick are split into a session
   of their own or deleted with the bundled `split-session` skill, the record
   backed up first; then the project's other sessions, the project's Claude Code
   memory and what every session decided. Each session's heading exports its
   record as GEML, asking where to put it: Downloads, the desktop, the project's
-  `.geml/exports/`, or a folder or file typed in. **Items**: what waits on you
+  `.geml/exports/`, or a folder or file typed in. **Work items**: what waits on you
   on top, each with its buttons (a question, a step only you judge, an approval
   whose guard holds, a variable to tick, a model stuck on a refused call, a
   bridge that is down); then the work items on the way, the step each has

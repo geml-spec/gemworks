@@ -337,7 +337,7 @@ test("an item of a session that ended is the person's to move: taken over it is 
   }
 });
 
-test("the starter flows speak the person's language: every title, need, pitfall and answer has its English and Japanese, ids stay", () => {
+test("the starter flows speak the person's language: every title, need, pitfall, answer and way back has its English and Japanese, ids stay", () => {
   for (const lang of ["en", "ja"]) {
     const shown = flowsIn(flows, wordsFor(lang));
     const cjk = /[一-鿿]/;
@@ -347,8 +347,17 @@ test("the starter flows speak the person's language: every title, need, pitfall 
         assert.equal(st.id, flows[i].states[j].id, "a press still names the step it meant");
         if (lang === "en") for (const text of [f.title, st.title, st.need, st.prevents, ...(st.answers ?? [])]) assert.ok(!cjk.test(text), `${f.name}.${st.id}: ${text}`);
       }
+      for (const [j, e] of f.edges.entries()) {
+        assert.deepEqual([e.from, e.to, e.back], [flows[i].edges[j].from, flows[i].edges[j].to, flows[i].edges[j].back], "a way back still joins the steps it joined");
+        if (lang === "en") assert.ok(!cjk.test(e.label), `${f.name} ${e.from}→${e.to}: ${e.label}`);
+      }
     }
   }
+  const docs = flowsIn(flows, wordsFor("en")).find((f) => f.name === "docs");
+  const back = docs.edges.find((e) => e.back);
+  assert.equal(back.label, "You want changes", "你要改, the words before 回到 on the flow tab");
+  const opened = manualRows([], flowsIn(flows, t).filter((f) => f.name === "docs"), [], wordsFor("en"), { focus: null, expanded: ["docs"] });
+  assert.ok(opened.some((r) => r.kind === "text" && r.text === `↩ You want changes: back to ${docs.states.find((s) => s.id === back.to).title}`), "the flow tab, opened on the flow, says it");
   const feature = flowsIn(flows, wordsFor("en")).find((f) => f.name === "feature");
   assert.deepEqual([feature.title, feature.states[0].title, feature.states[0].need, feature.states[0].answers], ["feature", "Mockup", "You've seen it and said yes", ["Yes", "Change it"]]);
   const grown = { ...flow("bugfix"), states: [{ ...flow("bugfix").states[0], title: "先截图", need: "截图贴进来" }] };

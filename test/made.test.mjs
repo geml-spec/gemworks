@@ -37,6 +37,10 @@ test("the 产物 tab: a press per kind that has some, by day newest first, each 
   assert.match(doc[0].detail, / · 4 次提交 · /);
   assert.deepEqual(docs.filter((r) => r.kind === "text").map((r) => r.text), ["10 月 26 日"]);
   assert.equal(docs[0].items.find((b) => b.primary).label, "文档 1");
+  // In English one artifact is a File, the press over them Files 1: the row and its filter no longer disagree in number.
+  const en = madeTabRows(all, MADE_VIEW, words, wordsFor("en"), NOW);
+  assert.deepEqual(en[0].items.map((b) => b.label), ["All 2", "Files 1", "Links 1", "Docs 1"]);
+  assert.equal(en.find((r) => r.kind === "entry").tag, "File");
 });
 
 test("nothing but documents in git: the 产物 tab lists those rather than nothing, and a work item's 产物 n counts them", () => {

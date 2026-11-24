@@ -36,6 +36,8 @@ export function flowsIn(flows: readonly CoachFlow[], t: T): CoachFlow[] {
     ...f,
     title: say(f.title),
     states: f.states.map((s) => ({ ...s, title: say(s.title), need: say(s.need), prevents: say(s.prevents), answers: s.answers === null ? null : [say(s.answers[0]), say(s.answers[1])] as const })),
+    // A way back's words (你要改) are the person's too: the flow tab shows them before the step they go back to.
+    edges: f.edges.map((e) => ({ ...e, label: say(e.label) })),
   }));
 }
 

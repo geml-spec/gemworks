@@ -81,7 +81,7 @@ test("the reply: five tabs in the browser's language, the header, one tab's rows
   assert.equal(picture.ranks.flat().find((x) => x.current)?.id, s.sc.initial, "the current state marked");
   assert.ok(picture.svg.includes(`class="node initial cur" data-state="${s.sc.initial}"`), "drawn with the session's state laid over it");
   const en = boardReply(s, readQuery(new URLSearchParams("session=s1&tab=items&lang=en")), NOW);
-  assert.equal(en.tabs[0].label, "Items");
+  assert.equal(en.tabs[0].label, "Work items");
   assert.ok(en.rows.some((r) => r.kind === "text" && r.text.includes("session:s1")), "the items tab lists the session");
   assert.deepEqual(en.rows.filter((r) => r.kind === "text" && r.tone === "dim" && /^(Pending|In progress|Merged|Closed|Dropped)/.test(r.text)).map((r) => r.text), ["Pending", "In progress · 1", "Merged · 0", "Closed · 0", "Dropped · 0"], "the work items tab's headings, as lines the browser half draws: the session is its one work item, being worked on");
   assert.ok(en.rows.every((r) => ["text", "button", "buttons", "link", "input", "flow"].includes(r.kind)), "no row of a kind the browser half has no drawing of");

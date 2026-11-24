@@ -2338,7 +2338,8 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
         <Box gap={1}>
           {drawIcon(els, row.icon)}
           {row.verb !== '' && <Text dimColor>{row.verb}</Text>}
-          <Box flexShrink={1} minWidth={0}><Text bold wrap="wrap">{row.title}</Text></Box>
+          {/* The title gives up the room (it wraps): To decide went onto two lines when both shrank alike. */}
+          <Box flexShrink={100} minWidth={0}><Text bold wrap="wrap">{row.title}</Text></Box>
           {row.tag !== undefined && row.tag !== '' && <Text dimColor>{row.tag}</Text>}
         </Box>
         {row.detail.map((d, n) => <Text key={`d${n}`} dimColor wrap="truncate-end">{d}</Text>)}
@@ -2354,8 +2355,8 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
         {row.action !== undefined
           ? <Button key={`go-${row.key}`} plain label={row.title} onPress={press($, row.action)} />
           : <Text {...toneProps(row.tone)} wrap="truncate-end">{row.title}</Text>}
-        <Box flexGrow={1} />
-        {row.tag !== '' && <Text dimColor>{row.tag}</Text>}
+        {/* The tag in the box that pushes it right, which never shrinks: a long title once squeezed 11 月 12 日 into a column. */}
+        <Box flexGrow={1} flexShrink={0} justifyContent="flex-end">{row.tag !== '' && <Text dimColor>{row.tag}</Text>}</Box>
         {row.link !== undefined && drawLink(els, `open-${row.key}`, row.link.href, row.link.label)}
         {row.extra !== undefined && <Button key={row.extra.key} plain dimColor label={row.extra.label} onPress={press($, row.extra.action)} />}
         {row.open !== undefined && (els.Svg !== undefined ? <Box flexShrink={0} alignItems="center">{drawGlyph(els, row.open ? 'unfold' : 'fold', 'dim', 15)}</Box> : <Text dimColor>{row.open ? '▾' : '▸'}</Text>)}
@@ -2367,8 +2368,7 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
           {row.action !== undefined
             ? <Button key={`go-${row.key}`} plain onPress={press($, row.action)}><Text {...toneProps(row.tone)} {...(row.current === true ? { bold: true } : {})}>{row.title}</Text></Button>
             : <Text {...toneProps(row.tone)} {...(row.current === true ? { bold: true } : {})} wrap="truncate-end">{row.title}</Text>}
-          <Box flexGrow={1} />
-          {row.tag !== '' && <Text dimColor>{row.tag}</Text>}
+          <Box flexGrow={1} flexShrink={0} justifyContent="flex-end">{row.tag !== '' && <Text dimColor>{row.tag}</Text>}</Box>
           {row.link !== undefined && drawLink(els, `open-${row.key}`, row.link.href, row.link.label)}
         </Box>
         {row.action !== undefined
@@ -2554,7 +2554,8 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
                 ? iconButton($, els, { key: `pick-${row.key}`, label: row.checkLabel ?? '', action: row.action }, row.check ? 'boxon' : 'box', { tone: row.check ? 'active' : 'dim', from: 'left', size: 15, tip: false })
                 : <Box flexShrink={0} alignItems="center" width={2}><Text> </Text></Box>)
               : row.fold === true && <Box flexShrink={0} alignItems="center">{drawGlyph(els, row.open ? 'unfold' : 'fold', 'dim', 15)}</Box>}
-            <Box width={Math.max(5, cellWidth(row.at))} flexShrink={0}><Button key={`at-${row.key}`} plain dimColor label={row.at} onPress={press($, row.action)} /></Box>
+            {/* Two cells over its words: a plain button pads its label, and 13:05 cut to 13… at five. */}
+            <Box width={cellWidth(row.at) + 2} flexShrink={0}><Button key={`at-${row.key}`} plain dimColor label={row.at} onPress={press($, row.action)} /></Box>
             {/* Its time, its words and what it did take the press, each a button labelled with them: no box laid over the row, which
                 costs the desktop elements it counts against its limit. */}
             <Box flexDirection="column" flexGrow={1} minWidth={0}>

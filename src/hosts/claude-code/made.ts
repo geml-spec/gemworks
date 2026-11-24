@@ -26,6 +26,8 @@ export const MADE_VIEW: MadeView = { kind: "all", shown: 0, item: null };
 export type ItemWords = (id: string) => string | undefined;
 
 const kindWord = (k: MadeAllEntry["kind"], t: T): string => (k === "link" ? t("链接") : k === "doc" ? t("文档") : k === "image" ? t("图片") : t("文件"));
+/** A filter's words with its count: one artifact is a File, the filter over them Files 50. */
+const kindCount = (k: MadeKind, n: number, t: T): string => (k === "all" ? t("全部 {0}", n) : k === "link" ? t("链接 {0}", n) : k === "doc" ? t("文档 {0}", n) : k === "image" ? t("图片 {0}", n) : t("文件 {0}", n));
 
 /** An entry's name as shown: a link's title; a file's last segment (what opens it says where it is). */
 const shownName = (e: MadeAllEntry): string => (e.kind === "link" ? e.name : e.name.split(/[\\/]/).filter((x) => x !== "").at(-1) ?? e.name);
@@ -73,7 +75,7 @@ export function madeTabRows(all: MadeAll | null | undefined, view: MadeView, wor
   rows.push({
     kind: "buttons",
     items: MADE_KINDS.filter((k) => count(k) > 0).map((k): Pressable => ({
-      key: `made-kind-${k}`, label: `${k === "all" ? t("全部") : kindWord(k, t)} ${count(k)}`, ...(kind === k ? { primary: true } : {}), action: { op: "made-kind", kind: k },
+      key: `made-kind-${k}`, label: kindCount(k, count(k), t), ...(kind === k ? { primary: true } : {}), action: { op: "made-kind", kind: k },
     })),
   });
   const list = mine.filter((e) => isOf(e, kind));
