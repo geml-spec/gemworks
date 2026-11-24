@@ -2337,9 +2337,10 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
       <Box key={row.key} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
         <Box gap={1}>
           {drawIcon(els, row.icon)}
-          {row.verb !== '' && <Text dimColor>{row.verb}</Text>}
-          {/* The title gives up the room (it wraps): To decide went onto two lines when both shrank alike. */}
-          <Box flexShrink={100} minWidth={0}><Text bold wrap="wrap">{row.title}</Text></Box>
+          {/* Its words in a box that never shrinks, the title wrapping instead: To decide went onto two lines beside a long
+              title, and a title made to give up more room (flexShrink) did not hold it on the desktop. */}
+          {row.verb !== '' && <Box flexShrink={0}><Text dimColor>{row.verb}</Text></Box>}
+          <Box flexShrink={1} minWidth={0}><Text bold wrap="wrap">{row.title}</Text></Box>
           {row.tag !== undefined && row.tag !== '' && <Text dimColor>{row.tag}</Text>}
         </Box>
         {row.detail.map((d, n) => <Text key={`d${n}`} dimColor wrap="truncate-end">{d}</Text>)}

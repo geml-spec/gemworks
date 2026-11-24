@@ -123,11 +123,11 @@ export function drawStep($: EngineInterface, els: Els, row: Row<'step'>, inner: 
         </Box>
       )}
       <Box gap={1}>
-        <Text {...(row.final ? { dimColor: true } : row.here ? { bold: true } : {})}>{row.here && !pictures ? `▸${row.title}` : row.title}</Text>
-        {/* The need gives up the room first (it truncates): Try it and the model's chip went onto two lines when all three shrank alike. */}
-        {row.need !== '' && <Box flexShrink={100} minWidth={0}><Text dimColor wrap="truncate-end">{`· ${row.need}`}</Text></Box>}
-        <Box flexGrow={1} />
-        {row.judge !== '' && judgeChip(els, row.judgeKind, row.judge, `${row.key}-judge`)}
+        {/* The title and the chip in boxes that never shrink, the need truncating instead: Try it and the model's chip went
+            onto two lines when all three shrank alike. The chip's box is the one that pushes it right. */}
+        <Box flexShrink={0}><Text {...(row.final ? { dimColor: true } : row.here ? { bold: true } : {})}>{row.here && !pictures ? `▸${row.title}` : row.title}</Text></Box>
+        {row.need !== '' && <Box flexShrink={1} minWidth={0}><Text dimColor wrap="truncate-end">{`· ${row.need}`}</Text></Box>}
+        <Box flexGrow={1} flexShrink={0} justifyContent="flex-end">{row.judge !== '' && judgeChip(els, row.judgeKind, row.judge, `${row.key}-judge`)}</Box>
       </Box>
       {row.prevents !== '' && <Text dimColor wrap="wrap">{row.prevents}</Text>}
       {(row.rules ?? []).map((r, n) => <Text key={`rule${n}`} {...toneProps('warning')} wrap="truncate-end">{`🔒 ${r}`}</Text>)}
