@@ -216,13 +216,16 @@ test("the manual's practices: listed on the flow opened, each on its step, its t
   // A flow's heading is a heading: its name, how it stands, and one ⋯; sharing, exporting and folding are in its menu.
   const heads = rows.filter((r) => r.kind === "section").map((r) => [r.text, r.tucked, (r.actions ?? []).map((b) => [b.label, b.action])]);
   assert.deepEqual(heads, [["新设计", true, [["⋯", { op: "manual-menu", key: "flow:design" }]]], ["bugfix", true, [["⋯", { op: "manual-menu", key: "flow:bugfix" }]]], ["所有时候的做法", undefined, []]], "the flow moved last listed; the other folded");
-  assert.deepEqual(rows.filter((r) => r.kind === "practice").map((r) => r.text), ["用真实内容"]);
-  // A flow folded: each step with practices says how many, a press that lists them; its own practices for every step first.
-  assert.deepEqual(rows.filter((r) => r.kind === "step" && r.key.startsWith("step-bugfix-") && r.more !== undefined).map((r) => [r.title, r.more.label, r.more.action]), [
-    ["这类活都要：", "1 条做法 ▾", { op: "manual-open", flow: "bugfix", open: true }], ["修", "1 条做法 ▾", { op: "manual-open", flow: "bugfix", open: true }], ["验证", "1 条做法 ▾", { op: "manual-open", flow: "bugfix", open: true }],
-  ]);
+  // A flow folded shows each step's newest practice alone; the flow opened, all of them.
+  assert.deepEqual(rows.filter((r) => r.kind === "practice").map((r) => r.text), ["用真实内容", "修之前先复现", "同一现象再现，先回头读引擎契约", "过四道门"]);
+  assert.deepEqual(rows.filter((r) => r.kind === "step" && r.more !== undefined), [], "one practice a step: nothing more to list");
+  // Two on a step, folded: the newer, and a press under the step that lists them all.
+  const two = manualRows(items, flows, [...practices, pr({ id: "p7", text: "一个猜测一版", at: "2026-10-25T09:00:00Z" })], t, { focus: null, expanded: null, now: "2026-10-26T00:00:00Z" });
+  const fixAt = two.findIndex((r) => r.key === "step-bugfix-fix");
+  assert.deepEqual([two[fixAt].more, two[fixAt + 1].key], [{ key: "manual-more-bugfix-fix", label: "还有 1 条 ▾", action: { op: "manual-open", flow: "bugfix", open: true } }, "practice-p7"]);
   const bug = manualRows(items, flows, practices, t, { focus: null, expanded: ["bugfix", "*"], now: "2026-10-26T00:00:00Z" });
-  const listed = bug.filter((r) => r.kind === "practice");
+  // (新设计 stays folded, its newest practice shown: left out here.)
+  const listed = bug.filter((r) => r.kind === "practice" && r.key !== "practice-p3");
   // Beside its words, as the design has it: 改成规定 on a step's, × on one learned or moved in, and ⋯ for the rest.
   assert.deepEqual(listed.map((r) => [r.text, r.tag, r.actions.map((b) => b.label)]), [
     ["修之前先复现", "从记忆搬来", ["×", "⋯"]], ["同一现象再现，先回头读引擎契约", "新学到", ["改成规定", "×", "⋯"]], ["过四道门", "团队", []], ["回复用中文", "从记忆搬来", ["×", "⋯"]],
@@ -242,8 +245,19 @@ test("the manual's practices: listed on the flow opened, each on its step, its t
   assert.deepEqual(manualRows(items, flows, practices, t, { focus: null, expanded: ["bugfix"], now: "2026-10-26T00:00:00Z", menu: "practice:p1" }).find((r) => r.key === "practice-p1").actions.at(-1).action, { op: "manual-menu", key: null });
   const own = readCoachFlow("bugfix", readFileSync(new URL("../coach/bugfix.geml", import.meta.url), "utf8").replace('"fix":', '"gates": { "title": "过三道门", "description": "三项都过" }, "fix":').replace(/"reproduce": \{[^}]*\},/, ""), flow("bugfix"));
   assert.deepEqual(own.diff, { added: ["过三道门"], removed: ["复现"] });
+  // What the project changed is marked on the steps: one it added says so; one it took out stands crossed out where it
+  // stood, with a press that puts it back after asking.
+  assert.deepEqual(own.missing, [{ id: "reproduce", title: "复现", need: "版本已确认", judge: "model", prevents: "修的不是真正出问题的那个版本或现象", after: "rootcause" }], "with nothing before it, after the flow's first step");
   const changed = manualRows([item({})], flows.map((f) => (f.name === "bugfix" ? own : f)), [], t, { focus: null, expanded: null });
-  assert.equal(changed.find((r) => r.key === "manual-bugfix").note, "本项目改过：比参考多「过三道门」，比参考少「复现」", "what is on its way is listed under the heading, not counted in it");
+  assert.equal(changed.find((r) => r.key === "manual-bugfix").note, "", "nothing about it on the heading");
+  assert.equal(changed.find((r) => r.key === "step-bugfix-gates").grown, "本项目加的");
+  assert.equal(changed.find((r) => r.key === "step-bugfix-fix").grown, undefined);
+  const back = changed.findIndex((r) => r.key === "step-bugfix-missing-reproduce");
+  assert.equal(changed[back - 1].key, "step-bugfix-rootcause", "where it stood");
+  assert.deepEqual([changed[back].title, changed[back].need, changed[back].judge, changed[back].missing], ["复现", "版本已确认", "参考里有", { key: "flow-step-back-bugfix-reproduce", label: "加回来", action: { op: "flow-step-back", flow: "bugfix", step: "reproduce", confirm: { question: "把「复现」加回bugfix？之后这类活都要过这一步。", yes: "加回来" } } }]);
+  // Missing from the middle: after the nearest step before it that the project still has.
+  const mid = readCoachFlow("bugfix", readFileSync(new URL("../coach/bugfix.geml", import.meta.url), "utf8").replace(/"rootcause":\s*\{[^}]*\},/, "").replace(/"failtest":\s*\{[^}]*\},/, ""), flow("bugfix"));
+  assert.deepEqual(mid.missing.map((x) => [x.id, x.after]), [["rootcause", "reproduce"], ["failtest", "reproduce"]]);
 });
 
 test("the band's line: what the last turn moved that waits on the person, with its two words and 暂缓处理; else this session's last item, what comes next and 好，做吧", () => {

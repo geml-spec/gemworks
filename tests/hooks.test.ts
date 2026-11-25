@@ -122,6 +122,8 @@ function world(on: On) {
     lessons: [] as unknown[],
     /** When set, the status answer carries these practices, as the CLI's does. */
     practices: null as { list: Record<string, unknown>[]; memoryMoved: boolean } | null,
+    /** Files the plugin ships, by the end of their path (`/coach/bugfix.geml`): read where the project has none at that path. */
+    shipped: new Map<string, string>(),
     /** When set, the project dictionary's keys allowed everywhere, as the outward op keeps and answers them; null, the op answers none. */
     outward: null as string[] | null,
     store: new Map<string, unknown>(),
@@ -305,7 +307,9 @@ function world(on: On) {
     const dir = posix(e.path ?? '').replace(/\/$/, '')
     return { value: [...w.files.entries()].filter(([p]) => p.startsWith(`${dir}/`) && !p.slice(dir.length + 1).includes('/')).map(([p, text]) => ({ name: p.slice(dir.length + 1), kind: 'file' as const, size: text.length, mtimeMs: 0, isLink: false })) }
   })
-  on('fs.read', ($, e) => (posix(e.path).endsWith('/.claude-plugin/plugin.json') && w.manifest !== null ? { value: JSON.stringify({ version: w.manifest }) } : w.files.has(posix(e.path)) ? { value: w.files.get(posix(e.path)) as string } : posix(e.path) === `${ROOT}/.geml/context.geml`
+  on('fs.read', ($, e) => (posix(e.path).endsWith('/.claude-plugin/plugin.json') && w.manifest !== null ? { value: JSON.stringify({ version: w.manifest }) } : w.files.has(posix(e.path)) ? { value: w.files.get(posix(e.path)) as string }
+    : !posix(e.path).startsWith(`${ROOT}/`) && [...w.shipped.keys()].some((end) => posix(e.path).endsWith(end)) ? { value: [...w.shipped].find(([end]) => posix(e.path).endsWith(end))?.[1] as string }
+    : posix(e.path) === `${ROOT}/.geml/context.geml`
     ? { value: `=== meta\nprofile = "geml-statechart/v1"\n===\n\n=== data {#stage format=json}\n${JSON.stringify({ item: w.item, state: w.state, rev: w.rev })}\n===\n\n=== text {#current}\n${stage()}\n===\n` }
     : { deny: 'ENOENT' }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
@@ -2980,6 +2984,49 @@ test('n 条提议 on the band is a press: the flow tab opens, the proposal on to
   const words = shown((await pane.drawn()) as unknown as Drawn).join(' ')
   expect(words, 'on the flow tab, the proposal on top').toContain('新的一类活「写规范」')
   expect(await pane.find({ type: 'Button', key: 'proposal-yes-p1' })).toBeDefined()
+  await pane.unmount()
+})
+
+test('a step the project took out of the shipped flow stands crossed out where it stood; 加回来 asks, then puts it back into the project\'s flow and keeps it as accepted', async ($, on) => {
+  const w = world(on)
+  w.workflow = false
+  w.sessionsDir = LOGS
+  w.files.set(`${ROOT}/.geml/coach/bugfix.geml`, BUGFIX_JUDGED)
+  // The flow the plugin ships, which this project's own took 找根因, 先写会失败的测试 and 验证 out of.
+  w.shipped.set('/coach/bugfix.geml', '=== meta\ntitle = "bugfix"\nprofile = "geml-statechart/v1"\n===\n\n=== diagram {#flow format=geml-statechart caption="bugfix"}\n{"initial":"reproduce","states":{"reproduce":{"title":"复现","description":"版本已确认","judge":"model"},"rootcause":{"title":"找根因","description":"说得出为什么坏","judge":"model"},"failtest":{"title":"先写会失败的测试","description":"有一个现在会失败、能复现问题的测试","judge":"model"},"fix":{"title":"修","description":"一个猜测一版","judge":"model"},"verify":{"title":"验证","description":"测试通过","judge":"fact"},"confirm":{"title":"你确认","description":"你按过说对","judge":"you"},"done":{"title":"完成","final":true}},"transitions":[{"from":"reproduce","to":"rootcause"},{"from":"rootcause","to":"failtest"},{"from":"failtest","to":"fix"},{"from":"fix","to":"verify"},{"from":"verify","to":"confirm"},{"from":"confirm","to":"done"},{"from":"confirm","to":"reproduce","guard":"你说没好"}]}\n===\n')
+  const asked: string[] = []
+  on('tool.call', { tool: 'AskUserQuestion' }, ($, e) => {
+    const q = (e.questions as { question: string }[])[0]!
+    asked.push(q.question)
+    return { result: { questions: e.questions, answers: { [q.question]: '加回来' } }, text: '加回来' }
+  })
+  const clock = await start($, on)
+  await clock.settle()
+  await $.command.run({ command: 'gemworks', args: 'board', origin: COMPOSER, presentation: PRESENTATION })
+  const mount = () => $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+  let pane = await mount()
+  await pane.press({ key: 'tab-flow' })
+  await pane.unmount()
+  pane = await mount()
+  await pane.press({ key: 'manual-idle-bugfix' })
+  await pane.unmount()
+  pane = await mount()
+  const words = shown((await pane.drawn()) as unknown as Drawn).join(' ')
+  expect(words, 'the steps the shipped flow has and this one lacks, each after the step it followed').toMatch(/复现 · 版本已确认 .*找根因 · 说得出为什么坏 参考里有 \[加回来\] 先写会失败的测试 · .* 参考里有 \[加回来\] 修 · 一个猜测一版 .*验证 · 测试通过 参考里有 \[加回来\]/)
+  const crossed = findKey((await pane.drawn()) as unknown as Drawn, 'step-bugfix-missing-verify') as Drawn
+  expect(JSON.stringify(crossed), 'crossed out').toContain('"strikethrough":true')
+  await pane.press({ key: 'flow-step-back-bugfix-verify' })
+  await clock.settle()
+  expect(asked, 'asked first').toEqual(['把「验证」加回bugfix？之后这类活都要过这一步。'])
+  const flow = w.files.get(`${ROOT}/.geml/coach/bugfix.geml`) ?? ''
+  expect(flow, 'back after 修, the way on rewired through it').toMatch(/"verify": \{\s*"title": "验证"/)
+  expect(flow).toMatch(/"from": "fix",\s*"to": "verify"/)
+  expect(flow).toMatch(/"from": "verify",\s*"to": "confirm"/)
+  expect(w.files.get(`${ROOT}/.geml/proposals.geml`) ?? '', 'kept as accepted, by the shipped flow, for the flow\'s growth').toMatch(/"kind":"add-step","flow":"bugfix","after":"fix".*"why":"从参考加回来".*"by":"reference","status":"accepted"/)
+  await pane.unmount()
+  pane = await mount()
+  expect(findKey((await pane.drawn()) as unknown as Drawn, 'step-bugfix-missing-verify'), 'no longer missing').toBeUndefined()
+  expect(findKey((await pane.drawn()) as unknown as Drawn, 'step-bugfix-verify'), 'a step of the flow again').toBeDefined()
   await pane.unmount()
 })
 

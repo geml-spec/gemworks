@@ -131,7 +131,11 @@ export type BoardRow =
    * in words), what it prevents; `here` the step the focused item stands at. The practice rows after it are its own,
    * drawn in its block; `more`, on a flow whose practices are folded, the press that lists them (2 条做法 ▾).
    */
-  | { kind: "step"; key: string; title: string; need: string; judge: string; judgeKind: Judge; prevents: string; here: boolean; final: boolean; on?: string; rules?: string[]; more?: Pressable }
+  /**
+   * A step of the flow tab's manual. `grown`: the words saying the project added it; `missing`: a step of the shipped
+   * flow the project took out, drawn crossed out, with the press that puts it back.
+   */
+  | { kind: "step"; key: string; title: string; need: string; judge: string; judgeKind: Judge; prevents: string; here: boolean; final: boolean; on?: string; grown?: string; missing?: Pressable; rules?: string[]; more?: Pressable }
   /**
    * A practice on a step: what to do, where it came from, its tag (做法, 新学到, 从记忆搬来, 团队), the presses on it:
    * × and 改成规定 beside its words, its layer and sharing under the pointer where a surface has one.

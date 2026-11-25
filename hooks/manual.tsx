@@ -115,6 +115,22 @@ export function drawPracticeBlock($: EngineInterface, els: Els, key: string, inn
 export function drawStep($: EngineInterface, els: Els, row: Row<'step'>, inner: readonly BoardRow[], draw: (r: BoardRow, n: number) => unknown): unknown {
   const { Box, Text, Button, Svg } = els
   const pictures = Svg !== undefined
+  // A step of the shipped flow the project took out: crossed out on a dashed bar, where it stood, with the press that puts it back.
+  if (row.missing !== undefined) return (
+    <Box key={row.key} flexDirection="column" paddingLeft={pictures ? 2 : 1} paddingRight={1} {...(pictures ? { marginTop: 'xs', paddingY: 'xs' } : {})}>
+      {pictures && (
+        <Box key={`${row.key}-bar`} position="absolute" top={0} bottom={0} left={0} overflow="hidden">
+          <Svg source={BAR_END} alt="┆" width={3} height={2000} />
+        </Box>
+      )}
+      <Box gap={1} alignItems="center">
+        <Box flexShrink={1} minWidth={0}><Text dimColor strikethrough wrap="truncate-end">{row.need !== '' ? `${row.title} · ${row.need}` : row.title}</Text></Box>
+        <Box flexGrow={1} />
+        {row.judge !== '' && <Box flexShrink={0}><Text dimColor>{row.judge}</Text></Box>}
+        <Button key={row.missing.key} plain dimColor label={row.missing.label} onPress={press($, row.missing.action)} />
+      </Box>
+    </Box>
+  )
   return (
     <Box key={row.key} flexDirection="column" paddingLeft={pictures ? 2 : 1} paddingRight={1} {...(pictures ? { marginTop: 'xs', paddingY: 'xs' } : {})} {...(row.here && pictures ? { backgroundColor: SELECTED } : {})}>
       {pictures && (
@@ -126,6 +142,7 @@ export function drawStep($: EngineInterface, els: Els, row: Row<'step'>, inner: 
         {/* The title and the chip in boxes that never shrink, the need truncating instead: Try it and the model's chip went
             onto two lines when all three shrank alike. The chip's box is the one that pushes it right. */}
         <Box flexShrink={0}><Text {...(row.final ? { dimColor: true } : row.here ? { bold: true } : {})}>{row.here && !pictures ? `▸${row.title}` : row.title}</Text></Box>
+        {row.grown !== undefined && <Box flexShrink={0}><Text {...toneProps('warning')}>{row.grown}</Text></Box>}
         {row.need !== '' && <Box flexShrink={1} minWidth={0}><Text dimColor wrap="truncate-end">{`· ${row.need}`}</Text></Box>}
         <Box flexGrow={1} flexShrink={0} justifyContent="flex-end">{row.judge !== '' && judgeChip(els, row.judgeKind, row.judge, `${row.key}-judge`)}</Box>
       </Box>

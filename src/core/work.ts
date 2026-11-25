@@ -20,8 +20,14 @@ export const COACH_FLOWS = ["design", "feature", "bugfix", "optimize", "incident
 export interface CoachState { id: string; title: string; need: string; final: boolean; judge: Judge; prevents: string; answers: readonly [string, string] | null; expires?: boolean }
 /** A way between states; `back` when it does not go on to the next state in order (a way back, drawn dashed). */
 export interface CoachEdge { from: string; to: string; label: string; back: boolean }
-/** A flow: its name (the file's), its title, its states and ways; `diff` how a project's own flow differs from the shipped one, by step titles. */
-export interface CoachFlow { name: string; title: string; states: CoachState[]; edges: CoachEdge[]; diff?: { added: string[]; removed: string[] } }
+/** A step of the shipped flow that a project's own flow lacks: what it is, and the project's step it would come back after. */
+export interface MissingStep { id: string; title: string; need: string; judge: Judge; prevents: string; after: string }
+
+/**
+ * A flow: its name (the file's), its title, its states and ways; `diff` how a project's own flow differs from the
+ * shipped one, by step titles; `missing` the shipped flow's steps it lacks, each with where it would go back.
+ */
+export interface CoachFlow { name: string; title: string; states: CoachState[]; edges: CoachEdge[]; diff?: { added: string[]; removed: string[] }; missing?: MissingStep[] }
 
 export type ItemEvent = Extract<SessionEvent, { t: "item" }>;
 
@@ -70,7 +76,15 @@ export function readCoachFlow(name: string, text: string, reference?: CoachFlow)
   const diff = reference !== undefined
     ? { added: states.filter((s) => !s.final && !reference.states.some((r) => r.id === s.id)).map((s) => s.title), removed: reference.states.filter((r) => !r.final && !states.some((s) => s.id === r.id)).map((r) => r.title) }
     : undefined;
-  return { name, title, states, edges, ...(diff !== undefined ? { diff } : {}) };
+  // Each shipped step it lacks comes back after the nearest step before it in the shipped flow that it has, else its first.
+  const shipped = reference?.states.filter((r) => !r.final) ?? [];
+  const has = (id: string): boolean => states.some((s) => s.id === id && !s.final);
+  const missing: MissingStep[] = shipped.flatMap((r, i) => {
+    if (states.some((s) => s.id === r.id)) return [];
+    const after = shipped.slice(0, i).reverse().find((x) => has(x.id))?.id ?? states.find((s) => !s.final)?.id;
+    return after === undefined ? [] : [{ id: r.id, title: r.title, need: r.need, judge: r.judge, prevents: r.prevents, after }];
+  });
+  return { name, title, states, edges, ...(diff !== undefined ? { diff } : {}), ...(missing.length > 0 ? { missing } : {}) };
 }
 
 /**

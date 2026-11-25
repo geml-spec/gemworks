@@ -38,6 +38,9 @@ export function flowsIn(flows: readonly CoachFlow[], t: T): CoachFlow[] {
     states: f.states.map((s) => ({ ...s, title: say(s.title), need: say(s.need), prevents: say(s.prevents), answers: s.answers === null ? null : [say(s.answers[0]), say(s.answers[1])] as const })),
     // A way back's words (你要改) are the person's too: the flow tab shows them before the step they go back to.
     edges: f.edges.map((e) => ({ ...e, label: say(e.label) })),
+    // What the project changed from the shipped flow, in the same words as its steps.
+    ...(f.diff !== undefined ? { diff: { added: f.diff.added.map(say), removed: f.diff.removed.map(say) } } : {}),
+    ...(f.missing !== undefined ? { missing: f.missing.map((m) => ({ ...m, title: say(m.title), need: say(m.need), prevents: say(m.prevents) })) } : {}),
   }));
 }
 
@@ -399,22 +402,20 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
   for (const [at, f] of shown.entries()) {
     const mine = live.filter((p) => p.flow === f.name);
     const listed = expanded.includes(f.name);
-    // A practice listed on its step; on a flow folded, a press under the step that lists them all (2 条做法 ▾).
+    // A flow's practices listed on their steps; on a flow folded, each step's newest alone, with a press under it that
+    // lists them all (还有 2 条 ▾).
+    const onStep = (step: string): Practice[] => mine.filter((p) => p.step === step);
+    const newest = (step: string): Practice[] => [...onStep(step)].sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 1);
     const more = (step: string): Pick<Extract<BoardRow, { kind: "step" }>, "more"> => {
-      const k = listed ? 0 : mine.filter((p) => p.step === step).length;
-      return k > 0 ? { more: { key: `manual-more-${f.name}-${step}`, label: `${t("{0} 条做法", k)} ▾`, action: { op: "manual-open", flow: f.name, open: true } } } : {};
+      const k = listed ? 0 : onStep(step).length - 1;
+      return k > 0 ? { more: { key: `manual-more-${f.name}-${step}`, label: `${t("还有 {0} 条", k)} ▾`, action: { op: "manual-open", flow: f.name, open: true } } } : {};
     };
-    const own = (step: string): BoardRow[] => (listed ? mine.filter((p) => p.step === step).flatMap((p) => practiceRows(p, t, o)) : []);
+    const own = (step: string): BoardRow[] => (listed ? onStep(step) : newest(step)).flatMap((p) => practiceRows(p, t, o));
     if (at > 0) rows.push({ kind: "rule", key: `manual-rule-${f.name}` });
-    const diff = f.diff !== undefined && (f.diff.added.length > 0 || f.diff.removed.length > 0)
-      ? [f.diff.added.length > 0 ? t("比参考多{0}", f.diff.added.map((x) => `「${x}」`).join("")) : "", f.diff.removed.length > 0 ? t("比参考少{0}", f.diff.removed.map((x) => `「${x}」`).join("")) : ""].filter((x) => x !== "").join("，")
-      : "";
-    // Its heading reads as one: its name and how it stands, and a ⋯ whose menu holds sharing, exporting and folding.
+    // Its heading: its name, and a ⋯ whose menu holds sharing, exporting and folding. What the project changed from the
+    // shipped flow is marked on the steps themselves.
     const key = `flow:${f.name}`;
-    rows.push({
-      kind: "section", key: `manual-${f.name}`, text: f.title, note: diff !== "" ? t("本项目改过：{0}", diff) : "",
-      actions: [menuPress(key, o.menu)], tucked: true,
-    });
+    rows.push({ kind: "section", key: `manual-${f.name}`, text: f.title, note: "", actions: [menuPress(key, o.menu)], tucked: true });
     if (o.menu === key) {
       rows.push(menuRow(key, [
         { key: `flow-share-${f.name}`, label: t("分享给团队"), action: { op: "flow-share", flow: f.name } }, { key: `flow-export-${f.name}`, label: t("导出"), action: { op: "flow-export", flow: f.name } },
@@ -438,11 +439,20 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
       // The work standing at this step: shaded, and said under it (the one by its title, several by how many).
       const standing = going.filter((x) => x.p?.here === s.id);
       const on = standing.length === 1 ? t("← {0} 停在这", (standing[0] as Placed).i.title) : standing.length > 1 ? t("← {0} 件停在这", standing.length) : undefined;
-      rows.push({ kind: "step", key: `step-${f.name}-${s.id}`, title: s.title, need: s.need, judge: s.final ? "" : judgeWords[s.judge], judgeKind: s.judge, prevents: s.prevents !== "" ? t("防：{0}", s.prevents) : "", here: standing.length > 0 || (focused?.flow === f.name && focusHere === s.id), final: s.final, ...(on !== undefined ? { on } : {}), ...(held.length > 0 ? { rules: held } : {}), ...more(s.id) });
+      // A step the project added to the shipped flow says so.
+      const grown = !s.final && (f.diff?.added ?? []).includes(s.title) ? { grown: t("本项目加的") } : {};
+      rows.push({ kind: "step", key: `step-${f.name}-${s.id}`, title: s.title, need: s.need, judge: s.final ? "" : judgeWords[s.judge], judgeKind: s.judge, prevents: s.prevents !== "" ? t("防：{0}", s.prevents) : "", here: standing.length > 0 || (focused?.flow === f.name && focusHere === s.id), final: s.final, ...grown, ...(on !== undefined ? { on } : {}), ...(held.length > 0 ? { rules: held } : {}), ...more(s.id) });
       rows.push(...own(s.id));
       for (const e of f.edges.filter((x) => x.back && x.from === s.id)) {
         const target = f.states.find((x) => x.id === e.to)?.title ?? e.to;
         rows.push({ kind: "text", text: e.label !== "" ? `↩ ${t("{0}，回到{1}", e.label, target)}` : `↩ ${t("回到{0}", target)}`, tone: "dim" });
+      }
+      // The shipped flow's steps the project took out, where they stood: crossed out, with a press that brings one back.
+      for (const m of (f.missing ?? []).filter((x) => x.after === s.id)) {
+        rows.push({
+          kind: "step", key: `step-${f.name}-missing-${m.id}`, title: m.title, need: m.need, judge: t("参考里有"), judgeKind: m.judge, prevents: "", here: false, final: false,
+          missing: { key: `flow-step-back-${f.name}-${m.id}`, label: t("加回来"), action: { op: "flow-step-back", flow: f.name, step: m.id, confirm: { question: t("把「{0}」加回{1}？之后这类活都要过这一步。", m.title, f.title), yes: t("加回来") } } },
+        });
       }
     }
     // Changes to this flow waiting on the person: a step to add (the model saw it), a step to take out (gemworks saw it skipped).

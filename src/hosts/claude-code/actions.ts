@@ -110,6 +110,8 @@ export type BoardAction =
   | { op: "work-go-on"; id: string; next: string; at: string }
   /** A flow of the flow tab opened (its practices listed, or a flow with none on the way shown whole), or folded; `*` the practices for every flow. */
   | { op: "manual-open"; flow: string; open: boolean }
+  /** A step of the shipped flow the project's own flow lacks, put back where it stood (after asking). */
+  | { op: "flow-step-back"; flow: string; step: string; confirm?: Confirm }
   /** The page of the practices for every time that the flow tab lists, by where it starts. */
   | { op: "manual-anywhere"; from: number }
   /** The flow tab's ⋯ on a practice (`practice:<id>`) or a flow's heading (`flow:<name>`): its menu opened, or closed (null). */

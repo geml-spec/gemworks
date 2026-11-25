@@ -444,6 +444,18 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
     return res
   }
   switch (action.op) {
+    // A step the project took out of the shipped flow, put back where it stood; kept as a proposal accepted, so the flow's growth lists it.
+    case 'flow-step-back': {
+      const flow = (await coachFlowsKept($)).find((f) => f.name === action.flow)
+      const m = flow?.missing?.find((x) => x.id === action.step)
+      if (flow === undefined || m === undefined) return
+      const step = { id: m.id, title: m.title, need: m.need, judge: m.judge, prevents: m.prevents }
+      await writeOwnFlow($, applyToFlow(flow, { kind: 'add-step', after: m.after, step }))
+      const at = await nowIso($)
+      const back: Proposal = { id: `b${Date.parse(at).toString(36).slice(-6)}`, kind: 'add-step', flow: action.flow, after: m.after, step, why: t('从参考加回来'), at, by: 'reference', status: 'accepted' }
+      await saveProposals($, [...(await proposalsKept($)), back])
+      return
+    }
     // A person's option: taken on its own work item, then said into the conversation in their words, so the model hears what they chose.
     case 'advance': {
       const res = await bridge($, { op: 'advance', to: action.to }, BRIDGE_TIMEOUT_MS, action.file)
