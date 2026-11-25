@@ -54,8 +54,8 @@ export type BoardRow =
   | { kind: "text"; text: string; tone: Tone }
   /** Who judges a step, each word as a chip with what it means beside it (the flow tab's first line). */
   | { kind: "judges"; lead: string; items: { judge: Judge; word: string; means: string }[] }
-  /** Words, then presses after them on the same line (没有在走的：优化 ▸). */
-  | { kind: "presses"; key: string; lead: string; items: Pressable[] }
+  /** Words, then presses after them on the same line (没有在走的：优化 ▸), and last an icon that is a press, lit while `on`. */
+  | { kind: "presses"; key: string; lead: string; items: Pressable[]; icon?: { press: Pressable; glyph: Glyph; on: boolean } }
   | { kind: "button"; key: string; label: string; action: BoardAction; primary?: boolean }
   /** Several buttons on one line; tight, a cell between them instead of two (the 产物 tab's filters, in a narrow pane). */
   | { kind: "buttons"; items: Pressable[]; end?: true; tight?: true }
@@ -160,7 +160,7 @@ export const ICON_SVG: Readonly<Record<Icon, string>> = { ask: iconSvg("ask"), d
  * The pane's line icons, drawn as the design draws them (docs/design/ui/2026-10-13-gemworks-ui): a tab's, a dialog's,
  * and each kind of journal entry's. Only where the surface draws pictures; elsewhere the words stand alone.
  */
-export type Glyph = BoardTab | "share" | "settings" | "upgrade" | "about" | "radio" | "radioon" | "artifact" | "evidence" | "move" | "refused" | "start" | "waits" | "done" | "board" | "capture" | "split" | "delete" | "locate" | "unfold" | "fold" | "spread" | "gather" | "box" | "boxon" | "go";
+export type Glyph = BoardTab | "share" | "settings" | "upgrade" | "about" | "radio" | "radioon" | "artifact" | "evidence" | "move" | "refused" | "start" | "waits" | "done" | "board" | "capture" | "split" | "delete" | "locate" | "unfold" | "fold" | "spread" | "gather" | "plus" | "box" | "boxon" | "go";
 const GLYPH_PATH: Readonly<Record<Glyph, string>> = {
   sessions: '<path d="M4 5h16v11H9l-5 4z"/>',
   flow: '<rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v5h11v3"/>',
@@ -195,6 +195,7 @@ const GLYPH_PATH: Readonly<Record<Glyph, string>> = {
   // A list to open in full: two chevrons pointing apart; to fold back to its first lines: pointing together.
   spread: '<path d="M8 9l4-4 4 4M8 15l4 4 4-4"/>',
   gather: '<path d="M8 5l4 4 4-4M8 19l4-4 4 4"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
 };
 /** A glyph's stroke by its tone: one grey that reads on a light and a dark ground, the accent for what is chosen, the tone's own colour otherwise. */
 const GLYPH_COLOR: Readonly<Record<Tone | "active", string>> = {

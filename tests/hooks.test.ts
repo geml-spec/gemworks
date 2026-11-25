@@ -1047,7 +1047,15 @@ test('新学到 n 条 on the band is a press: the flow tab opens with the flows 
   const folded = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
   tree = (await folded.drawn()) as unknown as Drawn
   expect([findKey(tree, 'manual-bugfix'), holds(tree, 'manual-idle-bugfix')], 'folded: back among the flows with none on the way').toEqual([undefined, true])
+  // Last on that line a + (its name 导入参考 under the pointer); no field to import a reference until it is pressed.
+  const idle = findKey(tree, 'manual-idle') as Drawn
+  expect([holds(idle, 'manual-import'), hasSvg(idle, 'plus'), JSON.stringify(findKey(tree, 'manual-import-icon')).includes('"导入参考"'), findKey(tree, 'import-reference')]).toEqual([true, true, true, undefined])
+  await folded.press({ key: 'manual-import' })
   await folded.unmount()
+  const importing = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+  tree = (await importing.drawn()) as unknown as Drawn
+  expect((findKey(tree, 'import-reference') as Drawn | undefined)?.type, 'pressed: the field under the line').toBe('Input')
+  await importing.unmount()
 })
 
 test('所有时候的做法, 75 of them: unfolded, a page of 20 and a press for the next, so the desktop pane stays one it can draw', async ($, on) => {

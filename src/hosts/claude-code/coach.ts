@@ -554,11 +554,14 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
     }
   }
   const idle = flows.filter((f) => latest(f) === "" && !expanded.includes(f.name) && !isGrown(f));
-  // The flows with none on the way: one line of their names, each a press that opens it.
-  if (idle.length > 0) {
-    if (shown.length > 0) rows.push({ kind: "rule", key: "manual-rule-idle" });
-    rows.push({ kind: "presses", key: "manual-idle", lead: t("没有在走的："), items: idle.map((f) => ({ key: `manual-idle-${f.name}`, label: `${f.title} ▸`, action: { op: "manual-open", flow: f.name, open: true } })) });
-  }
+  // The flows with none on the way: one line of their names, each a press that opens it; last on it a + that opens the
+  // field to import a reference (an exported flow's file, or another project's .gemworks/) under it, and closes it. With
+  // every flow on the way, the + on a line of its own.
+  const importing = o.menu === "import";
+  const plus = { press: { key: "manual-import", label: t("导入参考"), action: { op: "manual-menu" as const, key: importing ? null : "import" } }, glyph: "plus" as const, on: importing };
+  if (shown.length > 0) rows.push({ kind: "rule", key: "manual-rule-idle" });
+  rows.push({ kind: "presses", key: "manual-idle", lead: idle.length > 0 ? t("没有在走的：") : "", items: idle.map((f) => ({ key: `manual-idle-${f.name}`, label: `${f.title} ▸`, action: { op: "manual-open", flow: f.name, open: true } })), icon: plus });
+  if (importing) rows.push({ kind: "input", key: "import-reference", placeholder: t("导入参考：导出的流程文件，或另一个项目的 .gemworks/"), field: "import-reference" });
   const anywhere = live.filter((p) => p.flow === "*");
   if (anywhere.length > 0) {
     const listed = expanded.includes("*");
@@ -574,8 +577,6 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
       if (rest > 0) rows.push({ kind: "button", key: "manual-anywhere-more", label: t("再看 {0} 条（共 {1}）", Math.min(ANYWHERE_PAGE, rest), anywhere.length), action: { op: "manual-anywhere", from: from + ANYWHERE_PAGE } });
     }
   }
-  // A reference imported: an exported flow's file, or another project's .gemworks/ — only to compare and take steps back from.
-  rows.push({ kind: "input", key: "import-reference", placeholder: t("导入参考：导出的流程文件，或另一个项目的 .gemworks/"), field: "import-reference" });
   return rows;
 }
 

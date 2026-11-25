@@ -45,13 +45,14 @@ export function drawJudges(els: Els, row: Row<'judges'>, i: number): unknown {
   )
 }
 
-/** Words, then the presses after them on one line: 没有在走的：优化 ▸. */
+/** Words, then the presses after them on one line: 没有在走的：优化 ▸; last an icon that is a press (the +), its name under the pointer. */
 export function drawPresses($: EngineInterface, els: Els, row: Row<'presses'>): unknown {
   const { Box, Text, Button } = els
   return (
-    <Box key={row.key} gap={1} flexWrap="wrap">
-      <Text dimColor>{row.lead}</Text>
+    <Box key={row.key} gap={1} flexWrap="wrap" alignItems="center">
+      {row.lead !== '' && <Text dimColor>{row.lead}</Text>}
       {row.items.map((b) => <Button key={b.key} plain dimColor label={b.label} onPress={press($, b.action)} />)}
+      {row.icon !== undefined && iconButton($, els, row.icon.press, row.icon.glyph, { tone: row.icon.on ? 'active' : 'dim', from: 'left', size: 17 })}
     </Box>
   )
 }

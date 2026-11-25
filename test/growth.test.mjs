@@ -148,6 +148,14 @@ test("the manual offers to share and export each flow, to share a step's practic
   assert.deepEqual(rows.find((r) => r.key === "practice-p1").actions.map((b) => b.label), ["改成规定", "⋯"]);
   assert.deepEqual(menu("practice:p1", "practice-p1"), [["改成个人", "practice-layer"], ["分享给团队", "practice-share"], ["取消", "manual-menu"]]);
   assert.deepEqual(menu("practice:p2", "practice-p2"), [["改成项目", "practice-layer"], ["写进 CLAUDE.md", "practice-claude-md"], ["取消", "manual-menu"]]);
-  assert.equal(rows.at(-1).field, "import-reference");
+  // The + last on 没有在走的 opens the field to import a reference under it, and closes it; no field until then.
+  assert.deepEqual(rows.find((r) => r.key === "manual-idle").icon, { press: { key: "manual-import", label: "导入参考", action: { op: "manual-menu", key: "import" } }, glyph: "plus", on: false });
+  assert.equal(rows.some((r) => r.kind === "input"), false);
+  const opened = manualRows([item({})], flows, practices, t, { focus: null, expanded: ["bugfix", "*"], menu: "import" });
+  const idle = opened.findIndex((r) => r.key === "manual-idle");
+  assert.deepEqual([opened[idle].icon.on, opened[idle].icon.press.action, opened[idle + 1].field], [true, { op: "manual-menu", key: null }, "import-reference"]);
+  // Every flow on the way or opened: the + on a line of its own.
+  const alone = manualRows([item({})], flows, practices, t, { focus: null, expanded: flows.map((f) => f.name) }).find((r) => r.key === "manual-idle");
+  assert.deepEqual([alone.lead, alone.items, alone.icon.glyph], ["", [], "plus"]);
   assert.deepEqual(inputAction("import-reference", "  ../other/.gemworks  "), { op: "reference-import", path: "../other/.gemworks" });
 });

@@ -315,7 +315,9 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
         await $.fs.write(`${geml}/references/${name}.geml`, text)
         kept = [...kept, ...referenceProposals(ref, name, flows, kept, at, (n) => `f${stamp}${read}${n}`)]
       }
+      // Read: the field closes (the + opens it again); unread, it stays open for the path put right.
       if (read === 0) { $.ui.toast(t('读不出参考：{0}', action.path)); return }
+      await update($, manualMenuAtom, () => null)
       await saveProposals($, kept)
       $.ui.toast(t('已导入 {0} 份参考，它有的步骤在流程页上提议', read))
       return

@@ -570,6 +570,7 @@ export const WORDS: Readonly<Record<string, Entry>> = {
   "等你": { en: "Yours", ja: "あなたの番" },
   "分享给团队": { en: "Share with the team", ja: "チームに共有" },
   "写进 CLAUDE.md": { en: "Write into CLAUDE.md", ja: "CLAUDE.md に書く" },
+  "导入参考": { en: "Import a reference", ja: "参考を取り込む" },
   "导入参考：导出的流程文件，或另一个项目的 .gemworks/": { en: "Import a reference: an exported flow file, or another project's .gemworks/", ja: "参考を取り込む：書き出したフローのファイル、または別プロジェクトの .gemworks/" },
   "已写进 .gemworks/，提交由你": { en: "Written into .gemworks/; committing is yours", ja: ".gemworks/ に書きました。コミットはあなたが" },
   "把做法「{0}」写进 CLAUDE.md：它每轮都要用。先把改动给我看，我批了再写；写好后用 practice 工具记一条 ref 指向那一段。": { en: "Write the practice «{0}» into CLAUDE.md: it is needed every turn. Show me the change first and write it once I approve; then record a practice with a ref to that section.", ja: "やり方「{0}」を CLAUDE.md に書いてください。毎ターン必要です。まず変更を見せ、承認後に書き、その節を指す ref 付きの practice を記録してください。" },
