@@ -61,6 +61,8 @@ const latestAtom = atom({ plugin: 'gemworks', key: 'latest' } as const, null as 
 const madeViewAtom = atom({ plugin: 'gemworks', key: 'madeView' } as const, MADE_VIEW as { kind: string; shown: number; item: string | null })
 const manualExpandedAtom = atom({ plugin: 'gemworks', key: 'manualExpanded' } as const, null as string[] | null)
 const manualMenuAtom = atom({ plugin: 'gemworks', key: 'manualMenu' } as const, null as string | null)
+/** Where the page of the practices for every time starts. */
+const manualAnywhereAtom = atom({ plugin: 'gemworks', key: 'manualAnywhere' } as const, 0 as number)
 const memoryAtom = atom({ plugin: 'gemworks', key: 'memory' } as const, null as MemoryList | null)
 const memoryEditAtom = atom({ plugin: 'gemworks', key: 'memoryEdit' } as const, null as string | null)
 const memoryGroupAtom = atom({ plugin: 'gemworks', key: 'memoryGroup' } as const, null as string | null)
@@ -115,7 +117,7 @@ async function capture($: EngineInterface, platform: string): Promise<void> {
 /** A press on the band or the board: what it does. */
 export async function act($: EngineInterface, action: BoardAction, surface?: string): Promise<void> {
   // An entry of a flow-tab menu closes the menu, whatever it then does.
-  if (['practice-layer', 'practice-share', 'practice-claude-md', 'flow-share', 'flow-export', 'manual-open'].includes(action.op)) await update($, manualMenuAtom, () => null)
+  if (['practice-layer', 'practice-share', 'practice-claude-md', 'flow-share', 'flow-export', 'manual-open', 'manual-anywhere'].includes(action.op)) await update($, manualMenuAtom, () => null)
   // A view change first, before anything is read: a tab, a filter, a fold or a menu shows at once.
   switch (action.op) {
     case 'manual-menu': await update($, manualMenuAtom, () => action.key); return
@@ -164,8 +166,11 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
       const first = (await workItems($)).filter((i) => i.status === 'open').sort((a, b) => (a.at < b.at ? 1 : -1))[0]?.flow
       const was = now ?? (first !== undefined ? [first] : [])
       await update($, manualExpandedAtom, () => [...was.filter((f) => f !== action.flow), ...(action.open ? [action.flow] : [])])
+      // The practices for every time open on their first page.
+      if (action.flow === '*') await update($, manualAnywhereAtom, () => 0)
       return
     }
+    case 'manual-anywhere': await update($, manualAnywhereAtom, () => Math.max(0, action.from)); return
     case 'practice-delete':
     case 'practice-layer':
     case 'practice-everywhere': {

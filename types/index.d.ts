@@ -178,6 +178,8 @@ declare module 'claude-code' {
       manualExpanded: string[] | null
       /** The flow tab's menu open under a ⋯: `practice:<id>` or `flow:<name>`; null, none. */
       manualMenu: string | null
+      /** Where the flow tab's page of the practices for every time starts (a page is ANYWHERE_PAGE of them). */
+      manualAnywhere: number
       /** The work item unfolded under its row on the work items tab (its history). */
       workUnfolded: string | null
       /** The 好，做吧 the person pressed, on their way until their own turn ends. */

@@ -257,7 +257,10 @@ export function itemHistory(id: string, sessions: readonly SessionSummary[], flo
 export const HISTORY_SHOWN = 8;
 
 /** The flow tab's options: the work item whose arrow was pressed, the flows whose practices are listed (null: the first flow's), now. */
-export interface ManualOptions { focus: CoachFocus | null; expanded: readonly string[] | null; now?: string; menu?: string | null; proposals?: readonly Proposal[]; rules?: readonly Rule[]; skipped?: readonly { flow: string; step: string; skipped: number }[]; ledger?: { cards: readonly LedgerCard[]; counts: Readonly<Record<string, PracticeCount>> } }
+/** How many practices for every time one page lists: 75 at once ran the desktop pane past what it can draw. */
+export const ANYWHERE_PAGE = 20;
+
+export interface ManualOptions { focus: CoachFocus | null; expanded: readonly string[] | null; now?: string; anywhereFrom?: number; menu?: string | null; proposals?: readonly Proposal[]; rules?: readonly Rule[]; skipped?: readonly { flow: string; step: string; skipped: number }[]; ledger?: { cards: readonly LedgerCard[]; counts: Readonly<Record<string, PracticeCount>> } }
 
 /** A ⋯ press that opens the menu `key` names, or closes it when it is the one open. */
 function menuPress(key: string, open: string | null | undefined): Pressable {
@@ -434,7 +437,16 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
   if (anywhere.length > 0) {
     const listed = expanded.includes("*");
     rows.push({ kind: "section", key: "manual-anywhere", text: t("所有时候的做法"), count: anywhere.length, fold: { key: "manual-fold-anywhere", label: listed ? t("收起") : t("展开"), action: { op: "manual-open", flow: "*", open: !listed } } });
-    if (listed) rows.push(...anywhere.flatMap((p) => practiceRows(p, t, o)));
+    if (listed) {
+      // A page at a time, the ones before it folded away with a press back: never more than ANYWHERE_PAGE at once.
+      const last = Math.floor((anywhere.length - 1) / ANYWHERE_PAGE) * ANYWHERE_PAGE;
+      const from = Math.min(last, Math.max(0, Math.floor((o.anywhereFrom ?? 0) / ANYWHERE_PAGE) * ANYWHERE_PAGE));
+      const page = anywhere.slice(from, from + ANYWHERE_PAGE);
+      if (from > 0) rows.push({ kind: "button", key: "manual-anywhere-first", label: t("前 {0} 条已收起 · 回到开头", from), action: { op: "manual-anywhere", from: 0 } });
+      rows.push(...page.flatMap((p) => practiceRows(p, t, o)));
+      const rest = anywhere.length - from - page.length;
+      if (rest > 0) rows.push({ kind: "button", key: "manual-anywhere-more", label: t("再看 {0} 条（共 {1}）", Math.min(ANYWHERE_PAGE, rest), anywhere.length), action: { op: "manual-anywhere", from: from + ANYWHERE_PAGE } });
+    }
   }
   // A reference imported: an exported flow's file, or another project's .gemworks/ — only to compare and take steps back from.
   rows.push({ kind: "input", key: "import-reference", placeholder: t("导入参考：导出的流程文件，或另一个项目的 .gemworks/"), field: "import-reference" });

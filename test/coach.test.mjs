@@ -180,6 +180,23 @@ test("the flow tab's manual: each flow with items on the way, the focused first;
   assert.equal(manualRows([], flows, [], t, { focus: null, expanded: ["optimize"] }).filter((r) => r.kind === "step").length, 5, "a flow opened shows whole");
 });
 
+test("所有时候的做法 unfolded lists a page of 20, a press for the next and one back to the start; a page past the end is the last", () => {
+  const many = Array.from({ length: 45 }, (_, n) => ({ id: `a${n}`, flow: "*", step: "*", text: `第 ${n} 条`, why: "", at: "2026-10-01T00:00:00Z", by: "model", layer: "personal" }));
+  const at = (from) => {
+    const rows = manualRows([], flows, many, t, { focus: null, expanded: ["*"], ...(from !== undefined ? { anywhereFrom: from } : {}) });
+    const i = rows.findIndex((r) => r.key === "manual-anywhere");
+    return rows.slice(i + 1).filter((r) => r.kind !== "input").map((r) => (r.kind === "practice" ? r.key.slice("practice-".length) : [r.label, r.action]));
+  };
+  const first = at(undefined);
+  assert.deepEqual([first.length, first[0], first[19], first[20]], [21, "a0", "a19", ["再看 20 条（共 45）", { op: "manual-anywhere", from: 20 }]], "the first 20, then a press for the next 20");
+  const second = at(20);
+  assert.deepEqual([second[0], second[1], second[20], second[21]], [["前 20 条已收起 · 回到开头", { op: "manual-anywhere", from: 0 }], "a20", "a39", ["再看 5 条（共 45）", { op: "manual-anywhere", from: 40 }]]);
+  assert.deepEqual(at(40), [["前 40 条已收起 · 回到开头", { op: "manual-anywhere", from: 0 }], "a40", "a41", "a42", "a43", "a44"], "the last page: no press for more");
+  assert.deepEqual(at(999)[1], "a40", "a page past the end (some deleted since): the last one");
+  assert.equal(at(undefined).length, 21, "folded and unfolded: the first page");
+  assert.deepEqual(manualRows([], flows, many.slice(0, 20), t, { focus: null, expanded: ["*"] }).filter((r) => r.kind === "button"), [], "20 or fewer: no presses");
+});
+
 test("the manual's practices: listed on the flow opened, each on its step, its tag and presses; the rest counted on their flow's heading; those for every flow at the end", () => {
   const pr = (over) => ({ id: "p1", flow: "bugfix", step: "fix", text: "同一现象再现，先回头读引擎契约", why: "10-22 页签连死四次", at: "2026-10-25T00:00:00Z", by: "model", layer: "project", ...over });
   const practices = [pr({}), pr({ id: "p2", step: "*", text: "修之前先复现", by: "memory", layer: "personal" }), pr({ id: "p3", flow: "design", step: "mockup", text: "用真实内容", by: "person" }),

@@ -635,6 +635,8 @@ export const WORDS: Readonly<Record<string, Entry>> = {
   "现在没有事项在走": { en: "Nothing on the way", ja: "進行中の作業なし" },
   "{0} 步": { en: "{0} steps", ja: "{0} ステップ" },
   "所有时候的做法": { en: "Practices for every time", ja: "いつでものやり方" },
+  "再看 {0} 条（共 {1}）": { en: "{0} more (of {1})", ja: "さらに {0} 件（全 {1} 件）" },
+  "前 {0} 条已收起 · 回到开头": { en: "first {0} folded · back to the start", ja: "最初の {0} 件を折りたたみ · 先頭に戻る" },
   "团队": { en: "Team", ja: "チーム" },
   "新学到": { en: "New", ja: "新しく学んだ" },
   "从记忆搬来": { en: "From memory", ja: "記憶から" },

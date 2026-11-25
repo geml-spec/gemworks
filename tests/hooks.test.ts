@@ -1036,6 +1036,46 @@ test('新学到 n 条 on the band is a press: the flow tab opens with the flows 
   await closed.unmount()
 })
 
+test('所有时候的做法, 75 of them: unfolded, a page of 20 and a press for the next, so the desktop pane stays one it can draw', async ($, on) => {
+  const w = world(on)
+  w.workflow = false
+  w.sessionsDir = LOGS
+  // As many as a project had when unfolding them drew nothing (1,152 elements): long words and where each came from.
+  w.practices = { list: Array.from({ length: 75 }, (_, n) => ({ id: `a${n}`, flow: '*', step: '*', text: `第 ${n} 条：改界面交付前按前端常规自查，点了立刻响应、加载提示、整行可点、对齐`, why: `11-${String(n % 28 + 1).padStart(2, '0')} 他说又被卡住了`, at: '2026-10-01T00:00:00.000Z', by: n % 3 === 0 ? 'memory' : 'model', layer: n % 2 === 0 ? 'personal' : 'project' })), memoryMoved: true }
+  const clock = await start($, on)
+  await clock.settle()
+  await $.command.run({ command: 'gemworks', args: 'board', origin: COMPOSER, presentation: PRESENTATION })
+  const mount = () => $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+  let pane = await mount()
+  await pane.press({ key: 'tab-flow' })
+  await clock.settle()
+  await pane.press({ key: 'manual-fold-anywhere' })
+  await pane.unmount()
+  pane = await mount()
+  const count = (el: Drawn | string): number => (typeof el === 'string' ? 1 : 1 + (el.children ?? []).reduce((n, c) => n + count(c), 0))
+  let tree = (await pane.drawn()) as unknown as Drawn
+  expect(count(tree), 'unfolded: a page, not all 75').toBeLessThan(1_100)
+  expect([findKey(tree, 'practice-a0') !== undefined, findKey(tree, 'practice-a19') !== undefined, findKey(tree, 'practice-a20')], 'the first 20').toEqual([true, true, undefined])
+  expect((findKey(tree, 'manual-anywhere-more') as Drawn | undefined)?.props?.label).toBe('再看 20 条（共 75）')
+  await pane.press({ key: 'manual-anywhere-more' })
+  await pane.unmount()
+  pane = await mount()
+  tree = (await pane.drawn()) as unknown as Drawn
+  expect([findKey(tree, 'practice-a19'), findKey(tree, 'practice-a20') !== undefined], 'the next 20, the first folded away').toEqual([undefined, true])
+  expect((findKey(tree, 'manual-anywhere-first') as Drawn | undefined)?.props?.label).toBe('前 20 条已收起 · 回到开头')
+  expect(count(tree), 'never more than a page').toBeLessThan(1_100)
+  // Folded and unfolded again: the first page.
+  await pane.press({ key: 'manual-fold-anywhere' })
+  await pane.unmount()
+  pane = await mount()
+  expect(findKey((await pane.drawn()) as unknown as Drawn, 'practice-a20'), 'folded').toBeUndefined()
+  await pane.press({ key: 'manual-fold-anywhere' })
+  await pane.unmount()
+  pane = await mount()
+  expect(findKey((await pane.drawn()) as unknown as Drawn, 'practice-a0'), 'unfolded again: from the start').toBeDefined()
+  await pane.unmount()
+})
+
 test('the band offers the board whenever there is a workflow, nothing waiting or not; a press opens it', async ($, on) => {
   const w = world(on)
   await start($, on)

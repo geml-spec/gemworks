@@ -236,6 +236,7 @@ const memoryAskedAtom = atom({ plugin: 'gemworks', key: 'memoryAsked' } as const
 /** The flows of the flow tab whose practices are listed (`*` those for every flow); null: the first flow's. */
 const manualExpandedAtom = atom({ plugin: 'gemworks', key: 'manualExpanded' } as const, null as string[] | null)
 const manualMenuAtom = atom({ plugin: 'gemworks', key: 'manualMenu' } as const, null as string | null)
+const manualAnywhereAtom = atom({ plugin: 'gemworks', key: 'manualAnywhere' } as const, 0 as number)
 /** The work item unfolded under its row on the work items tab (its history). */
 const workUnfoldedAtom = atom({ plugin: 'gemworks', key: 'workUnfolded' } as const, null as string | null)
 /** The 好，做吧 the person pressed, on their way until their own turn ends (coach.ts GoneOn). */
@@ -2877,6 +2878,7 @@ async function tabRows($: EngineInterface, e: { surface: string; props: { bodyCo
       items: await workItems($), flows: await coachFlowsKept($), focus: (await read($, coachFocusAtom)) as unknown as CoachFocus | null, asks: tab === 'items' ? await openAsks($) : [],
       own: await $.session.id().catch(() => ''), open: ((await read($, workOpenAtom)) ?? []) as WorkGroup[],
       practices: (await practicesKept($))?.list ?? [], expanded: (await read($, manualExpandedAtom)) as string[] | null, menu: (await read($, manualMenuAtom)) as string | null,
+      anywhereFrom: Number((await read($, manualAnywhereAtom)) ?? 0) || 0,
       unfolded: (await read($, workUnfoldedAtom)) as string | null, sessions: ((await read($, projectSessionsAtom)) as unknown as SessionSummary[] | null) ?? [],
       proposals: await proposalsKept($), rules: await rulesKept($), skipped: skippedSteps(await workItems($), await coachFlowsKept($), await proposalsKept($)),
       gone: await goneOnKept($), doing: await doingKept($),
