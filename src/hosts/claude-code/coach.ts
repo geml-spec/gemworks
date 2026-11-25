@@ -278,6 +278,64 @@ export function itemHistory(id: string, sessions: readonly SessionSummary[], flo
 export const HISTORY_SHOWN = 8;
 
 /** The flow tab's options: the work item whose arrow was pressed, the flows whose practices are listed (null: the first flow's), now. */
+/** How many days of a flow's growth the flow tab lists, newest first. */
+export const GROWTH_SHOWN = 8;
+
+/** A local day as month-day (11-09), and as the key it sorts by (2026-11-09). */
+const localDay = (iso: string): { key: string; day: string } => {
+  const d = new Date(iso);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return { key: `${d.getFullYear()}-${mm}-${dd}`, day: `${mm}-${dd}` };
+};
+
+/**
+ * How a flow grew, a day at a time, newest first: the practices learned on its steps, moved in from memory or added
+ * by the team; the steps added, put back from the shipped flow or taken out, and the ones proposed and not wanted;
+ * the rules hung on its steps. A day with one practice says why it was learned.
+ */
+export function growthDays(f: CoachFlow, practices: readonly Practice[], proposals: readonly Proposal[], rules: readonly Rule[], t: T): { key: string; day: string; text: string }[] {
+  const stepWords = (id: string): string => (id === "*" ? t("这类活都要") : f.states.find((s) => s.id === id)?.title ?? f.missing?.find((m) => m.id === id)?.title ?? id);
+  const byDay = new Map<string, { day: string; parts: string[]; why: string[] }>();
+  const at = (iso: string): { day: string; parts: string[]; why: string[] } => {
+    const { key, day } = localDay(iso);
+    const was = byDay.get(key) ?? { day, parts: [], why: [] };
+    byDay.set(key, was);
+    return was;
+  };
+  // Practices: a day's, by how they came, each kind once with the steps they came to.
+  const kinds: [string, (p: Practice) => boolean][] = [
+    ["{0} 学到 {1} 条", (p) => p.by !== "memory" && p.layer !== "team"],
+    ["{0} 从记忆搬来 {1} 条", (p) => p.by === "memory"],
+    ["{0} 团队加了 {1} 条", (p) => p.by !== "memory" && p.layer === "team"],
+  ];
+  const mine = practices.filter((p) => p.flow === f.name && p.deleted !== true);
+  const days = [...new Set(mine.map((p) => localDay(p.at).key))];
+  for (const key of days) {
+    const that = mine.filter((p) => localDay(p.at).key === key);
+    const d = at((that[0] as Practice).at);
+    for (const [words, is] of kinds) {
+      const some = that.filter(is);
+      if (some.length > 0) d.parts.push(t(words, [...new Set(some.map((p) => stepWords(p.step)))].join("、"), some.length));
+    }
+    if (that.length === 1 && (that[0] as Practice).why !== "") {
+      // Why, without the date it starts with (the line has it), and short: the practice itself says the rest.
+      const why = (that[0] as Practice).why.replace(/^\d{4}-\d{2}-\d{2}[\s:：,，]*/, "");
+      d.why.push(why.length > 60 ? `${why.slice(0, 60)}…` : why);
+    }
+  }
+  // Proposals answered: a step added, put back or taken out; one not wanted, kept as such.
+  for (const p of proposals.filter((x) => x.flow === f.name && x.status !== "open" && x.kind !== "new-flow")) {
+    const title = p.kind === "remove-step" ? stepWords(p.remove ?? "") : p.step?.title ?? "";
+    const words = p.kind === "remove-step"
+      ? (p.status === "accepted" ? t("去掉「{0}」", title) : t("提议去掉「{0}」，你留着", title))
+      : p.status === "accepted" ? (p.by === "reference" ? t("加回「{0}」", title) : t("加了一步「{0}」", title)) : t("提议加一步「{0}」，你没要", title);
+    at(p.at).parts.push(words);
+  }
+  for (const r of rules.filter((x) => x.flow === f.name)) at(r.at).parts.push(t("{0} 挂上规定", stepWords(r.requires)));
+  return [...byDay.entries()].sort(([a], [b]) => (a < b ? 1 : -1)).map(([key, d]) => ({ key, day: d.day, text: [d.parts.join("；"), ...d.why].join(" — ") }));
+}
+
 /** How many practices for every time one page lists: 75 at once ran the desktop pane past what it can draw. */
 export const ANYWHERE_PAGE = 20;
 
@@ -465,6 +523,16 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
       const title = f.states.find((x) => x.id === k.step)?.title ?? k.step;
       rows.push({ kind: "card", key: `skipped-${f.name}-${k.step}`, icon: "ask", verb: t("提议"), title: t("「{0}」最近 5 件里 {1} 件跳过了，删掉这一步吗？", title, k.skipped), detail: [],
         actions: [{ key: `skipped-yes-${f.name}-${k.step}`, label: t("删掉"), action: { op: "proposal-skip", flow: f.name, step: k.step, yes: true } }, { key: `skipped-no-${f.name}-${k.step}`, label: t("留着"), primary: true, action: { op: "proposal-skip", flow: f.name, step: k.step, yes: false } }] });
+    }
+    // How it grew: on the flow opened, a line a day, newest first; folded, its latest day and a press for the rest.
+    const grew = growthDays(f, live, o.proposals ?? [], o.rules ?? [], t);
+    if (grew.length > 0 && listed) {
+      rows.push({ kind: "text", text: t("长势"), tone: "dim" });
+      for (const d of grew.slice(0, GROWTH_SHOWN)) rows.push({ kind: "text", text: `${d.day}  ${d.text}`, tone: "dim" });
+      if (grew.length > GROWTH_SHOWN) rows.push({ kind: "text", text: t("更早还有 {0} 天", grew.length - GROWTH_SHOWN), tone: "dim" });
+    } else if (grew.length > 0) {
+      const last = grew[0] as { day: string; text: string };
+      rows.push({ kind: "presses", key: `manual-growth-${f.name}`, lead: t("长势：最近 {0} {1}", last.day, last.text), items: [{ key: `manual-growth-open-${f.name}`, label: t("共 {0} 天 ▸", grew.length), action: { op: "manual-open", flow: f.name, open: true } }] });
     }
   }
   const idle = flows.filter((f) => latest(f) === "" && !expanded.includes(f.name));

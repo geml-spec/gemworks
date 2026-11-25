@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { closeEvent, COACH_FLOWS, coachBand, doingNote, flowsIn, goneOnAfterTurn, goneOnNote, holdEvent, itemHistory, manualRows, turnWords, itemProgress, metOf, pressEvent, readCoachFlow, stripText, turnItem, WORK_SHOWN, workContext, workEvents, workItemsOf, workPrompt, workRows } from "../dist/hosts/claude-code/coach.js";
+import { closeEvent, COACH_FLOWS, coachBand, doingNote, flowsIn, goneOnAfterTurn, growthDays, GROWTH_SHOWN, goneOnNote, holdEvent, itemHistory, manualRows, turnWords, itemProgress, metOf, pressEvent, readCoachFlow, stripText, turnItem, WORK_SHOWN, workContext, workEvents, workItemsOf, workPrompt, workRows } from "../dist/hosts/claude-code/coach.js";
 import { parseLog, summarize } from "../dist/core/session-log.js";
 import { wordsFor } from "../dist/hosts/claude-code/text.js";
 
@@ -188,6 +188,46 @@ test("the flow tab's manual: each flow with items on the way, the focused first;
   const none = manualRows([], flows, [], t, { focus: null, expanded: null });
   assert.deepEqual([none.filter((r) => r.kind === "section").length, none.find((r) => r.key === "manual-idle").items.length, none.some((r) => r.kind === "rule")], [0, flows.length, false], "nothing on the way: every flow a press");
   assert.equal(manualRows([], flows, [], t, { focus: null, expanded: ["optimize"] }).filter((r) => r.kind === "step").length, 5, "a flow opened shows whole");
+});
+
+test("a flow's growth, a day at a time, newest first: practices by how they came, steps put back or not taken out, rules; the flow opened, a line a day; folded, its latest day and a press", () => {
+  // Noon UTC: the same local day on any machine from UTC-11 to UTC+11.
+  const pr = (over) => ({ id: "g1", flow: "bugfix", step: "fix", text: "x", why: "", at: "2026-11-09T12:00:00Z", by: "model", layer: "project", ...over });
+  const practices = [pr({ why: "2026-11-09 截图按钮猜错两版" }), pr({ id: "g2", step: "reproduce", at: "2026-10-26T12:00:00Z", by: "memory" }), pr({ id: "g3", at: "2026-10-26T13:00:00Z", by: "memory" }),
+    pr({ id: "g4", step: "*", at: "2026-10-29T12:00:00Z" }), pr({ id: "g5", deleted: true, at: "2026-11-20T12:00:00Z" }), pr({ id: "g6", flow: "design", at: "2026-11-21T12:00:00Z" }), pr({ id: "g7", layer: "team", at: "2026-10-29T13:00:00Z" })];
+  const step = (id, title) => ({ id, title, need: "", judge: "model", prevents: "" });
+  const proposals = [
+    { id: "q1", kind: "add-step", flow: "bugfix", after: "fix", step: step("verify", "验证"), why: "从参考加回来", at: "2026-11-25T12:00:00Z", by: "reference", status: "accepted" },
+    { id: "q2", kind: "remove-step", flow: "bugfix", remove: "confirm", why: "", at: "2026-11-11T12:00:00Z", by: "gemworks", status: "declined" },
+    { id: "q3", kind: "add-step", flow: "bugfix", after: "fix", step: step("gates", "过三道门"), why: "", at: "2026-11-11T13:00:00Z", by: "model", status: "open" },
+    { id: "q4", kind: "add-step", flow: "bugfix", after: "fix", step: step("sync", "同步"), why: "", at: "2026-11-12T12:00:00Z", by: "model", status: "declined" },
+  ];
+  const rules = [{ id: "r1", flow: "bugfix", requires: "verify", key: "Bash(x)", text: "验证过了才同步", why: "", at: "2026-11-13T12:00:00Z", layer: "project" }];
+  const days = growthDays(flow("bugfix"), practices, proposals, rules, t);
+  assert.deepEqual(days.map((d) => [d.day, d.text]), [
+    ["11-25", "加回「验证」"],
+    ["11-13", "验证 挂上规定"],
+    ["11-12", "提议加一步「同步」，你没要"],
+    ["11-11", "提议去掉「你确认」，你留着"],
+    ["11-09", "修 学到 1 条 — 截图按钮猜错两版"],
+    ["10-29", "这类活都要 学到 1 条；修 团队加了 1 条"],
+    ["10-26", "复现、修 从记忆搬来 2 条"],
+  ], "an open proposal is no growth yet; a practice deleted, or another flow's, is none of it");
+  // Folded (新设计 moved last, opened instead): its latest day, and a press that opens it.
+  const items = [item({}), item({ id: "c3", flow: "design", met: [m("discuss")], at: "2026-10-23T11:00:00Z" })];
+  const folded = manualRows(items, flows, practices, t, { focus: null, expanded: null, proposals, rules });
+  assert.deepEqual(folded.find((r) => r.key === "manual-growth-bugfix"), { kind: "presses", key: "manual-growth-bugfix", lead: "长势：最近 11-25 加回「验证」", items: [{ key: "manual-growth-open-bugfix", label: "共 7 天 ▸", action: { op: "manual-open", flow: "bugfix", open: true } }] });
+  assert.ok(folded.findIndex((r) => r.key === "manual-growth-bugfix") > folded.findIndex((r) => r.key === "step-bugfix-done"), "after its steps");
+  // Opened: a line a day, at most GROWTH_SHOWN of them.
+  const opened = manualRows(items, flows, practices, t, { focus: null, expanded: ["bugfix"], proposals, rules });
+  const at = opened.findIndex((r) => r.kind === "text" && r.text === "长势");
+  assert.deepEqual(opened.slice(at + 1, at + 3).map((r) => r.text), ["11-25  加回「验证」", "11-13  验证 挂上规定"]);
+  assert.equal(opened.some((r) => r.key === "manual-growth-bugfix"), false);
+  const many = Array.from({ length: GROWTH_SHOWN + 2 }, (_, n) => pr({ id: `m${n}`, at: `2026-10-${String(n + 1).padStart(2, "0")}T12:00:00Z` }));
+  const long = manualRows(items, flows, many, t, { focus: null, expanded: ["bugfix"] });
+  assert.equal(long.filter((r) => r.kind === "text" && /^\d\d-\d\d {2}/.test(r.text)).length, GROWTH_SHOWN);
+  assert.ok(long.some((r) => r.kind === "text" && r.text === "更早还有 2 天"));
+  assert.equal(manualRows(items, flows, [], t, { focus: null, expanded: null }).some((r) => r.key?.startsWith("manual-growth-")), false, "nothing grown: no line");
 });
 
 test("所有时候的做法 unfolded lists a page of 20, a press for the next and one back to the start; a page past the end is the last", () => {
