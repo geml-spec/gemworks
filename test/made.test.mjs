@@ -24,6 +24,7 @@ test("the 产物 tab: a press per kind that has some, by day newest first, each 
   const words = (id) => ({ a1: "产物看不到了", d9: "✓ 好，做吧没反应" })[id];
   const rows = madeTabRows(all, MADE_VIEW, words, t, NOW);
   assert.equal(rows[0].kind, "buttons", "the list at once: nothing folded, nothing to press first");
+  assert.equal(rows[0].tight, true, "a cell between the filters: five fit a narrow pane");
   assert.deepEqual(rows[0].items.map((b) => [b.label, b.primary === true]), [["全部 2", true], ["文件 1", false], ["链接 1", false], ["文档 1", false]], "全部 leaves the documents in git out; no press for a kind with none");
   assert.deepEqual(rows.filter((r) => r.kind === "text").map((r) => r.text), ["今天"]);
   const entries = rows.filter((r) => r.kind === "entry");

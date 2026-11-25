@@ -2445,7 +2445,7 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
     case 'text': return <Text key={`r${i}`} {...toneProps(row.tone)}>{row.text}</Text>
     case 'button': return <Button key={row.key} plain label={row.label} {...(row.primary ? { variant: 'primary' } : {})} onPress={press($, row.action)} />
     case 'buttons': return (
-      <Box key={`b${i}`} gap={2}>
+      <Box key={`b${i}`} gap={row.tight === true ? 1 : 2}>
         {row.end === true && <Box flexGrow={1} />}
         {row.items.map((b) => <Button key={b.key} label={b.label} {...(b.primary ? { variant: 'primary' } : {})} onPress={press($, b.action)} />)}
       </Box>

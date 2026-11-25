@@ -717,6 +717,11 @@ test('the 产物 tab in a project with no workflow: read when the tab is chosen 
   pane = await mount()
   expect(await pane.find({ type: 'Text', text: 'f0.html' }), 'the newest, at once: nothing to unfold').toBeDefined()
   expect(await pane.find({ type: 'Text', text: /^工作项之前 · \d\d:\d\d$/ }), 'what no work item made says so').toBeDefined()
+  const parentOf = (el: Drawn | string, key: string): Drawn | undefined => typeof el === 'string' ? undefined
+    : (el.children ?? []).some((c) => typeof c !== 'string' && c.type === 'Button' && keyOf(c) === key) ? el
+    : (el.children ?? []).reduce<Drawn | undefined>((f, c) => f ?? parentOf(c, key), undefined)
+  const filters = parentOf((await pane.drawn()) as unknown as Drawn, 'made-kind-all')
+  expect(filters?.props?.gap, 'a cell between the filters, so five fit a narrow pane on one line').toBe(1)
   for (let n = 0; n < 5; n++) { await pane.press({ key: 'made-more' }); await pane.unmount(); pane = await mount() }
   const count = (el: Drawn | string): number => (typeof el === 'string' ? 1 : 1 + (el.children ?? []).reduce((n, c) => n + count(c), 0))
   expect(count((await pane.drawn()) as unknown as Drawn), 'sixty at most, whatever was pressed').toBeLessThan(1_100)

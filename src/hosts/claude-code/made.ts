@@ -72,8 +72,10 @@ export function madeTabRows(all: MadeAll | null | undefined, view: MadeView, wor
   const count = (k: MadeKind): number => mine.filter((e) => isOf(e, k)).length;
   // Nothing but documents in git: those, rather than an empty list.
   const kind: MadeKind = view.kind === "all" && count("all") === 0 ? "doc" : view.kind;
+  // A cell between the filters, not two: five of them ran past the edge of a pane 680 pixels wide.
   rows.push({
     kind: "buttons",
+    tight: true,
     items: MADE_KINDS.filter((k) => count(k) > 0).map((k): Pressable => ({
       key: `made-kind-${k}`, label: kindCount(k, count(k), t), ...(kind === k ? { primary: true } : {}), action: { op: "made-kind", kind: k },
     })),

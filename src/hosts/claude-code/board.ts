@@ -57,8 +57,8 @@ export type BoardRow =
   /** Words, then presses after them on the same line (没有在走的：优化 ▸). */
   | { kind: "presses"; key: string; lead: string; items: Pressable[] }
   | { kind: "button"; key: string; label: string; action: BoardAction; primary?: boolean }
-  /** Several buttons on one line. */
-  | { kind: "buttons"; items: Pressable[]; end?: true }
+  /** Several buttons on one line; tight, a cell between them instead of two (the 产物 tab's filters, in a narrow pane). */
+  | { kind: "buttons"; items: Pressable[]; end?: true; tight?: true }
   /**
    * A dialog's parts, drawn as the 2026-10-13 dialogs are: a small grey label over a group; a switch (a box, its words,
    * a dim note under them) and one of several (a round mark, the same) whose whole row takes the press; a pick from a
