@@ -43,7 +43,7 @@ English | [中文](README.zh.md)
   - **Work items**: where each piece of work stands and what it still needs.
   - **Artifacts**: the files, commits, pages and links you made, listed by version, one click to open.
   - **Flow**: the steps of each flow, the pitfall each step guards against, and the practices attached to it.
-  - **Tools**: which tool may be used at which step (advanced; you can leave it alone).
+  - **Tools**: which tools ran these two days and how often, and which outward actions (push, publish and the like) you let run unasked; with a workflow, you can also classify a tool to limit which step may use it.
 - **How much it has learned, and how many proposals wait**: when it learns something from your
   corrections, this line tells you.
 
