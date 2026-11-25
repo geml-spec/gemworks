@@ -535,7 +535,24 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
       rows.push({ kind: "presses", key: `manual-growth-${f.name}`, lead: t("长势：最近 {0} {1}", last.day, last.text), items: [{ key: `manual-growth-open-${f.name}`, label: t("共 {0} 天 ▸", grew.length), action: { op: "manual-open", flow: f.name, open: true } }] });
     }
   }
-  const idle = flows.filter((f) => latest(f) === "" && !expanded.includes(f.name));
+  // The kinds of work this project grew a flow for (from the person's corrections, or a reference): on their own, each
+  // with the day it grew, why, and whether any work went through it yet; a press opens it above.
+  const isGrown = (f: CoachFlow): boolean => !(COACH_FLOWS as readonly string[]).includes(f.name);
+  const grownFlows = flows.filter(isGrown);
+  if (grownFlows.length > 0) {
+    if (shown.length > 0) rows.push({ kind: "rule", key: "manual-rule-grown" });
+    rows.push({ kind: "section", key: "manual-grown", text: t("本项目长出来的流程"), note: t("从你的纠正里长的") });
+    for (const f of grownFlows) {
+      const born = (o.proposals ?? []).filter((p) => p.kind === "new-flow" && p.flow === f.name && p.status === "accepted").sort((a, b) => (a.at < b.at ? 1 : -1))[0];
+      const went = items.filter((i) => i.flow === f.name).length;
+      const detail = [born?.why ?? "", went > 0 ? t("走过 {0} 件", went) : t("还没有一件走过")].filter((x) => x !== "").join(" · ");
+      rows.push({
+        kind: "entry", key: `manual-grown-${f.name}`, title: t("{0} · {1} 步", f.title, f.states.filter((s) => !s.final).length), tag: born !== undefined ? localDay(born.at).day : "", tone: "normal", detail,
+        action: { op: "manual-open", flow: f.name, open: !expanded.includes(f.name) },
+      });
+    }
+  }
+  const idle = flows.filter((f) => latest(f) === "" && !expanded.includes(f.name) && !isGrown(f));
   // The flows with none on the way: one line of their names, each a press that opens it.
   if (idle.length > 0) {
     if (shown.length > 0) rows.push({ kind: "rule", key: "manual-rule-idle" });

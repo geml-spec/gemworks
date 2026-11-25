@@ -230,6 +230,21 @@ test("a flow's growth, a day at a time, newest first: practices by how they came
   assert.equal(manualRows(items, flows, [], t, { focus: null, expanded: null }).some((r) => r.key?.startsWith("manual-growth-")), false, "nothing grown: no line");
 });
 
+test("the flows this project grew stand on their own: the day each grew, why, whether any work went through it; a press opens it; not among the ones with none on the way", () => {
+  const ui = readCoachFlow("ui", '=== meta\ntitle = "界面"\n===\n\n=== diagram {#flow format=geml-statechart caption="界面"}\n{"initial":"a","states":{"a":{"title":"先给样稿","description":"图已发"},"b":{"title":"位置定夺","description":"说明了位置"},"done":{"title":"完成","final":true}},"transitions":[{"from":"a","to":"b"},{"from":"b","to":"done"}]}\n===\n');
+  const all = [...flows, ui];
+  const proposals = [{ id: "n1", kind: "new-flow", flow: "ui", title: "界面", steps: [], why: "近 7 天纠正 36 次，没有流程可挂", at: "2026-10-30T12:00:00Z", by: "gemworks", status: "accepted" }];
+  const rows = manualRows([item({})], all, [], t, { focus: null, expanded: null, proposals });
+  assert.deepEqual(rows.find((r) => r.key === "manual-grown"), { kind: "section", key: "manual-grown", text: "本项目长出来的流程", note: "从你的纠正里长的" });
+  assert.deepEqual(rows.find((r) => r.key === "manual-grown-ui"), { kind: "entry", key: "manual-grown-ui", title: "界面 · 2 步", tag: "10-30", tone: "normal", detail: "近 7 天纠正 36 次，没有流程可挂 · 还没有一件走过", action: { op: "manual-open", flow: "ui", open: true } });
+  assert.equal(rows.find((r) => r.key === "manual-idle").items.some((b) => b.label.startsWith("界面")), false, "not again among the ones with none on the way");
+  assert.ok(rows.findIndex((r) => r.key === "manual-grown") < rows.findIndex((r) => r.key === "manual-idle"));
+  const used = manualRows([item({}), item({ id: "u1", flow: "ui", status: "done", met: [] })], all, [], t, { focus: null, expanded: ["ui"] });
+  assert.deepEqual([used.find((r) => r.key === "manual-grown-ui").detail, used.find((r) => r.key === "manual-grown-ui").tag, used.find((r) => r.key === "manual-grown-ui").action.open], ["走过 1 件", "", false], "no proposal kept: no day; opened above, its press folds it");
+  assert.ok(used.some((r) => r.key === "manual-ui"), "opened: listed above with its steps");
+  assert.equal(manualRows([], flows, [], t, { focus: null, expanded: null }).some((r) => r.key === "manual-grown"), false, "none grown: no section");
+});
+
 test("所有时候的做法 unfolded lists a page of 20, a press for the next and one back to the start; a page past the end is the last", () => {
   const many = Array.from({ length: 45 }, (_, n) => ({ id: `a${n}`, flow: "*", step: "*", text: `第 ${n} 条`, why: "", at: "2026-10-01T00:00:00Z", by: "model", layer: "personal" }));
   const at = (from) => {
