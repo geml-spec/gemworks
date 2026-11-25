@@ -2829,6 +2829,40 @@ test('a question answered while a turn runs is not asked again when that turn, w
   expect(await bandSays()).toMatch(/待决定：记忆区按这版做吗？/)
 })
 
+test('a question answered on the board while a turn runs leaves the board at once, and that turn\'s end does not put it back on the band', async ($, on) => {
+  const w = world(on)
+  w.sessionsDir = LOGS
+  const said: string[] = []
+  on('prompt.submit', ($, e) => { said.push(e.text); return { text: e.text } })
+  on('turn.complete', ($, e) => ({ text: e.answer }))
+  // The prompt typed between is about something else: the judgement settles none of the open questions.
+  on('model.complete', () => ({ value: { isAnswered: true as const, text: '{"settled": []}', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }))
+  const clock = await start($, on)
+  await clock.advance(1)
+  await $.prompt.submit({ text: '出样稿', wait: false, origin: COMPOSER })
+  await $.tool.call({ tool: 'mcp__gemworks__ask', tool_use_id: 'q1', question: '菜单那项去掉还是保留？', options: ['去掉', '保留'] })
+  await $.turn.complete({ answer: '样稿在这。', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
+  await $.prompt.submit({ text: '接着做导入', wait: false, origin: COMPOSER })
+  await clock.settle()
+  // That turn runs; the person answers on the work items tab (2026-11-25: pressed twice, the card still there, and the
+  // band asked it again after the turn).
+  await $.command.run({ command: 'gemworks', args: 'board items', origin: COMPOSER, presentation: PRESENTATION })
+  const mount = () => $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: { ...PANE, bodyColumns: 120 } })
+  let pane = await mount()
+  expect(shown((await pane.drawn()) as unknown as Drawn).join(' ')).toMatch(/等你定.*菜单那项去掉还是保留？/)
+  await pane.press({ key: 'ask-0-0' })
+  await clock.settle()
+  expect(said.at(-1)).toBe('菜单那项去掉还是保留？：去掉')
+  await pane.unmount()
+  pane = await mount()
+  expect(shown((await pane.drawn()) as unknown as Drawn).join(' '), 'gone from the board at once').not.toMatch(/菜单那项去掉还是保留？/)
+  await pane.unmount()
+  await $.turn.complete({ answer: '导入做好了。', durationMs: 5, isAborted: false, turnId: 't2', reason: 'answer' })
+  const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  expect(shown((await band.drawn()) as unknown as Drawn).join(' '), 'not asked again').not.toMatch(/菜单那项去掉还是保留？/)
+  await band.unmount()
+})
+
 test('a draft handed to git commit as its message is no artifact: not recorded at the turn\'s end, and taken out again where an earlier turn recorded it', async ($, on) => {
   const w = world(on)
   on('tool.call', { tool: 'Write' }, () => ({ result: { type: 'create' }, text: 'written' }))

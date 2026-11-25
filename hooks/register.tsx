@@ -627,6 +627,17 @@ async function attentionOnPrompt($: EngineInterface, said: string, typed = true)
       await update($, answeredAtom, () => [...new Set([...before, ...settled])])
       // Typed answers off (settings): a question is settled by its press alone.
       if (typed && open.length > 0 && (await readSettings($)).judge.enabled) $.clock.after(0, () => { void judgeOpenAsks($, open, said).catch(() => undefined) })
+    } else {
+      // The moment was the prompt's that began this turn: a press while it runs (the work items tab's 等你定) answers one
+      // still open, which leaves them at once and is answered for the turn's end. Unrecorded, the card stayed (pressed a
+      // second time) and the turn's end asked it again (2026-11-25).
+      const left = ((await read($, leftAsksAtom)) as Asked[] | null) ?? []
+      const open = openAfter(left, [], said)
+      if (open.length < left.length) {
+        const settled = left.filter((q) => !open.some((x) => x.question === q.question)).map((q) => q.question)
+        await update($, leftAsksAtom, () => open)
+        await update($, answeredAtom, (done) => [...new Set([...(((done as string[] | null) ?? [])), ...settled])])
+      }
     }
     const news = newsOf((await read($, factsAtReplyAtom)) as unknown as AttentionFacts | null, await factsNow($), t)
     return news.length > 0 ? [`[gemworks] since your last reply: ${news.join('; ')}`] : []
