@@ -8,7 +8,7 @@
 // flow tab, a line for the band. A flow file is a `geml-statechart/v1`
 // document; its diagram block's JSON is read here as it stands (the bridge's
 // loader checks it). The work-item model itself is core/work.ts. Pure.
-import type { Cell, Judge } from "../../core/progress.js";
+import type { Cell, Judge, Progress } from "../../core/progress.js";
 import type { MetStep, SessionSummary, SessionTurn, TurnMove } from "../../core/session-log.js";
 import { isNew, type Practice } from "../../core/practices.js";
 import type { LedgerCard, PracticeCount, Quote } from "../../core/corrections.js";
@@ -134,12 +134,7 @@ export function workRows(items: readonly WorkItem[], flows: readonly CoachFlow[]
   const shown = items.filter((i) => i.status === "open" || i.status === "held");
   const loose = asks.filter((q) => q.item === undefined || !shown.some((i) => i.id === q.item));
   const rows: BoardRow[] = loose.length > 0 ? [{ kind: "section", key: "asks", text: t("等你定"), count: loose.length }, ...loose.map((q) => askCard(q, asks.indexOf(q), t))] : [];
-  const placed = shown.map((i) => {
-    const flow = flows.find((f) => f.name === i.flow);
-    const p = flow !== undefined ? itemProgress(i, flow, o.running?.get(i.id)) : undefined;
-    const group: WorkGroup = i.status === "held" ? "held" : p === undefined || p.whose === "done" ? "me" : p.whose;
-    return { i, flow, p, group };
-  });
+  const placed = shown.map((i) => place(i, flows, o));
   const heading: Record<WorkGroup, string> = { you: t("等你"), me: t("我来"), wait: t("等结果"), held: t("已暂缓") };
   for (const group of ["you", "me", "wait", "held"] as const) {
     const all = placed.filter((x) => x.group === group);
@@ -151,7 +146,30 @@ export function workRows(items: readonly WorkItem[], flows: readonly CoachFlow[]
       kind: "section", key: `work-${group}`, text: heading[group], count: all.length,
       ...(folds ? { fold: { key: `work-fold-${group}`, label: whole ? t("收起") : t("展开"), action: { op: "work-fold", group, open: !whole } } } : {}),
     });
-    for (const { i, flow, p } of listed) {
+    for (const x of listed) rows.push(...itemRows(x, flows, asks, t, o));
+  }
+  return rows;
+}
+
+/** Where a work item stands: its flow, its progress on it, and whose turn it is (the group it is listed under). */
+interface Placed { i: WorkItem; flow: CoachFlow | undefined; p: Progress | undefined; group: WorkGroup }
+
+function place(i: WorkItem, flows: readonly CoachFlow[], o: WorkRowsOptions): Placed {
+  const flow = flows.find((f) => f.name === i.flow);
+  const p = flow !== undefined ? itemProgress(i, flow, o.running?.get(i.id)) : undefined;
+  const group: WorkGroup = i.status === "held" ? "held" : p === undefined || p.whose === "done" ? "me" : p.whose;
+  return { i, flow, p, group };
+}
+
+/**
+ * One work item's rows, as the work items tab and the flow tab list it: its steps as cells, what it needs or what
+ * comes next, the presses that are the person's, the questions about it; unfolded, how it came here. `tag`: the flow
+ * named on the row (none on the flow tab, under the flow's own heading).
+ */
+function itemRows({ i, flow, p, group }: Placed, flows: readonly CoachFlow[], asks: readonly Asked[], t: T, o: WorkRowsOptions, tag = true): BoardRow[] {
+  const rows: BoardRow[] = [];
+  {
+    {
       const here = flow?.states.find((s) => s.id === p?.here);
       const elsewhere = o.own !== undefined && i.session !== o.own;
       const actions: Pressable[] = [];
@@ -187,7 +205,7 @@ export function workRows(items: readonly WorkItem[], flows: readonly CoachFlow[]
       const go: Pressable = { key: `work-go-${i.id}`, label: t("看流程"), action: { op: "coach-go", flow: i.flow, id: i.id } };
       const made = madePress(o.made, i.id, t);
       rows.push({
-        kind: "work", key: `work-${i.id}`, flow: i.flow, tag: flow?.title ?? i.flow, title: i.title, cells, detail, actions, go,
+        kind: "work", key: `work-${i.id}`, flow: i.flow, tag: tag ? flow?.title ?? i.flow : "", title: i.title, cells, detail, actions, go,
         open: { key: `work-open-${i.id}`, label: i.title, action: { op: "work-unfold", id: unfolded ? null : i.id } },
         ...(made !== undefined ? { made } : {}),
       }, ...asks.filter((q) => q.item === i.id).map((q) => askCard(q, asks.indexOf(q), t)));
@@ -260,7 +278,7 @@ export const HISTORY_SHOWN = 8;
 /** How many practices for every time one page lists: 75 at once ran the desktop pane past what it can draw. */
 export const ANYWHERE_PAGE = 20;
 
-export interface ManualOptions { focus: CoachFocus | null; expanded: readonly string[] | null; now?: string; anywhereFrom?: number; menu?: string | null; proposals?: readonly Proposal[]; rules?: readonly Rule[]; skipped?: readonly { flow: string; step: string; skipped: number }[]; ledger?: { cards: readonly LedgerCard[]; counts: Readonly<Record<string, PracticeCount>> } }
+export interface ManualOptions { focus: CoachFocus | null; expanded: readonly string[] | null; now?: string; anywhereFrom?: number; work?: WorkRowsOptions; menu?: string | null; proposals?: readonly Proposal[]; rules?: readonly Rule[]; skipped?: readonly { flow: string; step: string; skipped: number }[]; ledger?: { cards: readonly LedgerCard[]; counts: Readonly<Record<string, PracticeCount>> } }
 
 /** A ⋯ press that opens the menu `key` names, or closes it when it is the one open. */
 function menuPress(key: string, open: string | null | undefined): Pressable {
@@ -363,6 +381,8 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
   const judgeWords: Record<Judge, string> = { fact: t("事实"), you: t("你"), model: t("模型") };
   const rows: BoardRow[] = [
     { kind: "judges", lead: t("谁判："), items: [{ judge: "fact", word: judgeWords.fact, means: t("插件查得到") }, { judge: "you", word: judgeWords.you, means: t("要你点头") }, { judge: "model", word: judgeWords.model, means: t("我判断") }] },
+    // How the flows run, said once for the page: no one picks them, and they hold nothing up but a rule.
+    { kind: "text", text: t("这些流程自动套用，不用你选：每轮结束，模型把手上的事归到一条，报它过了哪几步。只提醒、不拦；改成规定的做法（🔒）才拦。"), tone: "dim" },
     ...ledgerCardRows(o.ledger?.cards ?? [], flows, t),
   ];
   const waiting = (o.proposals ?? []).filter((p) => p.status === "open");
@@ -377,7 +397,6 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
     rows.push({ kind: "text", text: t("从「{0}」过来 · 卡在「{1}」", focused.title, focusFlow.states.find((s) => s.id === focusHere)?.title ?? focusHere), tone: "dim" });
   }
   for (const [at, f] of shown.entries()) {
-    const n = open.filter((i) => i.flow === f.name).length;
     const mine = live.filter((p) => p.flow === f.name);
     const listed = expanded.includes(f.name);
     // A practice listed on its step; on a flow folded, a press under the step that lists them all (2 条做法 ▾).
@@ -393,7 +412,7 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
     // Its heading reads as one: its name and how it stands, and a ⋯ whose menu holds sharing, exporting and folding.
     const key = `flow:${f.name}`;
     rows.push({
-      kind: "section", key: `manual-${f.name}`, text: f.title, note: [n > 0 ? t("{0} 件在走", n) : "", diff !== "" ? t("本项目改过：{0}", diff) : ""].filter((x) => x !== "").join(" · "),
+      kind: "section", key: `manual-${f.name}`, text: f.title, note: diff !== "" ? t("本项目改过：{0}", diff) : "",
       actions: [menuPress(key, o.menu)], tucked: true,
     });
     if (o.menu === key) {
@@ -402,13 +421,24 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
         ...(mine.length > 0 ? [{ key: `manual-fold-${f.name}`, label: listed ? t("收起做法") : t("展开做法"), action: { op: "manual-open" as const, flow: f.name, open: !listed } }] : []),
       ], t));
     }
+    const went = items.filter((i) => i.flow === f.name);
+    if (went.length > 0) rows.push({ kind: "text", text: t("走过 {0} 件 · {1} 件走完", went.length, went.filter((i) => i.status === "done").length), tone: "dim" });
+    // The work on its way through this flow, each where it stands and with the person's presses, as the work items tab
+    // lists it; the work put aside, counted.
+    const going = open.filter((i) => i.flow === f.name).sort((a, b) => (a.at < b.at ? 1 : -1)).map((i) => place(i, [f], o.work ?? {}));
+    for (const x of going) rows.push(...itemRows(x, [f], [], t, o.work ?? {}, false));
+    const aside = items.filter((i) => i.flow === f.name && i.status === "held").length;
+    if (aside > 0) rows.push({ kind: "text", text: t("暂缓 {0} 件", aside), tone: "dim" });
     // The flow's own practices, for every step: a block of their own before the steps, as a step's are under it.
     if (mine.some((p) => p.step === "*")) {
       rows.push({ kind: "step", key: `step-${f.name}-*`, title: t("这类活都要："), need: "", judge: "", judgeKind: "model", prevents: "", here: false, final: false, ...more("*") }, ...own("*"));
     }
     for (const s of f.states) {
       const held = (o.rules ?? []).filter((r) => (r.flow === f.name || r.flow === "*") && r.requires === s.id).map((r) => t("规定：{0}", r.text) + (r.held !== undefined && r.held > 0 ? ` · ${t("拦过 {0} 次", r.held)}` : ""));
-      rows.push({ kind: "step", key: `step-${f.name}-${s.id}`, title: s.title, need: s.need, judge: s.final ? "" : judgeWords[s.judge], judgeKind: s.judge, prevents: s.prevents !== "" ? t("防：{0}", s.prevents) : "", here: focused?.flow === f.name && focusHere === s.id, final: s.final, ...(held.length > 0 ? { rules: held } : {}), ...more(s.id) });
+      // The work standing at this step: shaded, and said under it (the one by its title, several by how many).
+      const standing = going.filter((x) => x.p?.here === s.id);
+      const on = standing.length === 1 ? t("← {0} 停在这", (standing[0] as Placed).i.title) : standing.length > 1 ? t("← {0} 件停在这", standing.length) : undefined;
+      rows.push({ kind: "step", key: `step-${f.name}-${s.id}`, title: s.title, need: s.need, judge: s.final ? "" : judgeWords[s.judge], judgeKind: s.judge, prevents: s.prevents !== "" ? t("防：{0}", s.prevents) : "", here: standing.length > 0 || (focused?.flow === f.name && focusHere === s.id), final: s.final, ...(on !== undefined ? { on } : {}), ...(held.length > 0 ? { rules: held } : {}), ...more(s.id) });
       rows.push(...own(s.id));
       for (const e of f.edges.filter((x) => x.back && x.from === s.id)) {
         const target = f.states.find((x) => x.id === e.to)?.title ?? e.to;

@@ -161,11 +161,21 @@ test("the flow tab's manual: each flow with items on the way, the focused first;
   const items = [item({}), item({ id: "b2", title: "工具页对齐", at: "2026-10-23T09:00:00Z" }), item({ id: "c3", flow: "design", title: "流程改成教练", met: [m("discuss")], at: "2026-10-23T11:00:00Z" })];
   const rows = manualRows(items, flows, [], t, { focus: { flow: "bugfix", id: "b2" }, expanded: null });
   assert.deepEqual([rows[0].kind, rows[0].lead, rows[0].items.map((x) => [x.judge, x.word, x.means])], ["judges", "谁判：", [["fact", "事实", "插件查得到"], ["you", "你", "要你点头"], ["model", "模型", "我判断"]]]);
-  assert.equal(rows[1].text, "从「工具页对齐」过来 · 卡在「你确认」");
-  assert.deepEqual(rows.filter((r) => r.kind === "section").map((r) => [r.text, r.note]), [["bugfix", "2 件在走"], ["新设计", "1 件在走"]]);
+  // How the flows run, said once: nobody picks them, and only a rule holds anything up.
+  assert.equal(rows[1].text, "这些流程自动套用，不用你选：每轮结束，模型把手上的事归到一条，报它过了哪几步。只提醒、不拦；改成规定的做法（🔒）才拦。");
+  assert.equal(rows[2].text, "从「工具页对齐」过来 · 卡在「你确认」");
+  assert.deepEqual(rows.filter((r) => r.kind === "section").map((r) => [r.text, r.note]), [["bugfix", ""], ["新设计", ""]]);
+  assert.deepEqual(rows.filter((r) => r.kind === "text" && r.text.startsWith("走过")).map((r) => r.text), ["走过 2 件 · 0 件走完", "走过 1 件 · 0 件走完"], "under each heading, how many went through it");
   assert.deepEqual(rows.filter((r) => r.kind === "rule").map((r) => r.key), ["manual-rule-design", "manual-rule-idle"], "a line between flows, and before those with none on the way");
+  // The work on its way, under its flow's heading, as the work items tab lists it — its presses too — but not named by its flow.
+  const going = rows.filter((r) => r.kind === "work");
+  assert.deepEqual(going.map((r) => [r.key, r.tag, r.actions.map((b) => b.label)]), [["work-a1", "", ["好了", "没好"]], ["work-b2", "", ["好了", "没好"]], ["work-c3", "", ["标为完成", "暂缓处理"]]]);
+  assert.ok(rows.findIndex((r) => r.key === "work-a1") < rows.findIndex((r) => r.key === "step-bugfix-reproduce"), "before the steps");
+  // Every step a piece of work stands at is shaded and says so: one by its title, several by how many.
   const bug = rows.filter((r) => r.kind === "step" && r.key.startsWith("step-bugfix-"));
-  assert.deepEqual(bug.map((r) => [r.title, r.need, r.judge, r.here]), [["复现", "版本已确认", "模型", false], ["找根因", "说得出为什么坏", "模型", false], ["先写会失败的测试", "有一个现在会失败、能复现问题的测试", "模型", false], ["修", "一个猜测一版", "模型", false], ["验证", "测试通过", "事实", false], ["你确认", "你按过说对", "你", true], ["完成", "", "", false]]);
+  assert.deepEqual(bug.map((r) => [r.title, r.need, r.judge, r.here, r.on]), [["复现", "版本已确认", "模型", false, undefined], ["找根因", "说得出为什么坏", "模型", false, undefined], ["先写会失败的测试", "有一个现在会失败、能复现问题的测试", "模型", false, undefined], ["修", "一个猜测一版", "模型", false, undefined], ["验证", "测试通过", "事实", false, undefined], ["你确认", "你按过说对", "你", true, "← 2 件停在这"], ["完成", "", "", false, undefined]]);
+  assert.equal(rows.find((r) => r.key === "step-design-mockup").on, "← 流程改成教练 停在这");
+  assert.deepEqual(manualRows([item({ status: "held" }), item({ id: "b2" })], flows, [], t, { focus: null, expanded: null }).filter((r) => r.kind === "text" && r.text.startsWith("暂缓")).map((r) => r.text), ["暂缓 1 件"], "the work put aside, counted");
   assert.equal(bug[0].prevents, "防：修的不是真正出问题的那个版本或现象");
   assert.ok(rows.some((r) => r.kind === "text" && r.text === "↩ 你说没好，回到复现"));
   // The flows with none on the way: one line of their names, each a press that opens it.
@@ -233,7 +243,7 @@ test("the manual's practices: listed on the flow opened, each on its step, its t
   const own = readCoachFlow("bugfix", readFileSync(new URL("../coach/bugfix.geml", import.meta.url), "utf8").replace('"fix":', '"gates": { "title": "过三道门", "description": "三项都过" }, "fix":').replace(/"reproduce": \{[^}]*\},/, ""), flow("bugfix"));
   assert.deepEqual(own.diff, { added: ["过三道门"], removed: ["复现"] });
   const changed = manualRows([item({})], flows.map((f) => (f.name === "bugfix" ? own : f)), [], t, { focus: null, expanded: null });
-  assert.equal(changed.find((r) => r.key === "manual-bugfix").note, "1 件在走 · 本项目改过：比参考多「过三道门」，比参考少「复现」");
+  assert.equal(changed.find((r) => r.key === "manual-bugfix").note, "本项目改过：比参考多「过三道门」，比参考少「复现」", "what is on its way is listed under the heading, not counted in it");
 });
 
 test("the band's line: what the last turn moved that waits on the person, with its two words and 暂缓处理; else this session's last item, what comes next and 好，做吧", () => {

@@ -131,7 +131,7 @@ export type BoardRow =
    * in words), what it prevents; `here` the step the focused item stands at. The practice rows after it are its own,
    * drawn in its block; `more`, on a flow whose practices are folded, the press that lists them (2 条做法 ▾).
    */
-  | { kind: "step"; key: string; title: string; need: string; judge: string; judgeKind: Judge; prevents: string; here: boolean; final: boolean; rules?: string[]; more?: Pressable }
+  | { kind: "step"; key: string; title: string; need: string; judge: string; judgeKind: Judge; prevents: string; here: boolean; final: boolean; on?: string; rules?: string[]; more?: Pressable }
   /**
    * A practice on a step: what to do, where it came from, its tag (做法, 新学到, 从记忆搬来, 团队), the presses on it:
    * × and 改成规定 beside its words, its layer and sharing under the pointer where a surface has one.
@@ -402,7 +402,10 @@ export function paneRows(o: PaneInput): BoardRow[] {
     ? workRows(o.coach.items, o.coach.flows, t, { asks: o.coach.asks ?? [], ...(o.coach.own !== undefined ? { own: o.coach.own } : {}), ...(o.coach.open !== undefined ? { open: o.coach.open } : {}), ...(o.coach.unfolded !== undefined ? { unfolded: o.coach.unfolded } : {}), ...(o.coach.sessions !== undefined ? { sessions: o.coach.sessions } : {}), ...(o.coach.gone !== undefined ? { gone: o.coach.gone } : {}), ...(o.coach.doing !== undefined ? { doing: o.coach.doing } : {}), ...(o.madeAll != null ? { made: o.madeAll.entries } : {}), ...(o.now !== undefined ? { now: o.now } : {}) })
     : [];
   const coached = o.coach !== undefined && o.tab === "flow"
-    ? manualRows(o.coach.items, o.coach.flows, o.coach.practices ?? [], t, { focus: o.coach.focus, expanded: o.coach.expanded ?? null, menu: o.coach.menu ?? null, ...(o.coach.anywhereFrom !== undefined ? { anywhereFrom: o.coach.anywhereFrom } : {}), ...(o.now !== undefined ? { now: o.now } : {}), ...(o.coach.proposals !== undefined ? { proposals: o.coach.proposals } : {}), ...(o.coach.rules !== undefined ? { rules: o.coach.rules } : {}), ...(o.coach.skipped !== undefined ? { skipped: o.coach.skipped } : {}), ...(o.coach.ledger !== undefined ? { ledger: o.coach.ledger } : {}) })
+    ? manualRows(o.coach.items, o.coach.flows, o.coach.practices ?? [], t, { focus: o.coach.focus, expanded: o.coach.expanded ?? null, menu: o.coach.menu ?? null, ...(o.coach.anywhereFrom !== undefined ? { anywhereFrom: o.coach.anywhereFrom } : {}),
+      // The work on its way through each flow is listed as the work items tab lists it: whose turn, which presses.
+      work: { ...(o.coach.own !== undefined ? { own: o.coach.own } : {}), ...(o.coach.unfolded !== undefined ? { unfolded: o.coach.unfolded } : {}), ...(o.coach.sessions !== undefined ? { sessions: o.coach.sessions } : {}), ...(o.coach.gone !== undefined ? { gone: o.coach.gone } : {}), ...(o.coach.doing !== undefined ? { doing: o.coach.doing } : {}), ...(o.now !== undefined ? { now: o.now } : {}) },
+      ...(o.now !== undefined ? { now: o.now } : {}), ...(o.coach.proposals !== undefined ? { proposals: o.coach.proposals } : {}), ...(o.coach.rules !== undefined ? { rules: o.coach.rules } : {}), ...(o.coach.skipped !== undefined ? { skipped: o.coach.skipped } : {}), ...(o.coach.ledger !== undefined ? { ledger: o.coach.ledger } : {}) })
     : [];
   if (o.tab === "items") return [...head, ...work, ...itemRows({ board: o.board, status, inbox: o.inbox, columns, t, now: o.now, doneOpen: o.doneOpen, droppedOpen: o.droppedOpen === true, dismissed: o.dismissed, suggestions, artifactMenu: o.artifactMenu ?? null, docsOpen: o.docsOpen === true }), ...wait];
   if (o.tab === "made") {

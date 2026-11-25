@@ -1985,8 +1985,8 @@ test('the coach: the model reports the steps met with the work tool; the work it
   await pane.unmount()
   pane = await mount()
   expect(await words(), 'the manual: where it came from').toMatch(/从「导出跳过不留」过来 · 卡在「你确认」/)
-  expect(await words(), 'how many are on the way, after its name; its presses in the menu under ⋯').toMatch(/bugfix 1 件在走 \[⋯\]/)
-  expect(await words(), 'each step, its requirement, who judges it').toMatch(/你确认 · 你按过说对 你/)
+  expect(await words(), 'its presses in the menu under ⋯; how many went through it; the work on its way, with its two words').toMatch(/bugfix \[⋯\] 走过 1 件 · 0 件走完 \[导出跳过不留\] .*●你确认 ○完成 还差：你按一次跳过 \[好了\] \[没好\]/)
+  expect(await words(), 'each step, its requirement, who judges it; the one it stands at says so').toMatch(/你确认 · 你按过说对 你 ← 导出跳过不留 停在这/)
   await pane.unmount()
   // Where the surface draws no pictures, the step it stands at is marked.
   const term = await $.ui.mount({ plugin: 'gemworks', surface: 'terminal', component: 'Pane', requestId: 'gemworks-board', props: PANE })

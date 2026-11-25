@@ -130,6 +130,7 @@ export function drawStep($: EngineInterface, els: Els, row: Row<'step'>, inner: 
         <Box flexGrow={1} flexShrink={0} justifyContent="flex-end">{row.judge !== '' && judgeChip(els, row.judgeKind, row.judge, `${row.key}-judge`)}</Box>
       </Box>
       {row.prevents !== '' && <Text dimColor wrap="wrap">{row.prevents}</Text>}
+      {row.on !== undefined && <Text color="#2a6fdb" wrap="truncate-end">{row.on}</Text>}
       {(row.rules ?? []).map((r, n) => <Text key={`rule${n}`} {...toneProps('warning')} wrap="truncate-end">{`🔒 ${r}`}</Text>)}
       {inner.map((x, n) => (x.kind === 'practice' ? drawPractice($, els, x, 0) : draw(x, n)))}
       {row.more !== undefined && <Box><Button key={row.more.key} plain dimColor label={row.more.label} onPress={press($, row.more.action)} /></Box>}

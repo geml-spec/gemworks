@@ -2475,7 +2475,7 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
     case 'work': return (
       <Box key={row.key} flexDirection="column" paddingX={1}>
         <Box gap={1}>
-          <Text {...toneProps(row.flow === 'bugfix' ? 'error' : row.flow === 'design' ? 'warning' : 'success')}>{els.Svg !== undefined ? row.tag : `[${row.tag}]`}</Text>
+          {row.tag !== '' && <Text {...toneProps(row.flow === 'bugfix' ? 'error' : row.flow === 'design' ? 'warning' : 'success')}>{els.Svg !== undefined ? row.tag : `[${row.tag}]`}</Text>}
           <Box flexShrink={1} minWidth={0}>{row.open !== undefined ? <Button key={row.open.key} plain label={row.title} onPress={press($, row.open.action)} /> : <Text wrap="truncate-end">{row.title}</Text>}</Box>
           <Box flexGrow={1} />
           {row.made !== undefined && <Button key={row.made.key} plain dimColor label={row.made.label} onPress={press($, row.made.action)} />}
