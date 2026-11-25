@@ -88,7 +88,8 @@ export type BoardRow =
    * `tucked`: its note runs on after the words, wrapped, and its presses show under the pointer where a surface has
    * one (a flow's heading on the flow tab, as its design has it: the heading reads as a heading).
    */
-  | { kind: "section"; key: string; text: string; count?: number; fold?: Pressable; note?: string; actions?: Pressable[]; tucked?: true }
+  // `open` says which way `fold` goes, for a heading that draws it as an icon (a flow's, tucked): open, it gathers.
+  | { kind: "section"; key: string; text: string; count?: number; fold?: Pressable; open?: boolean; note?: string; actions?: Pressable[]; tucked?: true }
   /**
    * One thing waiting on the person (the work items tab's top group): the icon
    * for what it asks, its verb and name, a tag (what the work made, or the
@@ -159,7 +160,7 @@ export const ICON_SVG: Readonly<Record<Icon, string>> = { ask: iconSvg("ask"), d
  * The pane's line icons, drawn as the design draws them (docs/design/ui/2026-10-13-gemworks-ui): a tab's, a dialog's,
  * and each kind of journal entry's. Only where the surface draws pictures; elsewhere the words stand alone.
  */
-export type Glyph = BoardTab | "share" | "settings" | "upgrade" | "about" | "radio" | "radioon" | "artifact" | "evidence" | "move" | "refused" | "start" | "waits" | "done" | "board" | "capture" | "split" | "delete" | "locate" | "unfold" | "fold" | "box" | "boxon" | "go";
+export type Glyph = BoardTab | "share" | "settings" | "upgrade" | "about" | "radio" | "radioon" | "artifact" | "evidence" | "move" | "refused" | "start" | "waits" | "done" | "board" | "capture" | "split" | "delete" | "locate" | "unfold" | "fold" | "spread" | "gather" | "box" | "boxon" | "go";
 const GLYPH_PATH: Readonly<Record<Glyph, string>> = {
   sessions: '<path d="M4 5h16v11H9l-5 4z"/>',
   flow: '<rect x="3" y="3" width="7" height="5" rx="1"/><rect x="14" y="16" width="7" height="5" rx="1"/><path d="M6.5 8v5h11v3"/>',
@@ -191,6 +192,9 @@ const GLYPH_PATH: Readonly<Record<Glyph, string>> = {
   locate: '<circle cx="12" cy="12" r="3.5"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/>',
   unfold: '<path d="M7 10l5 5 5-5"/>',
   fold: '<path d="M10 7l5 5-5 5"/>',
+  // A list to open in full: two chevrons pointing apart; to fold back to its first lines: pointing together.
+  spread: '<path d="M8 9l4-4 4 4M8 15l4 4 4-4"/>',
+  gather: '<path d="M8 5l4 4 4-4M8 19l4-4 4 4"/>',
 };
 /** A glyph's stroke by its tone: one grey that reads on a light and a dark ground, the accent for what is chosen, the tone's own colour otherwise. */
 const GLYPH_COLOR: Readonly<Record<Tone | "active", string>> = {

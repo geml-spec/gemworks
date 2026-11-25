@@ -144,7 +144,7 @@ test("the manual offers to share and export each flow, to share a step's practic
   // Each in a menu under a ⋯: the flow's on its heading, a practice's on its row.
   const menu = (key, row) => { const r = manualRows([item({})], flows, practices, t, { focus: null, expanded: ["bugfix", "*"], menu: key }); return r[r.findIndex((x) => x.key === row) + 1].items.map((b) => [b.label, b.action.op]); };
   assert.deepEqual(rows.find((r) => r.key === "manual-bugfix").actions.map((b) => b.label), ["⋯"]);
-  assert.deepEqual(menu("flow:bugfix", "manual-bugfix"), [["分享给团队", "flow-share"], ["导出", "flow-export"], ["收起做法", "manual-open"], ["取消", "manual-menu"]]);
+  assert.deepEqual(menu("flow:bugfix", "manual-bugfix"), [["分享给团队", "flow-share"], ["导出", "flow-export"], ["取消", "manual-menu"]]);
   assert.deepEqual(rows.find((r) => r.key === "practice-p1").actions.map((b) => b.label), ["改成规定", "⋯"]);
   assert.deepEqual(menu("practice:p1", "practice-p1"), [["改成个人", "practice-layer"], ["分享给团队", "practice-share"], ["取消", "manual-menu"]]);
   assert.deepEqual(menu("practice:p2", "practice-p2"), [["改成项目", "practice-layer"], ["写进 CLAUDE.md", "practice-claude-md"], ["取消", "manual-menu"]]);

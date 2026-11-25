@@ -8,7 +8,7 @@ import type { BoardRow } from '../dist/hosts/claude-code/board.js'
 import type { Judge } from '../dist/core/progress.js'
 import { toneProps } from '../dist/hosts/claude-code/band.js'
 import type { Tone } from '../dist/hosts/claude-code/band.js'
-import { press } from './register.tsx'
+import { iconButton, press } from './register.tsx'
 
 type Els = { Box: any; Text: any; Button: any; Svg?: any }
 type Row<K extends BoardRow['kind']> = Extract<BoardRow, { kind: K }>
@@ -56,7 +56,10 @@ export function drawPresses($: EngineInterface, els: Els, row: Row<'presses'>): 
   )
 }
 
-/** A flow's heading: its name and how it stands in one run of words, wrapped; its presses (⋯) at the end of the line. */
+/**
+ * A flow's heading: its name and how it stands in one run of words, wrapped; at the end of the line the press that
+ * lists its practices or folds them (an icon, its name under the pointer; the words on the terminal), then ⋯.
+ */
 export function drawHeading($: EngineInterface, els: Els, row: Row<'section'>, i: number): unknown {
   const { Box, Text, Button } = els
   return (
@@ -64,6 +67,7 @@ export function drawHeading($: EngineInterface, els: Els, row: Row<'section'>, i
       <Box flexGrow={1} flexShrink={1} minWidth={0}>
         <Text wrap="wrap"><Text weight="semibold" size="body">{row.text}</Text>{row.note !== undefined && row.note !== '' && <Text dimColor>{`  ${row.note}`}</Text>}</Text>
       </Box>
+      {row.fold !== undefined && iconButton($, els, row.fold, row.open === true ? 'gather' : 'spread', { from: 'right', size: 18 })}
       {(row.actions ?? []).map((b) => <Button key={b.key} label={b.label} onPress={press($, b.action)} />)}
     </Box>
   )

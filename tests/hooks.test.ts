@@ -1017,6 +1017,10 @@ test('新学到 n 条 on the band is a press: the flow tab opens with the flows 
   expect(shown(findKey(tree, 'practice-p1') as Drawn).join(' ')).toBe('新学到： 修之前先读引擎契约 [改成规定] [×] [⋯]')
   const buttons = (el: Drawn | string): Drawn[] => typeof el === 'string' ? [] : el.type === 'Button' ? [el] : (el.children ?? []).flatMap(buttons)
   expect(buttons(findKey(tree, 'practice-p1') as Drawn).map((b) => [keyOf(b), b.props?.plain]), 'buttons, not words').toEqual([['practice-rule-p1', undefined], ['practice-delete-p1', undefined], ['manual-menu-practice:p1', undefined]])
+  // Its heading: the press that folds its practices back, an icon whose name shows under the pointer, then ⋯.
+  const head = findKey(tree, 'manual-bugfix') as Drawn
+  expect(buttons(head).map((b) => keyOf(b)), 'the icon, then ⋯').toEqual(['manual-fold-bugfix', 'manual-menu-flow:bugfix'])
+  expect([hasSvg(head, 'gather'), JSON.stringify(findKey(tree, 'manual-fold-bugfix-icon')).includes('"收起做法"')], 'unfolded: chevrons together, named 收起做法').toEqual([true, true])
   // A practice for every time, under 所有时候的做法: a block of its own with the bar, drawn as a step's practices are.
   const block = findKey(tree, 'practice-p3-block') as Drawn
   const top = (block.children ?? [])[0] as Drawn
@@ -1037,7 +1041,13 @@ test('新学到 n 条 on the band is a press: the flow tab opens with the flows 
   await again.unmount()
   const closed = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
   expect(findKey((await closed.drawn()) as unknown as Drawn, 'manual-menu-row-practice:p2'), 'an entry pressed closes the menu').toBeUndefined()
+  // The icon pressed folds the flow back, as the menu's entry did: with no work on its way, into the line of flows with none.
+  await closed.press({ key: 'manual-fold-bugfix' })
   await closed.unmount()
+  const folded = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+  tree = (await folded.drawn()) as unknown as Drawn
+  expect([findKey(tree, 'manual-bugfix'), holds(tree, 'manual-idle-bugfix')], 'folded: back among the flows with none on the way').toEqual([undefined, true])
+  await folded.unmount()
 })
 
 test('所有时候的做法, 75 of them: unfolded, a page of 20 and a press for the next, so the desktop pane stays one it can draw', async ($, on) => {

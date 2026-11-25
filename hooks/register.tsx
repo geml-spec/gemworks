@@ -3699,10 +3699,10 @@ export const register: Register = (on) => {
   }).catch(() => ({ text: 'gemworks：命令没有完成，原因见输入框上方的状态带' }))
 }
 
-// What act.tsx, split from this module, uses of it.
+// What act.tsx and manual.tsx, split from this module, use of it.
 export {
   QUEUED_MATCH_MS, STORE_SETTINGS, TURNS_SHOWN, answerOf, appendOwn, attentionOnPrompt, bridge, checkLatest,
-  coachFlows, coachFlowsKept, correctionsKept, dismissedOf, exportText, gemlDir, loadBoard, loadCorrections,
+  coachFlows, coachFlowsKept, correctionsKept, dismissedOf, exportText, gemlDir, iconButton, loadBoard, loadCorrections,
   loadGrowth, loadMade, loadMemory, loadPractices, loadProjectSessions, loadWorkflows, nowIso, openBoard,
   openDialog, openFile, otherSessionText, outwardChanged, practicesKept, press, proposalsKept, readAttention, readBoard, readPrompts,
   readSettings, reasonOf, rulesKept, saveProposals, saveRules, sessionText, setQueued, share, startBridge,

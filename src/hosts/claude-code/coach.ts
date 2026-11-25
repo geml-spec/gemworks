@@ -470,14 +470,15 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
     };
     const own = (step: string): BoardRow[] => (listed ? onStep(step) : newest(step)).flatMap((p) => practiceRows(p, t, o));
     if (at > 0) rows.push({ kind: "rule", key: `manual-rule-${f.name}` });
-    // Its heading: its name, and a ⋯ whose menu holds sharing, exporting and folding. What the project changed from the
+    // Its heading: its name; where it has practices, the press that lists them all or folds them back, an icon whose
+    // name shows under the pointer; and a ⋯ whose menu holds sharing and exporting. What the project changed from the
     // shipped flow is marked on the steps themselves.
     const key = `flow:${f.name}`;
-    rows.push({ kind: "section", key: `manual-${f.name}`, text: f.title, note: "", actions: [menuPress(key, o.menu)], tucked: true });
+    const fold = mine.length > 0 ? { fold: { key: `manual-fold-${f.name}`, label: listed ? t("收起做法") : t("展开做法"), action: { op: "manual-open" as const, flow: f.name, open: !listed } }, open: listed } : {};
+    rows.push({ kind: "section", key: `manual-${f.name}`, text: f.title, note: "", ...fold, actions: [menuPress(key, o.menu)], tucked: true });
     if (o.menu === key) {
       rows.push(menuRow(key, [
         { key: `flow-share-${f.name}`, label: t("分享给团队"), action: { op: "flow-share", flow: f.name } }, { key: `flow-export-${f.name}`, label: t("导出"), action: { op: "flow-export", flow: f.name } },
-        ...(mine.length > 0 ? [{ key: `manual-fold-${f.name}`, label: listed ? t("收起做法") : t("展开做法"), action: { op: "manual-open" as const, flow: f.name, open: !listed } }] : []),
       ], t));
     }
     const went = items.filter((i) => i.flow === f.name);

@@ -268,9 +268,17 @@ test("the manual's practices: listed on the flow opened, each on its step, its t
     pr({ id: "p4", flow: "*", step: "*", text: "回复用中文", layer: "personal", by: "memory" }), pr({ id: "p5", deleted: true }), pr({ id: "p6", layer: "team", step: "verify", text: "过四道门", ref: "CLAUDE.md#build-and-check" })];
   const items = [item({}), item({ id: "c3", flow: "design", met: [m("discuss")], at: "2026-10-23T11:00:00Z" })];
   const rows = manualRows(items, flows, practices, t, { focus: null, expanded: null, now: "2026-10-26T00:00:00Z" });
-  // A flow's heading is a heading: its name, how it stands, and one ⋯; sharing, exporting and folding are in its menu.
+  // A flow's heading is a heading: its name, the press that lists its practices or folds them (an icon), and one ⋯;
+  // sharing and exporting are in its menu.
   const heads = rows.filter((r) => r.kind === "section").map((r) => [r.text, r.tucked, (r.actions ?? []).map((b) => [b.label, b.action])]);
   assert.deepEqual(heads, [["新设计", true, [["⋯", { op: "manual-menu", key: "flow:design" }]]], ["bugfix", true, [["⋯", { op: "manual-menu", key: "flow:bugfix" }]]], ["所有时候的做法", undefined, []]], "the flow moved last listed; the other folded");
+  assert.deepEqual(rows.filter((r) => r.tucked === true).map((r) => [r.fold, r.open]), [
+    [{ key: "manual-fold-design", label: "收起做法", action: { op: "manual-open", flow: "design", open: false } }, true],
+    [{ key: "manual-fold-bugfix", label: "展开做法", action: { op: "manual-open", flow: "bugfix", open: true } }, false],
+  ]);
+  const opened = manualRows(items, flows, practices, t, { focus: null, expanded: ["bugfix"], now: "2026-10-26T00:00:00Z" }).find((r) => r.key === "manual-bugfix");
+  assert.deepEqual([opened.fold.label, opened.fold.action, opened.open], ["收起做法", { op: "manual-open", flow: "bugfix", open: false }, true]);
+  assert.equal(manualRows(items, flows, [], t, { focus: null, expanded: null }).find((r) => r.key === "manual-bugfix").fold, undefined, "no practices: nothing to fold");
   // A flow folded shows each step's newest practice alone; the flow opened, all of them.
   assert.deepEqual(rows.filter((r) => r.kind === "practice").map((r) => r.text), ["用真实内容", "修之前先复现", "同一现象再现，先回头读引擎契约", "过四道门"]);
   assert.deepEqual(rows.filter((r) => r.kind === "step" && r.more !== undefined), [], "one practice a step: nothing more to list");
@@ -292,11 +300,11 @@ test("the manual's practices: listed on the flow opened, each on its step, its t
   // The block for the flow's own practices stands before its steps, its practices under it.
   const wide = bug.findIndex((r) => r.key === "step-bugfix-*");
   assert.deepEqual([bug[wide].title, bug[wide + 1].key], ["这类活都要：", "practice-p2"]);
-  // ⋯ opens a menu under the row: a practice's layer and sharing; a flow's sharing, exporting and folding. Its ⋯ then closes it.
+  // ⋯ opens a menu under the row: a practice's layer and sharing; a flow's sharing and exporting. Its ⋯ then closes it.
   const menuOf = (menu, key) => { const r = manualRows(items, flows, practices, t, { focus: null, expanded: ["bugfix", "*"], now: "2026-10-26T00:00:00Z", menu }); const at = r.findIndex((x) => x.key === key); return [r[at + 1].kind, r[at + 1].items.map((b) => [b.label, b.action])]; };
   assert.deepEqual(menuOf("practice:p1", "practice-p1"), ["menu", [["改成个人", { op: "practice-layer", id: "p1", layer: "personal" }], ["分享给团队", { op: "practice-share", id: "p1" }], ["取消", { op: "manual-menu", key: null }]]]);
   assert.deepEqual(menuOf("practice:p4", "practice-p4")[1].map(([l]) => l), ["改成项目", "写进 CLAUDE.md", "取消"]);
-  assert.deepEqual(menuOf("flow:bugfix", "manual-bugfix"), ["menu", [["分享给团队", { op: "flow-share", flow: "bugfix" }], ["导出", { op: "flow-export", flow: "bugfix" }], ["收起做法", { op: "manual-open", flow: "bugfix", open: false }], ["取消", { op: "manual-menu", key: null }]]]);
+  assert.deepEqual(menuOf("flow:bugfix", "manual-bugfix"), ["menu", [["分享给团队", { op: "flow-share", flow: "bugfix" }], ["导出", { op: "flow-export", flow: "bugfix" }], ["取消", { op: "manual-menu", key: null }]]]);
   assert.deepEqual(manualRows(items, flows, practices, t, { focus: null, expanded: ["bugfix"], now: "2026-10-26T00:00:00Z", menu: "practice:p1" }).find((r) => r.key === "practice-p1").actions.at(-1).action, { op: "manual-menu", key: null });
   const own = readCoachFlow("bugfix", readFileSync(new URL("../coach/bugfix.geml", import.meta.url), "utf8").replace('"fix":', '"gates": { "title": "过三道门", "description": "三项都过" }, "fix":').replace(/"reproduce": \{[^}]*\},/, ""), flow("bugfix"));
   assert.deepEqual(own.diff, { added: ["过三道门"], removed: ["复现"] });
