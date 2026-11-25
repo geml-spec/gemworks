@@ -324,6 +324,6 @@ test("the flow tab draws the ledger's cards on top, each with what to do, and ea
   assert.deepEqual(rows[2].actions[0].action, { op: "practice-from-theme", theme: "t2", rule: "改完先跑测试", flow: "bugfix", step: "reproduce", why: "重复纠正 3 次" });
   const item = { id: "a1", flow: "feature", title: "示例工作项", state: "mockup", needs: "", goal: "", status: "open", at: "2026-10-30T05:00:00Z", session: "s1", met: [], next: "" };
   const manual = manualRows([item], flows, [p], t, { focus: null, expanded: ["feature"], ledger: { cards: cards.slice(1, 2), counts: { pMock: { before: 2, after: 0 } } } });
-  assert.equal(manual[1].key, "ledger-repeat:t1", "the cards come first, under the line that says who judges");
+  assert.deepEqual([manual[0].kind, manual[1].kind, manual[2].key], ["judges", "text", "ledger-repeat:t1"], "the cards come first, under the lines that say who judges and how the flows run");
   assert.deepEqual(manual.find((r) => r.key === "practice-pMock").count, { text: "纠正 2 → 0", held: true });
 });
