@@ -3032,6 +3032,7 @@ test('an outward action is asked about before it runs, with no workflow: 这次�
   await pane.press({ key: 'tab-tools' })
   await clock.settle()
   expect(await pane.find({ type: 'Text', text: '对外动作' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '次数是这两天真实用过的。' }), 'no workflow: the tools that ran are listed too, with nothing to classify them as').toBeDefined()
   await pane.press({ key: 'outward-forget-Bash(git push*)' })
   await clock.settle()
   expect(asked.at(-1)?.question).toMatch(/^删除 .*git push.*？之后它再要运行时会先问你。$/)

@@ -194,6 +194,7 @@ export const WORDS: Readonly<Record<string, Entry>> = {
   "另有 {0} 等 {1} 条 ▸": { en: "{1} more, like {0} ▸", ja: "ほかに {0} など {1} 件 ▸" },
   "这两天都没用过": { en: "not run these two days", ja: "この二日間は未使用" },
   "没有对得上的工具": { en: "no tool matches", ja: "一致するツールはありません" },
+  "次数是这两天真实用过的。": { en: "Counts are these two days' real runs.", ja: "回数はこの二日間の実際の使用です。" },
   "次数是这两天真实用过的。没归类的工具在每个阶段都照常能用；点一行可以给它归类。": { en: "Counts are these two days' real runs. An unclassified tool runs as usual in every state; press a row to classify it.", ja: "回数はこの二日間の実際の使用です。未分類のツールはどの段階でも普段どおり使え、行を押すと分類できます。" },
   "{0} 算作{1}": { en: "count {0} as {1}", ja: "{0} を{1}とみなす" },
   "这两天跑了 {0} 次，一次都没记成{1}。": { en: "Ran {0} times these two days, never counted as {1}.", ja: "この二日間で {0} 回実行、一度も{1}として記録されていません。" },

@@ -434,7 +434,19 @@ test("the pane: rows for the tab, a problem above them, and the reason when ther
   assert.deepEqual(pane({ coach: { items: [], flows: [], focus: null } }).slice(2), [{ kind: "section", key: "strict", text: "固化流程", note: "只能你把事放进去，挂着的规定会真拦" }, ...flow()], "beside the light flows' manual: the project's own workflow under 固化流程");
   const outward = [{ kind: "section", key: "outward", text: "对外动作" }, { kind: "text", text: "推送、发布、部署、发消息之前都先问你；还没有放行过的。", tone: "dim" }];
   assert.deepEqual(pane({ tab: "tools" }), [...toolRows({ board: BOARD, columns: 100, t: wordsFor("zh"), usage: {}, suggestions: [], query: "", menu: null, naming: null, open: [] }), ...outward], "the dictionary's tools, then the outward actions let through");
-  assert.deepEqual(pane({ board: null, tab: "tools" }), outward, "no workflow: the outward actions alone");
+  // No workflow: the tools that ran these two days still show, with nothing to classify them as; then the outward actions.
+  const bare = pane({ board: null, tab: "tools", usage: { "Bash(grep)": 72, "PowerShell(git log)": 24, Read: 59, "mcp__gemworks__*": 7, "mcp__Claude_Browser__*": 5 } });
+  assert.deepEqual(bare.map((r) => r.kind === "tool" ? [r.name, r.use, r.guess, r.count].filter((x) => x !== "").join(" | ") : r.kind === "input" ? `[${r.placeholder}]` : r.kind === "section" ? `§ ${r.text}` : r.text), [
+    "[找工具]",
+    "§ 命令行", "grep | 72 次", "git log · PowerShell | 24 次",
+    "§ 文件", "Read | 59 次",
+    "§ MCP", "gemworks | gemworks 自己的 | 7 次", "Claude_Browser | 5 次",
+    "§ Skill · 网页请求 · 模型服务", "这两天都没用过",
+    "次数是这两天真实用过的。",
+    "§ 对外动作", "推送、发布、部署、发消息之前都先问你；还没有放行过的。",
+  ], "no workflow: every tool that ran, the most first, no use beside it, then the outward actions let through");
+  assert.equal(bare.some((r) => r.kind === "tool" && r.action !== undefined), false, "no workflow: no row opens a menu, there is no use to classify it as");
+  assert.deepEqual(pane({ board: null, tab: "tools", usage: { "Bash(grep)": 2 }, toolMenu: "Bash(grep)" }).filter((r) => r.kind === "buttons"), [], "a menu left open from a workflow opens no menu without one");
   const stale = pane({ problem: "gemworks：桥接没有应答（timed out）", tab: "items", doneOpen: true });
   assert.deepEqual(stale[0], { kind: "text", text: "gemworks：桥接没有应答（timed out）", tone: "error" }, "the last board stays, under why it is not fresh");
   assert.deepEqual(stale.slice(1), items({ columns: 100, doneOpen: true }));

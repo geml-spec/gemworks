@@ -417,11 +417,10 @@ export function paneRows(o: PaneInput): BoardRow[] {
     };
     return [...head, ...madeTabRows(o.madeAll, o.madeView ?? MADE_VIEW, words, t, o.now)];
   }
-  // The outward actions let through are the project's, with a workflow or none.
-  if (o.tab === "tools" && o.board === null) return [...head, ...outwardRows(o.outward ?? [], t, columns)];
+  // The tools that ran and the outward actions let through are the project's, with a workflow or none.
+  if (o.tab === "tools") return [...head, ...toolRows({ board: o.board, columns, t, usage: o.usage, suggestions, query: o.toolQuery, menu: o.toolMenu, naming: o.toolNaming, open: o.toolsOpen }), ...outwardRows(o.outward ?? [], t, columns)];
   if (o.board === null) return head.length > 0 ? [...head, ...coached] : [...coached, ...wait];
   if (o.tab === "flow") return [...head, ...coached, ...(status !== null && o.coach !== undefined ? [{ kind: "section" as const, key: "strict", text: t("固化流程"), note: t("只能你把事放进去，挂着的规定会真拦") }] : []), ...flowRows({ board: o.board, status, columns, t, ...(o.now !== undefined ? { now: o.now } : {}), selected: o.flowState, switching: o.switching, workflows: o.workflows })];
-  if (o.tab === "tools") return [...head, ...toolRows({ board: o.board, columns, t, usage: o.usage, suggestions, query: o.toolQuery, menu: o.toolMenu, naming: o.toolNaming, open: o.toolsOpen }), ...outwardRows(o.outward ?? [], t, columns)];
   // The journal: the work item's events, then the project's memory, then what every session decided, each its own section.
   return [...head, ...journalRows({ board: o.board, status, filter: o.filter, menu: o.expanded, evidence: o.evidence, prompts: o.prompts, columns, maxRows: Math.max(1, o.maxRows - head.length), t, now: o.now }),
     ...memoryRows(o.memory, t, columns, o.now), ...decisionRows(o.project, t, columns, o.now)];
@@ -927,7 +926,8 @@ const GROUPS: readonly { id: ToolGroup; label: string }[] = [
 ];
 
 export interface ToolsInput {
-  board: BoardData;
+  /** The workflow's board; null with no workflow (or before it is read): the tools that ran, with nothing to classify them as. */
+  board: BoardData | null;
   columns: number;
   t: T;
   usage: Readonly<Record<string, number>>;
@@ -945,17 +945,20 @@ export interface ToolsInput {
  * none, and the use it looks like), how often it ran, the ones that ran
  * first; the ones that did not, folded. A press opens a row's menu: classify
  * it as a use (a new one by name), make it its use's preferred tool, or take
- * its row out of the dictionary.
+ * its row out of the dictionary. With no workflow, the tools that ran, how
+ * often, and no use or menu: there is no flow's use to classify them as.
  */
 export function toolRows(o: ToolsInput): BoardRow[] {
   const { board, t, columns } = o;
+  const classify = board !== null;
+  const dict = board?.tools ?? [];
   const rows: BoardRow[] = [{ kind: "input", key: "tool-search", placeholder: t("找工具"), field: "tool-search", value: o.query }];
   for (const i of o.suggestions) rows.push({ kind: "card", key: `tools-${i.key}`, icon: "ask", verb: i.verb, title: i.title, ...(i.tag !== undefined ? { tag: i.tag } : {}), detail: i.detail, actions: i.actions });
-  const uses = knownUses(board);
+  const uses = board !== null ? knownUses(board) : [];
   // Every key: the dictionary's rows, and what ran without a row of its own to take it.
-  const counts = new Map<string, number>(board.tools.map((r) => [r.tool, 0]));
+  const counts = new Map<string, number>(dict.map((r) => [r.tool, 0]));
   for (const [key, n] of Object.entries(o.usage)) {
-    const row = rowFor(key, board.tools);
+    const row = rowFor(key, dict);
     const at = row?.tool ?? key;
     counts.set(at, (counts.get(at) ?? 0) + n);
   }
@@ -964,11 +967,11 @@ export function toolRows(o: ToolsInput): BoardRow[] {
   for (const g of GROUPS) {
     const keys = [...counts.keys()].filter((k) => groupOf(k) === g.id).filter((k) => {
       if (query === "") return true;
-      const row = board.tools.find((r) => r.tool === k);
+      const row = dict.find((r) => r.tool === k);
       return [k, keyWords(k), row?.for !== undefined ? useWords(row.for, t) : ""].some((s) => s.toLowerCase().includes(query));
     });
     if (keys.length === 0) { if (query === "" && (g.id === "skill" || g.id === "web" || g.id === "model")) quiet.push(t(g.label)); continue; }
-    const row = (k: string): DictRow | undefined => board.tools.find((r) => r.tool === k);
+    const row = (k: string): DictRow | undefined => dict.find((r) => r.tool === k);
     const byRuns = keys.filter((k) => (counts.get(k) ?? 0) > 0).sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0) || a.localeCompare(b));
     // Every tool shows, nothing folded: the ones that ran, the most first; then a use's preferred one that did not; then the rest.
     const preferred = keys.filter((k) => (counts.get(k) ?? 0) === 0 && row(k)?.default === true);
@@ -979,12 +982,12 @@ export function toolRows(o: ToolsInput): BoardRow[] {
       const own = k.startsWith("mcp__gemworks__");
       const n = counts.get(k) ?? 0;
       const guess = r === undefined ? guessUse(k, uses) : undefined;
-      const menuOpen = o.menu === k;
+      const menuOpen = classify && o.menu === k;
       rows.push({
         kind: "tool", key: `tool-${k}`, name: keyWords(k),
-        use: own ? t("gemworks 自己的") : r?.for !== undefined ? `${useWords(r.for, t)}${r.default ? t("（首选）") : ""}` : r !== undefined && r.allow.includes("*") ? t("哪里都能用") : t("没归类"),
+        use: own ? t("gemworks 自己的") : !classify ? "" : r?.for !== undefined ? `${useWords(r.for, t)}${r.default ? t("（首选）") : ""}` : r !== undefined && r.allow.includes("*") ? t("哪里都能用") : t("没归类"),
         guess: guess !== undefined ? t("像{0}？", useWords(guess, t)) : "", count: n > 0 ? t("{0} 次", n) : "0", tone: n > 0 ? "normal" : "dim",
-        ...(own ? {} : { action: { op: "tool-menu", key: menuOpen ? null : k } }),
+        ...(own || !classify ? {} : { action: { op: "tool-menu", key: menuOpen ? null : k } }),
       });
       if (menuOpen) {
         rows.push(text(`  ${t("归类为")}`, columns, "dim"));
@@ -1003,7 +1006,7 @@ export function toolRows(o: ToolsInput): BoardRow[] {
   }
   if (quiet.length > 0) rows.push({ kind: "section", key: "group-quiet", text: quiet.join(" · ") }, text(t("这两天都没用过"), columns, "dim"));
   if (query !== "" && rows.length === 1 + o.suggestions.length) rows.push(text(t("没有对得上的工具"), columns, "dim"));
-  rows.push(text(t("次数是这两天真实用过的。没归类的工具在每个阶段都照常能用；点一行可以给它归类。"), columns, "dim"));
+  rows.push(text(classify ? t("次数是这两天真实用过的。没归类的工具在每个阶段都照常能用；点一行可以给它归类。") : t("次数是这两天真实用过的。"), columns, "dim"));
   return rows;
 }
 

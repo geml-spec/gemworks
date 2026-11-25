@@ -2500,8 +2500,8 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
         <Box {...(toolWidth !== undefined && toolWidth > 0 ? { width: toolWidth } : {})} flexShrink={0} overflow="hidden">
           {row.action !== undefined ? <Button key={`open-${row.key}`} plain label={row.name} onPress={press($, row.action)} /> : <Text {...toneProps(row.tone)} wrap="truncate-end">{row.name}</Text>}
         </Box>
-        <Text dimColor>{row.use}</Text>
-        {row.guess !== '' && <Text {...toneProps('warning')}>{row.guess}</Text>}
+        {row.use !== '' && <Text dimColor>{row.use}</Text>}
+        {row.guess !== '' &&<Text {...toneProps('warning')}>{row.guess}</Text>}
         <Box flexGrow={1} />
         <Text {...toneProps(row.tone === 'normal' ? 'dim' : row.tone)}>{row.count}</Text>
       </Box>
