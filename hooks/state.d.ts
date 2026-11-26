@@ -124,6 +124,10 @@ declare module 'claude-code' {
       /** The share dialog's choice ({ what, how, strip, flow }). */
       share: GemworksJson
       version: string | null
+      /** The Claude Code this session runs in, as `$.session.version()` gave it; null on an engine without it. */
+      engine: string | null
+      /** The calls the module needs that the engine was found to lack (engine.ts): any, and the module lets everything through. */
+      engineGap: string[]
       /** The band's attention (attention.ts): the last reply ({ reply, replyAt, asked, memory, consumed }). */
       attention: GemworksJson
       /** The repository's facts for the band ({ ahead, prs }), as the bridge last read them. */

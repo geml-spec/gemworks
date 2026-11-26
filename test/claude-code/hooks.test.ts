@@ -57,6 +57,8 @@ function world(on: On) {
     vars: { 'tests-pass': false, 'pr-open': true } as Record<string, boolean>,
     node: true,
     bridge: true,
+    /** With the bridge down, why its spawn fails (a timeout unless set). */
+    bridgeDeny: null as string | null,
     /** When set, `process.run` of the bridge answers this raw stdout, exit code and stderr. */
     raw: null as { stdout: string; exitCode: number; stderr: string } | null,
     /** When false, the project has no workflow: every answer is the quiet problem shell, and no board. */
@@ -289,7 +291,7 @@ function world(on: On) {
 `) : ran('', 128) }
     }
     if (e.argv[2] === 'hook') {
-      if (!w.bridge) return { deny: 'timed out after 15000 ms' }
+      if (!w.bridge) return { deny: w.bridgeDeny ?? 'timed out after 15000 ms' }
       if (w.raw !== null) return { value: { ...ran(w.raw.stdout, w.raw.exitCode), stderr: w.raw.stderr } }
       if (w.error !== null) return { value: ran(`${JSON.stringify({ v: 1, ok: false, error: `gemworks: ${w.error}` })}\n`) }
       return { value: ran(`${JSON.stringify(answer(JSON.parse(e.init?.stdin ?? '{}') as Req))}\n`) }
@@ -560,6 +562,22 @@ test('no Node: the band says so, tool calls pass untouched, and nothing is sent'
   expect(w.sent).toEqual([])
   const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
   expect(await band.find({ type: 'Text', text: /找不到 node/ })).toBeDefined()
+})
+
+test('an engine that lacks a call the module needs: the band names it with the version of the engine, and tool calls pass untouched', async ($, on) => {
+  const w = world(on)
+  on('session.version', () => ({ value: { version: '2.1.340', base: '2.1.340', builtAt: '2026-11-20T00:00:00Z' } }))
+  // The bridge's spawn fails the way a call the engine no longer has does.
+  w.bridge = false
+  w.bridgeDeny = 'TypeError: $.process.run is not a function'
+  on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '', interrupted: false }, text: 'ran' }))
+  await start($, on)
+  const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  const said = (await band.findAll({ type: 'Text' })).map((x) => x.text).join(' | ')
+  expect(await band.find({ type: 'Text', text: /Claude Code 2.1.340 改了插件接口，gemworks 暂停：缺 process.run/ }), said).toBeDefined()
+  const sent = w.sent.length
+  expect((await $.tool.call({ tool: 'Bash', tool_use_id: 'b1', command: 'npm test' })).text).toBe('ran')
+  expect(w.sent.length, 'nothing more is asked of the bridge').toBe(sent)
 })
 
 test('the board draws its header and its four tabs on every surface, opening on the work items', async ($, on) => {
@@ -1353,6 +1371,23 @@ test('pause and resume: no button on the board header; /gemworks pause holds it,
   await pane.unmount()
   expect((await $.command.run({ command: 'gemworks', args: 'pause', origin: COMPOSER, presentation: PRESENTATION })).text).toMatch(/^已暂停。\n/)
   expect((await $.command.run({ command: 'gemworks', args: 'resume', origin: COMPOSER, presentation: PRESENTATION })).text).toMatch(/^已继续。\n/)
+})
+
+test('the about dialog names the Claude Code the session runs in, as session.version() gives it', async ($, on) => {
+  world(on)
+  on('session.version', () => ({ value: { version: '2.1.340', base: '2.1.340', builtAt: '2026-11-20T00:00:00Z' } }))
+  await start($, on)
+  await $.command.run({ command: 'gemworks', args: 'board', origin: COMPOSER, presentation: PRESENTATION })
+  const board = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-board', props: PANE })
+  await board.press({ key: 'dialog-about' })
+  await board.unmount()
+  const about = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'Pane', requestId: 'gemworks-dialog', props: { ...PANE, title: '关于' } })
+  const texts = (await about.findAll({ type: 'Text' })).map((x) => x.text).join(' | ')
+  expect(await about.find({ type: 'Text', text: 'Claude Code' }), texts).toBeDefined()
+  expect(await about.find({ type: 'Text', text: '2.1.340' }), texts).toBeDefined()
+  // An engine with every call the module needs: the band says nothing about it.
+  const band = await $.ui.mount({ plugin: 'gemworks', surface: 'desktop', component: 'AbovePrompt', props: BAND })
+  expect(await band.find({ type: 'Text', text: /改了插件接口/ })).toBeUndefined()
 })
 
 test('the settings dialog: a toggle is kept in the store and read back at the next start; the language changes the words', async ($, on) => {

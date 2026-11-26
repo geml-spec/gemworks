@@ -37,6 +37,7 @@ import { answered, asksAfterTurn, bandLine, heldSteps, leadOf, newsOf, NO_FACTS,
 import type { Queued } from '../dist/hosts/claude-code/attention.js'
 import type { AttentionFacts, AttentionMemory } from '../dist/hosts/claude-code/attention.js'
 import { envParts, remoteInPlay } from '../dist/hosts/claude-code/env.js'
+import { engineGapText, engineVersionOf, failureText, goneCallOf, isNeeded } from '../dist/hosts/claude-code/engine.js'
 import { captureHint, offersCapture } from '../dist/hosts/claude-code/screenshot.js'
 import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, legacyLogName, logName, nextTurn, NOTE_TOOL, noteReply, parseLog, personPrompts, readNote, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
 import type { NoteRead, SeenRun, SessionEvent, SessionSummary } from '../dist/core/session-log.js'
@@ -170,6 +171,10 @@ const localeAtom = atom({ plugin: 'gemworks', key: 'locale' } as const, null as 
 const workflowsAtom = atom({ plugin: 'gemworks', key: 'workflows' } as const, null as GemworksJson)
 const shareAtom = atom({ plugin: 'gemworks', key: 'share' } as const, { what: 'status', how: 'copy', strip: true } as GemworksJson)
 const versionAtom = atom({ plugin: 'gemworks', key: 'version' } as const, null as string | null)
+/** The Claude Code the session runs in, for the about dialog and the trace. */
+const engineAtom = atom({ plugin: 'gemworks', key: 'engine' } as const, null as string | null)
+/** The calls the module needs that the engine was found to lack (engine.ts); any, and the module lets everything through. */
+const engineGapAtom = atom({ plugin: 'gemworks', key: 'engineGap' } as const, [] as string[])
 /** The band's attention (attention.ts): the last reply, when it came, the prompt it answered, and what the band remembers. */
 const attentionAtom = atom({ plugin: 'gemworks', key: 'attention' } as const, null as GemworksJson)
 /** The repository as the bridge last read it for the band: branches ahead of their upstream, open pull requests. */
@@ -381,6 +386,7 @@ async function bridge($: EngineInterface, op: BridgeOp, timeoutMs: number = BRID
   try {
     out = await $.process.run([node, `${$.plugin.root}/dist/gemworks.mjs`, 'hook'], { cwd: root, stdin: encodeRequest(request), timeoutMs })
   } catch (err) {
+    await noteEngineGap($, err)
     const now = await $.clock.now()
     missedSince ??= now
     if (now - missedSince >= QUIET_MS || op.op === 'board' || op.op === 'export') await update($, problemAtom, () => `gemworks：暂时没应答，不拦操作（${reasonOf(err)}）`)
@@ -1547,10 +1553,32 @@ async function retryStart($: EngineInterface): Promise<void> {
 }
 
 /** Register one tool or command; a refusal is noted for the band, and the start goes on. */
+/**
+ * A failure that says the engine lacks a call (engine.ts): one the module needs is kept, and from then on the module lets
+ * every call through and the band names what is gone; any other is only traced. Never throws.
+ */
+async function noteEngineGap($: EngineInterface, err: unknown): Promise<void> {
+  try {
+    const call = goneCallOf(err)
+    if (call === null) return
+    trace($, `engine lacks ${call}: ${failureText(err)}`)
+    if (!isNeeded(call)) return
+    const gone = (await read($, engineGapAtom)) ?? []
+    if (!gone.includes(call)) await update($, engineGapAtom, () => [...gone, call])
+  } catch { /* nothing to note it with */ }
+}
+
+/** The band's line for an engine that lacks calls the module needs, in the person's words; null while it lacks none. */
+async function engineGapLine($: EngineInterface, t: T): Promise<string | null> {
+  const gone = (await read($, engineGapAtom)) ?? []
+  return gone.length > 0 ? engineGapText(t, await read($, engineAtom), gone) : null
+}
+
 async function registerOne($: EngineInterface, name: string, register: () => Promise<unknown>): Promise<void> {
   try {
     await register()
   } catch (err) {
+    await noteEngineGap($, err)
     const reason = reasonOf(err)
     await update($, setupAtom, (was) => `${was ?? 'gemworks：没有注册上'} ${name}（${reason}）`)
   }
@@ -2764,7 +2792,8 @@ async function dialogRows($: EngineInterface, t: T, dialog: Dialog, columns: num
   } else if (dialog === 'about') {
     rows.push({ kind: 'image', key: 'lockup', svg: LOCKUP_SVG, alt: 'Gemworks', width: 180 })
     rows.push(text(t('把写下一条提示词前要看的信息放在一处：工作进度、待决定事项、产物。流程用 GEML 编写，可替换、调整、导入。')))
-    rows.push({ kind: 'facts', key: 'facts', rows: [[t('插件'), `gemworks ${version}`], [t('许可'), LICENSE]] }, { kind: 'rule', key: 'rule-about' })
+    const engine = await read($, engineAtom)
+    rows.push({ kind: 'facts', key: 'facts', rows: [[t('插件'), `gemworks ${version}`], ...(engine !== null ? [['Claude Code', engine] as [string, string]] : []), [t('许可'), LICENSE]] }, { kind: 'rule', key: 'rule-about' })
     const zh = langOf(s.language, shell?.locale ?? locale ?? undefined) === 'zh'
     rows.push({ kind: 'linkrow', key: 'links', items: [
       { href: zh ? LINKS.docs.zh : LINKS.docs.other, label: t('说明文档') },
@@ -2980,6 +3009,12 @@ export const register: Register = (on) => {
       const manifest = JSON.parse(String(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`))) as { version?: unknown }
       if (typeof manifest.version === 'string') { const v = manifest.version; await update($, versionAtom, () => v); trace($, `loaded ${v} in ${e.cwd}`) }
     } catch { /* no manifest */ }
+    // The engine's version, for the about dialog and the trace. A call it lacks is found where it fails (noteEngineGap).
+    let engine: string | null = null
+    // Called, never read as a value: the engine refuses a module that reads $.noun.event; one from before version() throws.
+    try { engine = engineVersionOf(await $.session.version()) } catch { /* an engine from before version() */ }
+    await update($, engineAtom, () => engine)
+    trace($, `engine ${engine ?? 'unknown'}`)
     $.clock.after(0, () => { void probeCompose($) })
     await adoptPanes($)
     await startBridge($)
@@ -3001,7 +3036,7 @@ export const register: Register = (on) => {
       void read($, tabAtom).then((tab) => (tab === 'flow' ? loadCorrections($) : undefined)).catch(() => undefined)
     })
     return next(e)
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // The clients driving the session (the desktop app, a phone over Remote Control): kept for the environment line.
   on('session.attach', async ($, e, next) => {
@@ -3011,7 +3046,7 @@ export const register: Register = (on) => {
       $.ui.invalidate('ui.render')
     } catch { /* the roster stays */ }
     return done
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
   on('session.detach', async ($, e, next) => {
     const done = await next(e)
     try {
@@ -3019,7 +3054,7 @@ export const register: Register = (on) => {
       $.ui.invalidate('ui.render')
     } catch { /* the roster stays */ }
     return done
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // A /clear ends the conversation the model read the stage and the standing instructions in: the next prompt delivers them again. What ran is stored.
   on('session.end', async ($, e, next) => {
@@ -3028,7 +3063,7 @@ export const register: Register = (on) => {
     try { await storeUsage($) } catch { /* kept for the session */ }
     await noteBoard($)
     return next(e)
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // A compaction may fold the first prompt's standing instructions away: the main loop's next prompt carries them again, where the system prompt
   // does not. A summary computed ahead of time (`precompute`) replaces nothing yet.
@@ -3036,10 +3071,12 @@ export const register: Register = (on) => {
     const done = await next(e)
     if (e.agentId === undefined && e.trigger !== 'precompute' && !('skip' in done)) { try { await update($, toldAtom, () => false) } catch { /* said again after the next /clear */ } }
     return done
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // Every tool call. A broken gemworks never blocks one: where next already ran, next(e) replays its result.
   on('tool.call', async ($, e, next) => {
+    // An engine without a call the module needs: every call goes through, and the band says why.
+    if (((await read($, engineGapAtom)) ?? []).length > 0) return next(e)
     const tool = String(e.tool)
     // What the turn did, for its end: a call that writes, runs, publishes or asks the person something.
     if (e.agentId === undefined && (CLAUDE_CODE_TOOLS.write.includes(tool) || CLAUDE_CODE_TOOLS.run.includes(tool) || tool === 'Artifact' || tool === `mcp__gemworks__${ASK_TOOL.name}`)) turnActed = true
@@ -3164,7 +3201,7 @@ export const register: Register = (on) => {
     }
     await settled(res)
     return withStage($, ran, res, e.agentId)
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // The three tools. Each hook is a function literal: the engine reads hooks statically and refuses one that is a call's result.
   on('tool.call', { tool: 'mcp__gemworks__status' }, ($, e) => serveVerb($, 'status', e)).catch(() => VERB_FAILED)
@@ -3184,7 +3221,7 @@ export const register: Register = (on) => {
     try { await update($, composedAtom, () => true) } catch { /* the next prompt may say it once more */ }
     const flows = await coachFlows($).catch(() => [] as CoachFlow[])
     return { ...done, sections: [...done.sections, { id: 'gemworks:sessions', text: SESSIONS_PROMPT, scope: 'session' as const }, { id: 'gemworks:ask', text: ASK_PROMPT, scope: 'session' as const }, ...(flows.length > 0 ? [{ id: 'gemworks:work', text: workPrompt(flows), scope: 'session' as const }, { id: 'gemworks:practice', text: PRACTICE_PROMPT, scope: 'session' as const }, { id: 'gemworks:growth', text: GROWTH_PROMPT, scope: 'session' as const }] : [])] }
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // A turn that changed things and reported no work item goes back once to report it; the next stop ends it whatever it did.
   // Nothing to record into (no project read yet, no flows) asks nothing.
@@ -3194,7 +3231,7 @@ export const register: Register = (on) => {
       return { block: WORK_REMINDER }
     }
     return next(e)
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // A main-loop turn's end: the first sentence of its answer goes on its prompt's row, as what the turn did.
   on('turn.complete', async ($, e, next) => {
@@ -3329,7 +3366,7 @@ export const register: Register = (on) => {
     if (item === undefined || item.kind !== 'item' || item.id !== seen.item) return go(e)
     await update($, deliveredAtom, () => seen.key)
     return go({ ...e, context: [...(e.context ?? []), seen.text] })
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // A command that writes into the plugin's own folder (a developer copying a new build in): a reload is due.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
@@ -3346,7 +3383,7 @@ export const register: Register = (on) => {
       }
     } catch { /* nothing due */ }
     return done
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // The host stores the person's prompt as a row with an id, the same the transcript file holds: the sessions tab's newest record without one learns it, so a press can scroll to the row.
   on('session.append', { door: 'prompt' }, async ($, e, next) => {
@@ -3362,7 +3399,7 @@ export const register: Register = (on) => {
       })
     }
     return next(e)
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // The band (spec §8.1): Gemworks's mark, the one thing that is the person's now with its options, how many more wait, the board.
   // Hovering the thing's name, or `还有 N 件`, shows it whole in the line's place: a card drawn over the line, never beyond it.
@@ -3391,7 +3428,7 @@ export const register: Register = (on) => {
         ? { text: t('正在了解这个项目以前的会话（{0}/{1}），只存在本机 .geml/ 目录', init.done, init.total), tone: 'dim' as const }
         : { text: `${t('初始化完毕。欢迎使用。')}${init.failed > 0 ? t('（{0} 个会话读不了）', init.failed) : ''}`, tone: 'normal' as const }
       view = bandView({
-        shell, problem: await read($, problemAtom), setup: await read($, setupAtom), notice, todo: (await read($, todoAtom)) as unknown as TodoCount | null,
+        shell, problem: (await engineGapLine($, t)) ?? (await read($, problemAtom)), setup: await read($, setupAtom), notice, todo: (await read($, todoAtom)) as unknown as TodoCount | null,
         inbox, timeline: board?.timeline ?? [], now: await nowIso($), t,
       })
       // Nothing waits on the person: the band names the work item this session was on last (coach.ts), not the stage the workflow holds.

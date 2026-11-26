@@ -491,6 +491,8 @@ export const WORDS: Readonly<Record<string, Entry>> = {
   "gemworks：找不到 node — 请到 nodejs.org 安装 Node ≥ 22": { en: "gemworks: Node not found — install Node ≥ 22 from nodejs.org", ja: "gemworks：node が見つかりません — nodejs.org から Node ≥ 22 を入れてください" },
   "gemworks：Node {0} 太旧 — 请到 nodejs.org 安装 Node ≥ 22": { en: "gemworks: Node {0} is too old — install Node ≥ 22 from nodejs.org", ja: "gemworks：Node {0} は古すぎます — nodejs.org から Node ≥ 22 を入れてください" },
   "初始化完毕。欢迎使用。": { en: "Initialized. Welcome.", ja: "初期化が完了しました。ようこそ。" },
+  "Claude Code {0} 改了插件接口，gemworks 暂停：缺 {1}": { en: "Claude Code {0} changed the plugin API; gemworks is off: {1} is gone", ja: "Claude Code {0} がプラグイン API を変更したため gemworks は停止中：{1} がありません" },
+  "Claude Code 改了插件接口，gemworks 暂停：缺 {0}": { en: "Claude Code changed the plugin API; gemworks is off: {0} is gone", ja: "Claude Code がプラグイン API を変更したため gemworks は停止中：{0} がありません" },
   "（{0} 个会话读不了）": { en: " ({0} sessions could not be read)", ja: "（{0} 件は読めませんでした）" },
   "补录": { en: "backfilled", ja: "補記" },
   "定时任务 {0}": { en: "scheduled task {0}", ja: "定期タスク {0}" },
