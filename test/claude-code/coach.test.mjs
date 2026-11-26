@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { closeEvent, COACH_FLOWS, coachBand, doingNote, flowsIn, goneOnAfterTurn, growthDays, GROWTH_SHOWN, goneOnNote, holdEvent, itemHistory, manualRows, turnWords, itemProgress, metOf, pressEvent, readCoachFlow, stripText, turnItem, WORK_SHOWN, workContext, workEvents, workItemsOf, workPrompt, workRows } from "../../dist/hosts/claude-code/coach.js";
+import { closeEvent, COACH_FLOWS, coachBand, doingNote, flowsIn, goneOnAfterTurn, growthDays, GROWTH_SHOWN, goneOnNote, holdEvent, itemHistory, ledgerCardRows, manualRows, turnWords, itemProgress, metOf, pressEvent, readCoachFlow, stripText, turnItem, WORK_SHOWN, workContext, workEvents, workItemsOf, workPrompt, workRows } from "../../dist/hosts/claude-code/coach.js";
 import { parseLog, summarize } from "../../dist/core/session-log.js";
 import { wordsFor } from "../../dist/hosts/claude-code/text.js";
 
@@ -476,4 +476,114 @@ test("a practice the model rewrote says which it took the place of, by that one'
   assert.deepEqual(rows.filter((r) => r.kind === "practice").map((r) => [r.key, r.tag, r.why]), [["practice-n1", "新学到", "11-26 又修错了地方 · 改写自「修之前先复现：同一个现象出现两次…」"]]);
   // One whose replaced practice is no longer there says nothing of it.
   assert.equal(manualRows([item({ state: "fix" })], flows, [pr({ replaces: "gone" })], t, { focus: null, expanded: ["bugfix"] }).find((r) => r.key === "practice-n1").why, "11-26 又修错了地方");
+  // A short one is quoted whole.
+  const short = [pr({ id: "o2", text: "先复现", deleted: true, replacedBy: "n1" }), pr({ replaces: "o2" })];
+  assert.equal(manualRows([item({ state: "fix" })], flows, short, t, { focus: null, expanded: ["bugfix"] }).find((r) => r.key === "practice-n1").why, "11-26 又修错了地方 · 改写自「先复现」");
+});
+
+test("the work items tab: a fact step whose check is under way waits on its result with nothing to press; an item with nothing it needs says nothing, another session's says where it is", () => {
+  const checking = item({ met: [m("reproduce"), m("rootcause"), m("failtest"), m("fix")], needs: "" });
+  const waiting = workRows([checking], flows, t, { running: new Map([["a1", new Set(["verify"])]]) });
+  assert.deepEqual(waiting.filter((r) => r.kind === "section").map((r) => r.text), ["等结果"]);
+  const row = waiting.find((r) => r.key === "work-a1");
+  assert.deepEqual([row.detail, row.actions], ["还差：测试通过", []]);
+  assert.deepEqual(workRows([checking], flows, t).filter((r) => r.kind === "section").map((r) => r.text), ["我来"], "no check under way: the model's to run");
+  const detail = (over, o = {}) => workRows([item({ flow: "gone", needs: "", ...over })], flows, t, { own: "s1", ...o }).find((r) => r.kind === "work").detail;
+  assert.equal(detail({}), "", "its flow unread and nothing needed: nothing to say");
+  assert.equal(detail({ session: "s2" }), "在别的会话里");
+  assert.equal(detail({ session: "s2", needs: "先看日志" }), "还差：先看日志 · 在别的会话里");
+  assert.equal(detail({ session: "s2", next: "出样稿" }, { now: "2026-10-30T08:00:00Z" }), "接下来我去：出样稿 · 在别的会话里", "no sessions read: not said to be over");
+});
+
+test("a work item unfolded: with no sessions read it has been nowhere yet; past eight moves the older ones are counted; put aside it is not dropped from there", () => {
+  const bare = workRows([item({ goal: "" })], flows, t, { unfolded: "a1" });
+  const after = bare.slice(bare.findIndex((r) => r.key === "work-a1") + 1);
+  assert.deepEqual(after.map((r) => (r.kind === "text" ? r.text : r.items.map((b) => b.label).join(" "))), ["还没有经过", "看这件的提示词 看流程 放下"], "no goal: no 最后 line");
+  const mv = (n) => ({ id: "a1", title: "导出跳过不留", flow: "bugfix", state: "fix", status: "open", met: [], at: `2026-10-23T09:${String(n).padStart(2, "0")}:00Z` });
+  const session = { id: "s1", host: "claude-code", started: "x", last: "x", turns: Array.from({ length: 10 }, (_, n) => ({ turn: n + 1, at: mv(n).at, prompt: "p", decisions: [], moved: [mv(n)] })), decisions: [], files: [], commits: [] };
+  const long = workRows([item({})], flows, t, { unfolded: "a1", sessions: [session] });
+  assert.deepEqual(long.filter((r) => r.kind === "text").map((r) => r.text.replace(/^\d\d:\d\d {2}/, "")), ["…再往前 2 条", ...Array(8).fill("到「修」"), "最后：跳过不留文件"]);
+  const held = workRows([item({ status: "held" })], flows, t, { open: ["held"], unfolded: "a1" });
+  assert.deepEqual(held.find((r) => r.kind === "buttons").items.map((b) => b.label), ["看这件的提示词", "看流程"]);
+});
+
+test("what a turn did in words: a step the person pressed, an item dropped or finished with no step met, a step its flow does not know by its id; a turn that moved nothing says its decisions; an item's history is its own, oldest first", () => {
+  const mv = (over) => ({ id: "a1", title: "导出", flow: "bugfix", state: "fix", status: "open", met: [], at: "2026-10-23T10:00:00Z", ...over });
+  const turn = (moved, over = {}) => ({ turn: 1, at: "2026-10-23T10:00:00Z", prompt: "p", decisions: [], ...(moved !== undefined ? { moved } : {}), ...over });
+  assert.deepEqual(turnWords(turn([mv({ met: [m("confirm", { pressed: true })] }), mv({ id: "b2", title: "对齐", status: "dropped" }), mv({ id: "c3", title: "收尾", status: "done" }), mv({ id: "d4", title: "别的", met: [m("gates")] })]), flows, [], t), [
+    "→ 导出 ✓你确认 · 你按的", "→ 对齐 放下", "→ 收尾 完成", "→ 别的 ✓gates",
+  ]);
+  assert.deepEqual(turnWords(turn(undefined, { decisions: ["先跑 CI"] }), flows, [], t), ["模型记：先跑 CI"]);
+  const s = (id, turns) => ({ id, host: "claude-code", started: "x", last: "x", turns, decisions: [], files: [], commits: [] });
+  const sessions = [
+    s("s2", [turn([mv({ at: "2026-10-23T11:00:00Z", status: "done" })]), turn(undefined, { decisions: ["无关"] }), turn([mv({ id: "zz" })])]),
+    s("s1", [turn([mv({ at: "2026-10-23T09:00:00Z", met: [m("fix")] })], { decisions: ["一版一猜"] })]),
+  ];
+  assert.deepEqual(itemHistory("a1", sessions, flows, t).map((h) => h.text), ["✓修", "模型记：一版一猜", "完成"], "a turn that moved another item, or none, is not its history");
+});
+
+test("a flow's growth: a practice on a step the project took out by the shipped step's title, one on a step it does not know by its id, a long why cut; a step taken out or added as accepted", () => {
+  const own = readCoachFlow("bugfix", readFileSync(new URL("../../coach/bugfix.geml", import.meta.url), "utf8").replace(/"reproduce": \{[^}]*\},/, ""), flow("bugfix"));
+  assert.deepEqual(own.missing.map((x) => [x.id, x.title]), [["reproduce", "复现"]]);
+  // Noon UTC: the same local day on any machine from UTC-11 to UTC+11.
+  const pr = (over) => ({ id: "g1", flow: "bugfix", step: "reproduce", text: "x", why: "", at: "2026-11-09T12:00:00Z", by: "model", layer: "project", ...over });
+  const practices = [pr({}), pr({ id: "g2", step: "ghost", at: "2026-11-10T12:00:00Z", why: `2026-11-10 ${"一".repeat(70)}` })];
+  const proposals = [
+    { id: "q1", kind: "remove-step", flow: "bugfix", remove: "verify", why: "", at: "2026-11-11T12:00:00Z", by: "gemworks", status: "accepted" },
+    { id: "q2", kind: "add-step", flow: "bugfix", after: "fix", step: { id: "gates", title: "过三道门", need: "", judge: "model", prevents: "" }, why: "", at: "2026-11-12T12:00:00Z", by: "model", status: "accepted" },
+  ];
+  assert.deepEqual(growthDays(own, practices, proposals, [], t).map((d) => [d.day, d.text]), [
+    ["11-12", "加了一步「过三道门」"],
+    ["11-11", "去掉「验证」"],
+    ["11-10", `ghost 学到 1 条 — ${"一".repeat(60)}…`],
+    ["11-09", "复现 学到 1 条"],
+  ]);
+});
+
+test("the ledger's cards: a practice still corrected, with a newer one instead or none; a correction said again with a practice only on a step the flow does not know, or said at no step; quotes a day a line, long ones cut", () => {
+  const p = (over) => ({ id: "p1", flow: "bugfix", step: "fix", text: "先复现", why: "", at: "2026-10-20T00:00:00Z", by: "model", layer: "project", ...over });
+  const cards = [
+    { kind: "failing", key: "failing:p1", practice: p({}), n: 2, quotes: [{ at: "2026-10-28T09:00:00Z", text: "又没复现" }, { at: "2026-10-28T10:00:00Z", text: "这".repeat(45), day: "10-29" }], instead: p({ id: "p2", text: "先截图", at: "2026-10-25T00:00:00Z" }) },
+    { kind: "failing", key: "failing:p3", practice: p({ id: "p3" }), n: 3, quotes: [] },
+    { kind: "repeat", key: "repeat:t1", theme: "t1", rule: "先给样稿", n: 4, quotes: [], narrow: p({ id: "p4", step: "ghost" }) },
+    { kind: "repeat", key: "repeat:t2", theme: "t2", rule: "回复用中文", n: 3, quotes: [] },
+  ];
+  const rows = ledgerCardRows(cards, flows, t);
+  assert.deepEqual(rows.map((r) => [r.icon, r.verb, r.title, r.detail, r.actions.map((a) => `${a.label}${a.primary ? "*" : ""}`)]), [
+    ["warn", "失效", "生效后仍纠正 2 次：先复现", ["10-28「又没复现」", `10-29「${"这".repeat(40)}…」`, "已有替代做法（10-25）：先截图"], ["删除*", "保留"]],
+    ["warn", "失效", "生效后仍纠正 3 次：先复现", [], ["删除", "保留"]],
+    ["ask", "提议", "重复纠正 4 次：先给样稿", ["现有做法仅限「ghost」"], ["设为通用做法*", "忽略"]],
+    ["ask", "提议", "重复纠正 3 次：回复用中文", [], ["记为做法*", "忽略"]],
+  ], "with a newer practice for it, deleting this one is the first answer");
+  assert.deepEqual(rows[3].actions[0].action, { op: "practice-from-theme", theme: "t2", rule: "回复用中文", flow: "*", step: "*", why: "重复纠正 3 次" }, "said at no step: a practice for every time");
+});
+
+test("the flow tab's manual: the focused flow first wherever it stands, the rest by the one moved last; the work on a flow newest first; a new kind of work proposed with no title, steps or why; a step proposed after one the flow lost; a skipped step it does not know by its id", () => {
+  const items = [item({ id: "c3", flow: "design", met: [m("discuss")], at: "2026-10-23T11:00:00Z" }), item({}), item({ id: "f4", flow: "feature", met: [m("mockup")], at: "2026-10-23T12:00:00Z" })];
+  const heads = (focus) => manualRows(items, flows, [], t, { focus, expanded: null }).filter((r) => r.kind === "section").map((r) => r.text);
+  assert.deepEqual(heads(null), ["新功能", "新设计", "bugfix"], "the one moved last first");
+  assert.deepEqual(heads({ flow: "design", id: "c3" }), ["新设计", "新功能", "bugfix"], "the focused one first");
+  assert.deepEqual(heads({ flow: "bugfix", id: "a1" }), ["bugfix", "新功能", "新设计"]);
+  const three = [item({ id: "b1", at: "2026-10-23T08:00:00Z" }), item({ id: "b2", at: "2026-10-23T10:00:00Z" }), item({ id: "b3", at: "2026-10-23T09:00:00Z" })];
+  assert.deepEqual(manualRows(three, flows, [], t, { focus: null, expanded: null }).filter((r) => r.kind === "work").map((r) => r.key), ["work-b2", "work-b3", "work-b1"]);
+  const proposals = [
+    { id: "n1", kind: "new-flow", flow: "ui", why: "", at: "2026-10-30T12:00:00Z", by: "gemworks", status: "open" },
+    { id: "n2", kind: "new-flow", flow: "copy", title: "文案", steps: [{ id: "draft", title: "初稿", need: "", judge: "model", prevents: "" }, { id: "ok", title: "你看过", need: "", judge: "you", prevents: "" }], why: "近 7 天纠正 9 次", at: "2026-10-30T12:00:00Z", by: "gemworks", status: "open" },
+    { id: "q1", kind: "add-step", flow: "bugfix", after: "ghost", step: { id: "x", title: "过门", need: "三项都过", judge: "model", prevents: "" }, why: "前两次漏了", at: "2026-10-30T12:00:00Z", by: "model", status: "open" },
+  ];
+  const rows = manualRows([item({})], flows, [], t, { focus: null, expanded: null, proposals, skipped: [{ flow: "bugfix", step: "ghost", skipped: 3 }] });
+  const card = (key) => { const r = rows.find((x) => x.key === key); return [r.title, r.detail]; };
+  assert.deepEqual(card("proposal-n1"), ["新的一类活「ui」：", []], "named by its flow");
+  assert.deepEqual(card("proposal-n2"), ["新的一类活「文案」：初稿 → 你看过", ["近 7 天纠正 9 次"]]);
+  assert.deepEqual(rows.find((r) => r.key === "proposal-n2").actions.map((a) => [a.label, a.action]), [["加上", { op: "proposal-answer", id: "n2", yes: true }], ["不用", { op: "proposal-answer", id: "n2", yes: false }]]);
+  assert.deepEqual(card("proposal-q1"), ["在「ghost」后面加一步「过门」", ["三项都过", "前两次漏了"]]);
+  assert.equal(rows.find((r) => r.key === "skipped-bugfix-ghost").title, "「ghost」最近 5 件里 3 件跳过了，删掉这一步吗？");
+});
+
+test("the band's line for an item whose flow cannot be read: its flow's name, where it stands by its state, nothing on hover; an item that is the model's with no next step says what it needs, or its step", () => {
+  const lost = coachBand([item({ flow: "gone", needs: "", goal: "" })], flows, "s1", t);
+  assert.deepEqual([lost.verb, lost.note, lost.detail, lost.actions], ["gone", "confirm", "", []]);
+  assert.equal(coachBand([item({ flow: "gone", goal: "" })], flows, "s1", t).note, "还差：你按一次跳过");
+  const idle = coachBand([item({ met: [m("reproduce")], needs: "" })], flows, "s1", t);
+  assert.deepEqual([idle.verb, idle.note, idle.actions], ["bugfix", "找根因", []], "nothing next: no 好，做吧");
 });
