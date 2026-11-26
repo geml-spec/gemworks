@@ -33,6 +33,10 @@ export function gitRepo(branch = "feat/x") {
     git("init", "-q", "-b", "main");
     git("config", "user.email", "t@t");
     git("config", "user.name", "t");
+    // No maintenance behind the commit: git's detached auto-maintenance took .git/objects/maintenance.lock while the
+    // template was being copied, and the copy failed on the lock it had listed and no longer found (macOS CI, 2026-11-26).
+    git("config", "maintenance.auto", "false");
+    git("config", "gc.auto", "0");
     git("commit", "-q", "--allow-empty", "-m", "init");
     if (branch !== "main") git("checkout", "-qb", branch);
     repoTemplates.set(branch, template);
@@ -52,7 +56,12 @@ function copyTree(from, to) {
     const source = join(from, entry.name);
     const target = join(to, entry.name);
     if (entry.isDirectory()) copyTree(source, target);
-    else copyFileSync(source, target);
+    else {
+      try { copyFileSync(source, target); } catch (err) {
+        // A lock git held for a moment and let go between the listing and the copy: not part of the repository.
+        if (!(err?.code === "ENOENT" && entry.name.endsWith(".lock"))) throw err;
+      }
+    }
   }
 }
 
