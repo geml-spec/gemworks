@@ -204,7 +204,9 @@ test("a hostile line is judged by every scanner, not crashed on, and quickly", (
     for (let n = 0; n < levels; n++) line = `bash -c ${JSON.stringify(line)}`;
     assert.match(personOnlyRefusal(line) ?? "", REFUSED, `${levels} shells deep`);
   }
-  assert.ok(Date.now() - started < 5000, "all of them within seconds");
+  // Alone they take well under a second; the bound is for a scanner gone quadratic (minutes), with room for a machine
+  // busy running the rest of the suite.
+  assert.ok(Date.now() - started < 20_000, "all of them within seconds");
 });
 
 test("person-only: naming gemworks or a verb is not a call", () => {

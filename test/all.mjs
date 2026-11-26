@@ -37,6 +37,9 @@ process.env.NODE_COMPILE_CACHE ??= join(tmpdir(), "gemworks-test-compile-cache")
 process.env.GEMWORKS_GH ??= "gh-definitely-not-installed";
 // A host with no panel opens the GEML board when its session starts: never a window from a test.
 process.env.GEMWORKS_OPEN_BOARD ??= "0";
+// A git call's deadline of thirty seconds, not ten (host-git.ts): with every lane busy, git calls that take
+// milliseconds alone have passed ten seconds and failed tests that pass run alone.
+process.env.GEMWORKS_GIT_TIMEOUT_MS ??= "30000";
 
 // Every *.test.mjs under test/, in the folders that follow src/ (core/, claude-code/, hosts/, store/, workflows/,
 // package/) and at the top; fixtures/ and helpers/ hold no tests.

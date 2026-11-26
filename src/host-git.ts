@@ -20,7 +20,17 @@ import type { GitFacts } from "./core/signals.js";
 export interface RepoFacts { branch?: string; defaultBranch?: string; committed?: boolean; noCommits?: boolean; unanswered?: boolean }
 export type GhFacts = ({ available: true } & GitFacts) | { available: false; reason: string };
 
-const TIMEOUT_MS = 10_000;
+/**
+ * How long one git or gh call may take before it reads as unanswered: ten seconds, or GEMWORKS_GIT_TIMEOUT_MS when that
+ * is a positive number of milliseconds. Alone, git answers in a fraction of a second; the test suite sets it longer,
+ * because at full width it keeps the machine busy enough for a git call to pass ten seconds and fail a test that passes
+ * run alone.
+ */
+export function gitTimeoutFrom(value: string | undefined): number {
+  const ms = Number(value);
+  return Number.isFinite(ms) && ms > 0 ? ms : 10_000;
+}
+const TIMEOUT_MS = gitTimeoutFrom(process.env["GEMWORKS_GIT_TIMEOUT_MS"]);
 
 interface Ran {
   ok: boolean;

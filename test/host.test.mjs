@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { withLock, writeAtomic, globExists } from "../dist/host-fs.js";
-import { checkoutOf, commitsOf, forgetGitFacts, ghFacts, journalBaseOf, repoFacts, treeFingerprint } from "../dist/host-git.js";
+import { checkoutOf, commitsOf, forgetGitFacts, ghFacts, gitTimeoutFrom, journalBaseOf, repoFacts, treeFingerprint } from "../dist/host-git.js";
 
 const made = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "gemworks-host-")); made.push(d); return d; };
@@ -207,6 +207,13 @@ test("globExists skips a directory it cannot read and keeps looking elsewhere", 
   mkdirSync(join(d, "b-open")); writeFileSync(join(d, "b-open", "y.mp4"), "");
   chmodSync(join(d, "a-locked"), 0o000);
   try { assert.equal(globExists(d, "**/y.mp4"), true); } finally { chmodSync(join(d, "a-locked"), 0o755); }
+});
+
+test("a git call's deadline: ten seconds, or GEMWORKS_GIT_TIMEOUT_MS when it is a positive number of milliseconds", () => {
+  assert.equal(gitTimeoutFrom(undefined), 10_000);
+  assert.equal(gitTimeoutFrom("30000"), 30_000);
+  assert.equal(gitTimeoutFrom("2500.5"), 2500.5);
+  for (const v of ["", " ", "0", "-5", "ten", "Infinity", "NaN"]) assert.equal(gitTimeoutFrom(v), 10_000, JSON.stringify(v));
 });
 
 test("repoFacts reads branch, default branch and whether the branch has commits", () => {
