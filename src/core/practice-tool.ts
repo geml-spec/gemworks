@@ -5,6 +5,7 @@
 // memory onto their steps. Pure.
 import { itemProgress, turnItem, type CoachFlow, type WorkItem } from "./work.js";
 import { practicesAt, type Practice } from "./practices.js";
+import { FAILING_AFTER, type PracticeCount } from "./corrections.js";
 
 /** The tool the model records practices with. */
 export const PRACTICE_TOOL = {
@@ -38,10 +39,31 @@ export const PRACTICE_TOOL = {
 } as const;
 
 /** What the model is told once about practices. */
-export const PRACTICE_PROMPT = "Gemworks: when a turn paid a price (a way back, a failed test or CI, the person saying it is not fixed, the person correcting you, a rule blocking a call), record what would have avoided it with the gemworks `practice` tool, on the step it happened at; also when the person tells you how they want something done. Practices only remind. Beside a prompt you are shown the practices of the step your work item stands at: follow them.";
+export const PRACTICE_PROMPT = "Gemworks: when a turn paid a price (a way back, a failed test or CI, the person saying it is not fixed, the person correcting you, a rule blocking a call), record what would have avoided it with the gemworks `practice` tool, on the step it happened at; also when the person tells you how they want something done. Practices only remind. Beside a prompt you are shown the practices of the step your work item stands at, each with why it was learned and how often the person corrected the same thing before it was written and since: follow them, and one marked not holding most carefully.";
 
-/** The line beside a prompt: the practices of the step this session's last work item on the way stands at, at most three. */
-export function practiceContext(items: readonly WorkItem[], flows: readonly CoachFlow[], practices: readonly Practice[], session: string): string[] {
+/** The most characters of a practice's why a reminder carries: the incident's first words, enough to know what it cost. */
+export const WHY_SHOWN = 60;
+
+/**
+ * A practice as a reminder says it: its words and where a file keeps them; then why it was learned, clipped, and how
+ * often the person corrected the same thing before it was written and since where it reminds (the ledger's count, the
+ * flow tab's 纠正 n → m), marked not holding as the flow tab's 失效 card is. The evidence with the conclusion: a lesson
+ * kept without what it cost and how it fared is easy to follow loosely. A count of nothing either side is left out.
+ */
+export function practiceWords(p: Practice, count?: PracticeCount): string {
+  const why = p.why.trim();
+  const clipped = [...why].length > WHY_SHOWN ? `${[...why].slice(0, WHY_SHOWN - 1).join("")}…` : why;
+  const said = count !== undefined && count.before + count.after > 0
+    ? `corrected ${count.before} before, ${count.after} since${count.after >= FAILING_AFTER ? ": not holding" : ""}` : "";
+  const tail = [clipped, said].filter((x) => x !== "").join("; ");
+  return `${p.text}${p.ref !== undefined ? ` [${p.ref}]` : ""}${tail !== "" ? ` — ${tail}` : ""}`;
+}
+
+/**
+ * The line beside a prompt: the practices of the step this session's last work item on the way stands at, at most
+ * three, each with its why and, where the ledger has been read, its count by practice id.
+ */
+export function practiceContext(items: readonly WorkItem[], flows: readonly CoachFlow[], practices: readonly Practice[], session: string, counts: Readonly<Record<string, PracticeCount>> = {}): string[] {
   const i = turnItem(items, session);
   const flow = flows.find((f) => f.name === i?.flow);
   if (i === undefined || flow === undefined) return [];
@@ -50,7 +72,7 @@ export function practiceContext(items: readonly WorkItem[], flows: readonly Coac
   const at = practicesAt(practices, flow.name, here);
   if (at.length === 0) return [];
   const step = flow.states.find((s) => s.id === here)?.title ?? here;
-  return [`[gemworks] at ${flow.name} ${here} ${step} for «${i.title}», the practices: ${at.map((p, n) => `(${n + 1}) ${p.text}${p.ref !== undefined ? ` [${p.ref}]` : ""}`).join(" ")}`];
+  return [`[gemworks] at ${flow.name} ${here} ${step} for «${i.title}», the practices: ${at.map((p, n) => `(${n + 1}) ${practiceWords(p, counts[p.id])}`).join(" ")}`];
 }
 
 /** The ask, once on a project's first start, to move the practices among the host's memory notes onto their steps. */

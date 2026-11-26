@@ -357,6 +357,9 @@ export const linkKey = (practices: readonly Practice[]): string => practices.fil
 /** A practice's record: the corrections of its themes before it was written and after. */
 export interface PracticeCount { before: number; after: number }
 
+/** How many corrections said since a practice, where it reminds, make it one that does not hold: the flow tab's 失效 card, the reminder's not holding. */
+export const FAILING_AFTER = 2;
+
 const themesOf = (l: Ledger, practice: string): Set<string> => new Set(l.themes.filter((t) => t.practices.includes(practice)).map((t) => t.id));
 
 /** Whether a practice reminds where a correction was said: its own step, or every one. */
@@ -404,7 +407,7 @@ export function unchecked(l: Ledger, practices: readonly Practice[], limit = CHE
     if (p.deleted === true) continue;
     const mine = themesOf(l, p.id);
     const after = corrections.filter((x) => mine.has(x.theme as string) && x.at > p.at && covers(p, x));
-    if (after.length < 2) continue;
+    if (after.length < FAILING_AFTER) continue;
     for (const x of after) if (x.checks?.[p.id] === undefined) waiting.push({ x, p });
   }
   const sorted = waiting.sort((a, b) => (a.x.at < b.x.at ? -1 : a.x.at > b.x.at ? 1 : 0));
@@ -469,7 +472,7 @@ export function ledgerCards(l: Ledger, practices: readonly Practice[], now: stri
   for (const p of live) {
     const mine = themesOf(l, p.id);
     const after = corrections.filter((x) => mine.has(x.theme as string) && x.at > p.at && covers(p, x) && x.checks?.[p.id] === true);
-    if (after.length < 2 || away(`failing:${p.id}`, after.length)) continue;
+    if (after.length < FAILING_AFTER || away(`failing:${p.id}`, after.length)) continue;
     const instead = live.filter((q) => q.id !== p.id && q.at > p.at && [...themesOf(l, q.id)].some((t) => mine.has(t))).sort((a, b) => (a.at < b.at ? 1 : -1))[0];
     cards.push({ kind: "failing", key: `failing:${p.id}`, practice: p, n: after.length, quotes: quotesOf(after), ...(instead !== undefined ? { instead } : {}) });
   }

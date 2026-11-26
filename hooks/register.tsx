@@ -2989,6 +2989,8 @@ export const register: Register = (on) => {
     await update($, goneOnAtom, () => [])
     await update($, doingAtom, () => null)
     $.clock.after(0, () => { void loadFacts($) })
+    // The ledger, behind the start: the practice reminders beside the first prompt carry its counts.
+    $.clock.after(0, () => { void loadCorrections($).catch(() => undefined) })
     $.clock.every(120_000, () => { void loadFacts($) })
     $.clock.every(60_000, () => {
       $.ui.invalidate('ui.render')
@@ -3258,7 +3260,8 @@ export const register: Register = (on) => {
     // The practices of the step this session's work item stands at; on a project's first start, the ask to move its memory onto the steps.
     try {
       const kept = await practicesKept($)
-      if (kept !== null) news.push(...practiceContext(await workItems($), await coachFlows($), kept.list, await $.session.id().catch(() => '')))
+      // Each with how often it was corrected, from the ledger as last read (none yet: the why alone; never waited for).
+      if (kept !== null) news.push(...practiceContext(await workItems($), await coachFlows($), kept.list, await $.session.id().catch(() => ''), (await correctionsKept($))?.counts ?? {}))
       if (person && kept !== null && !kept.memoryMoved && (await read($, memoryAskedAtom)) !== true) {
         const res = await bridge($, { op: 'memory' }).catch(() => undefined)
         const memory = res !== undefined && res.ok ? res.memory : undefined

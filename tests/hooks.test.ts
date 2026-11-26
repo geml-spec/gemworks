@@ -122,6 +122,8 @@ function world(on: On) {
     lessons: [] as unknown[],
     /** When set, the status answer carries these practices, as the CLI's does. */
     practices: null as { list: Record<string, unknown>[]; memoryMoved: boolean } | null,
+    /** When set, the person's ledger as the corrections op answers it (its cards, each practice's count); null, the op answers none. */
+    corrections: null as Record<string, unknown> | null,
     /** Files the plugin ships, by the end of their path (`/coach/bugfix.geml`): read where the project has none at that path. */
     shipped: new Map<string, string>(),
     /** When set, the project dictionary's keys allowed everywhere, as the outward op keeps and answers them; null, the op answers none. */
@@ -207,6 +209,7 @@ function world(on: On) {
       w.outward = [...kept, ...((req.allow as string[] | undefined) ?? []).filter((k) => !kept.includes(k))]
       return { v: 1, ok: true, shell: { status: null, policy: null, contextKey: null }, outward: w.outward }
     }
+    if (req.op === 'corrections' && w.corrections !== null) return { v: 1, ok: true, shell: { status: null, policy: null, contextKey: null }, corrections: w.corrections }
     if (!w.workflow) {
       const none = { status: null, policy: null, contextKey: null, problem: { text: 'no workflow here: run `gemworks init`', quiet: true } }
       if (req.op === 'made') return { v: 1, ok: true, shell: none, made: w.made }
@@ -418,7 +421,7 @@ test('real event order: session start, a test run moves the stage, the board mov
     return { text: e.text, ...(e.context !== undefined ? { context: e.context } : {}) }
   })
   await start($, on)
-  expect(w.sent.map((r) => r.op), 'the board the inbox is built from is read at the start').toEqual(['status', 'refresh', 'board', 'attention'])
+  expect(w.sent.map((r) => r.op), 'the board the inbox is built from is read at the start; the ledger, for the practice reminders').toEqual(['status', 'refresh', 'board', 'attention', 'corrections'])
   expect(w.sent[0]).toMatchObject({ v: 1, root: ROOT })
   expect(w.registered).toEqual(['status', 'move', 'set', 'note', 'artifact', 'ask', 'work', 'practice', 'propose', 'rule'])
 
@@ -643,7 +646,7 @@ test('a registration the engine refuses: the start goes on, and the band says wh
   const w = world(on)
   w.refuse = { set: 'a tool named set is already registered' }
   await start($, on)
-  expect(w.sent.map((r) => r.op)).toEqual(['status', 'refresh', 'board', 'attention'])
+  expect(w.sent.map((r) => r.op)).toEqual(['status', 'refresh', 'board', 'attention', 'corrections'])
   expect(w.registered).toEqual(['status', 'move', 'note', 'artifact', 'ask', 'work', 'practice', 'propose', 'rule'])
   expect(await bandText($, 'terminal', 400)).toMatch(/^» gemworks：没有注册上 set（[^（]*already registered[^）]*） \[看板\]$/)
 })
@@ -979,6 +982,30 @@ test('a tool no row takes goes through: nobody is asked, nothing waits, nothing 
   const band = await $.ui.mount({ plugin: 'gemworks', surface: 'terminal', component: 'AbovePrompt', props: BAND })
   expect((await band.findAll({ type: 'Button' })).map((b) => b.key)).not.toContain('pending')
   await band.unmount()
+})
+
+test('the practices beside a prompt say why each was learned and how often the same thing was corrected, from the ledger read behind the start', async ($, on) => {
+  const w = world(on)
+  w.workflow = false
+  w.sessionsDir = LOGS
+  w.files.set(`${ROOT}/.geml/coach/bugfix.geml`, BUGFIX_JUDGED)
+  w.practices = { list: [
+    { id: 'p1', flow: 'bugfix', step: 'confirm', text: '按他报的现象原样去验', why: '10-21 被批找借口糊弄', at: '2026-10-21T00:00:00.000Z', by: 'model', layer: 'project' },
+    { id: 'p2', flow: 'bugfix', step: 'confirm', text: '交给他确认的还差要能当场做到', why: '10-29 那一步没有这个按钮', at: '2026-10-20T00:00:00.000Z', by: 'model', layer: 'project' },
+  ], memoryMoved: true }
+  w.corrections = { cards: [], counts: { p1: { before: 4, after: 0 }, p2: { before: 1, after: 2 } }, flowless: [], unthemed: 0, stale: false, unchecked: 0 }
+  const contexts: (readonly string[] | undefined)[] = []
+  on('prompt.submit', ($, e) => { contexts.push(e.context); return { text: e.text } })
+  on('turn.complete', ($, e) => ({ text: e.answer }))
+  const clock = await start($, on)
+  await clock.advance(1)
+  await $.prompt.submit({ text: '导出跳过还是存了', wait: false, origin: COMPOSER })
+  await $.tool.call({ tool: 'mcp__gemworks__work', tool_use_id: 'w1', items: [{ title: '导出跳过不留', flow: 'bugfix', met: ['复现', '修'], needs: '你按一次跳过' }] })
+  await $.turn.complete({ answer: '改好了。', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(1)
+  // The flow tab never opened: the ledger was read behind the start, so its counts are there for this prompt.
+  await $.prompt.submit({ text: '再看下', wait: false, origin: COMPOSER })
+  expect((contexts.at(-1) ?? []).find((x) => x.includes('the practices:'))).toBe('[gemworks] at bugfix confirm 你确认 for «导出跳过不留», the practices: (1) 按他报的现象原样去验 — 10-21 被批找借口糊弄; corrected 4 before, 0 since (2) 交给他确认的还差要能当场做到 — 10-29 那一步没有这个按钮; corrected 1 before, 2 since: not holding')
 })
 
 test('新学到 n 条 on the band is a press: the flow tab opens with the flows of the practices learned today unfolded', async ($, on) => {

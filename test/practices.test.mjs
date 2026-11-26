@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { isNew, newPractices, parsePractices, practicesAt, practicesText } from "../dist/core/practices.js";
 import { changePractice, practicePaths, readPractices, writePractices } from "../dist/practice-store.js";
-import { memoryMoveContext, practiceContext } from "../dist/hosts/claude-code/practice.js";
+import { memoryMoveContext, practiceContext, practiceWords, WHY_SHOWN } from "../dist/hosts/claude-code/practice.js";
 import { COACH_FLOWS, readCoachFlow } from "../dist/hosts/claude-code/coach.js";
 import { gitRepo, hook } from "./helpers/repo.mjs";
 
@@ -84,9 +84,16 @@ test("the bridge answers the practices with no workflow in the project, and writ
 
 test("beside a prompt: the practices of the step this session's work item stands at; on first start, the ask to move the memory notes", () => {
   const item = { id: "a1", flow: "bugfix", title: "导出跳过不留", state: "fix", needs: "", goal: "", status: "open", at: "x", session: "s1", met: ["reproduce", "rootcause", "failtest"].map((step) => ({ step, at: "x", turn: 1 })), next: "" };
-  assert.deepEqual(practiceContext([item], flows, [p({}), p({ id: "r", text: "改动先升小版本", ref: "CLAUDE.md#versions" })], "s1"), [
-    "[gemworks] at bugfix fix 修 for «导出跳过不留», the practices: (1) 同一现象再现，先回头读引擎契约 (2) 改动先升小版本 [CLAUDE.md#versions]",
+  // Each with why it was learned; a practice a file keeps, where.
+  assert.deepEqual(practiceContext([item], flows, [p({}), p({ id: "r", text: "改动先升小版本", why: "", ref: "CLAUDE.md#versions" })], "s1"), [
+    "[gemworks] at bugfix fix 修 for «导出跳过不留», the practices: (1) 同一现象再现，先回头读引擎契约 — 10-22 页签连死四次 (2) 改动先升小版本 [CLAUDE.md#versions]",
   ]);
+  // With the ledger's counts by practice: how often the same thing was corrected before it was written and since; twice
+  // since is not holding, as the flow tab's 失效 card; nothing either side is left out.
+  const counted = practiceContext([item], flows, [p({}), p({ id: "q", text: "一版只试一个猜测", why: "" }), p({ id: "z", text: "先跑全量", why: "" })], "s1",
+    { p1: { before: 4, after: 0 }, q: { before: 1, after: 2 }, z: { before: 0, after: 0 } });
+  assert.equal(counted[0].split("the practices: ")[1], "(1) 同一现象再现，先回头读引擎契约 — 10-22 页签连死四次; corrected 4 before, 0 since (2) 一版只试一个猜测 — corrected 1 before, 2 since: not holding (3) 先跑全量");
+  assert.equal(practiceWords(p({ why: `  ${"页".repeat(80)} ` })), `同一现象再现，先回头读引擎契约 — ${"页".repeat(WHY_SHOWN - 1)}…`, "a long why, its first words");
   assert.deepEqual(practiceContext([item], flows, [p({})], "other"), [], "another session's item: nothing");
   assert.deepEqual(practiceContext([item], flows, [], "s1"), []);
   const ask = memoryMoveContext("/m", [{ file: "a.md", title: "回复中文", hook: "每条回复用中文" }]);

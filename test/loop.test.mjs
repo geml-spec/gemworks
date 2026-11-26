@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { logName, parseLog } from "../dist/core/session-log.js";
 import { answerProposal, callLoopTool, coachFlowsAt, gemlHome, isLoopTool, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, recordAsk, recordPractices, recordProposals, recordWork, workItemsAt } from "../dist/loop.js";
 import { readPractices } from "../dist/practice-store.js";
+import { updateLedger } from "../dist/corrections-store.js";
 import { readSessions, recordPrompt, sessionsDirOf } from "../dist/session-store.js";
 import { gitRepo } from "./helpers/repo.mjs";
 
@@ -56,10 +57,15 @@ test("practice: recorded on its step into the project's layer, and read back bes
   const r = recordPractices(root, "dsh", "s1", { practices: [{ flow: "feature", step: "mockup", text: "样稿先画最简单的一版", layer: "project", why: "11-09 改了三遍" }] }, AT);
   assert.equal(r.ok, true, r.text);
   assert.deepEqual(readPractices(root).practices.filter((p) => p.layer === "project").map((p) => [p.flow, p.step, p.text]), [["feature", "mockup", "样稿先画最简单的一版"]]);
-  const lines = loopContext(root, "s1");
+  let lines = loopContext(root, "s1");
   assert.equal(lines.length, 2);
   assert.match(lines[0], /^\[gemworks\] work items on the way: #\S+ «看板» \(feature: at mockup 样稿\)/);
-  assert.match(lines[1], /the practices: \(1\) 样稿先画最简单的一版/);
+  assert.match(lines[1], /the practices: \(1\) 样稿先画最简单的一版 — 11-09 改了三遍$/, "with why it was learned; no ledger, no count");
+  // The person's ledger (under the home directory): a correction of the same theme said before the practice was written.
+  const id = readPractices(root).practices.find((p) => p.text === "样稿先画最简单的一版").id;
+  updateLedger((l) => ({ ...l, prompts: [{ id: "c1", at: "2026-11-01T00:00:00.000Z", session: "s0", text: "样稿太复杂了", kind: "correct", sub: "process", theme: "t1", by: "model" }], themes: [{ id: "t1", rule: "样稿从简", at: AT, practices: [id] }] }), HOME);
+  lines = loopContext(root, "s1");
+  assert.match(lines[1], /样稿先画最简单的一版 — 11-09 改了三遍; corrected 1 before, 0 since$/, "the ledger's count, read beside the prompt");
   assert.deepEqual(loopContext(root, "another"), [lines[0]], "another session hears the items, not this one's step");
   assert.equal(recordPractices(root, "dsh", "s1", { practices: [] }, AT).ok, false);
 });
