@@ -13,7 +13,7 @@ the published `@geml/geml` parser and nothing else at runtime.
 - `src/bridge.ts` — the Node side the plugin asks through the CLI (git, gh, files).
 - `workflows/`, `coach/` — bundled flows; `skills/` is what Claude Code loads, `host-skills/` what the hosts that read
   one folder load (the geml plugin's two skills are copies there).
-- `test/*.test.mjs` — node:test suites over `dist/`; `tests/*.test.ts` — `claude plugin test` suites for the module.
+- `test/*.test.mjs` — node:test suites over `dist/`; `test/*.test.ts` — `claude plugin test` suites for the module.
 
 ## Build and check
 
