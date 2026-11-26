@@ -1595,13 +1595,15 @@ const FILE_GAP_MS = 300
 /**
  * The first start after the plugin is installed: every transcript of this
  * project's checkouts, this session's too, goes into the shared session record
- * and the work items' artifacts, one at a time in the background, the band
- * counting along; the store remembers it was done. Nothing here holds anything
- * up: a transcript that cannot be read is counted and passed over.
+ * (workflow or none: the record is the project's, as soon as the bridge names
+ * its directory) and the work items' artifacts, one at a time in the
+ * background, the band counting along; the store remembers it was done.
+ * Nothing here holds anything up: a transcript that cannot be read is counted
+ * and passed over.
  */
 async function initBackfill($: EngineInterface): Promise<void> {
   const dir = await read($, sessionsDirAtom)
-  if (dir === null || (await readShell($))?.status == null) return
+  if (dir === null) return
   const key = `init:${dir}`
   try { if ((await $.store.get(key)) === true) return } catch { return }
   const listed = await bridge($, { op: 'backfill-list' }, SLOW_TIMEOUT_MS).catch(() => undefined)

@@ -626,17 +626,18 @@ function ownTranscript(tr: Transcript): Transcript {
 /**
  * One transcript: the pages it published, the files it wrote that git does
  * not keep and what the person gave with a prompt go under the work item of
- * each turn's branch (a branch-unit workflow; nothing otherwise); its turns go
- * into the session's log — written here for another session, handed back for
- * the session asking (`own`), which writes its own log. A session whose log
- * was written minutes ago is writing it still: left alone.
+ * each turn's branch (a branch-unit workflow; nothing otherwise, nor with no
+ * workflow); its turns go into the session's log — written here for another
+ * session, handed back for the session asking (`own`), which writes its own
+ * log. A session whose log was written minutes ago is writing it still: left
+ * alone.
  */
-function backfillOne(ws: Workspace, root: string, req: Extract<BridgeRequest, { op: "backfill-one" }>): { ok: true; backfill: Extract<Backfill, { id: string }> } | { ok: false; reason: string } {
+function backfillOne(ws: Workspace | undefined, root: string, req: Extract<BridgeRequest, { op: "backfill-one" }>): { ok: true; backfill: Extract<Backfill, { id: string }> } | { ok: false; reason: string } {
   let tr: Transcript | undefined;
   try { tr = readTranscript(readText(req.file)); } catch (e) { return { ok: false, reason: `cannot read ${basename(req.file)}: ${(e as Error).message}` }; }
   if (tr === undefined) return { ok: false, reason: `${basename(req.file)} holds no session` };
   if (tr.id === "") tr = { ...tr, id: basename(req.file, ".jsonl") };
-  const home = ws.journalBase;
+  const home = ws?.journalBase ?? journalBaseOf(root);
   const dir = join(home, GEML_DIR, SESSIONS_DIR);
   mkdirSync(dir, { recursive: true });
   if (!exists(join(dir, ".gitignore"))) writeAtomic(join(dir, ".gitignore"), SESSIONS_GITIGNORE);
@@ -652,7 +653,7 @@ function backfillOne(ws: Workspace, root: string, req: Extract<BridgeRequest, { 
   // The artifacts: by each turn's branch, where the workflow's unit is the branch.
   let files = 0;
   let links = 0;
-  if (ws.sc.unit.kind === "branch") {
+  if (ws?.sc.unit.kind === "branch") {
     for (const turn of fresh.turns) {
       const item = turn.branch;
       if (item === undefined || item === "") continue;
@@ -891,6 +892,12 @@ function answer(req: BridgeRequest): BridgeResponse {
     if (req.op === "artifact") {
       const r = recordArtifact(undefined, root, req);
       return r.ok ? { v: 1, ok: true, shell, text: r.text } : { v: 1, ok: false, error: r.reason, shell };
+    }
+    // Nor the host's transcripts, read into that record on the first start.
+    if (req.op === "backfill-list") return { v: 1, ok: true, shell, backfill: { sessions: transcriptFiles(root, transcriptsRoot(req)).map(({ file, id, size }) => ({ file, id, size })) } };
+    if (req.op === "backfill-one") {
+      const r = backfillOne(undefined, root, req);
+      return r.ok ? { v: 1, ok: true, shell, backfill: r.backfill } : { v: 1, ok: false, error: r.reason, shell };
     }
     return asks ? { v: 1, ok: false, error: opened.reason, shell } : { v: 1, ok: true, shell, ...record };
   }

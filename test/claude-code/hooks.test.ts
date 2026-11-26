@@ -219,6 +219,12 @@ function world(on: On) {
       if (req.op === 'status' && (w.practices !== null || w.sessionsDir !== null)) return { v: 1, ok: true, shell: none, ...(w.practices !== null ? { practices: w.practices } : {}), ...(w.sessionsDir !== null ? { sessions: w.sessionsDir } : {}) }
       // And the machine with the attention answer, without the repository's facts.
       if (req.op === 'attention') return { v: 1, ok: true, shell: none, host: { name: 'build-box', platform: w.platform, user: 'dev', branch: 'feat/x' } }
+      // And the host's transcripts read into the record.
+      if (req.op === 'backfill-list') return { v: 1, ok: true, shell: none, backfill: { sessions: w.transcripts } }
+      if (req.op === 'backfill-one') {
+        const b = w.backfills.get(String(req.file))
+        return typeof b === 'string' ? { v: 1, ok: false, error: `gemworks: ${b}`, shell: none } : { v: 1, ok: true, shell: none, backfill: b ?? { id: String(req.id), turns: 0, files: 0, links: 0 } }
+      }
       return ['verb', 'mark', 'advance', 'bind'].includes(req.op) ? { v: 1, ok: false, error: 'no workflow here', shell: none } : { v: 1, ok: true, shell: none }
     }
     if (req.op === 'after' && w.routed !== null) return { v: 1, ok: true, shell: shell(), entered: [], routed: w.routed }
@@ -2258,6 +2264,19 @@ test("the first start with a shared record reads the host's transcripts into it,
   const before = w.sent.filter((r) => r.op === 'backfill-list').length
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
   expect(w.sent.filter((r) => r.op === 'backfill-list').length).toBe(before)
+})
+
+test('with no workflow, the light flows alone as a project starts, the first start reads the transcripts into the record just the same', async ($, on) => {
+  const w = world(on)
+  w.workflow = false
+  w.sessionsDir = LOGS
+  w.transcripts = [{ file: '/t/old.jsonl', id: 'old', size: 20 }]
+  w.backfills.set('/t/old.jsonl', { id: 'old', turns: 1, files: 0, links: 0 })
+  const clock = await start($, on)
+  await clock.advance(10_000)
+  expect(w.sent.filter((r) => r.op === 'backfill-one').map((r) => r.file)).toEqual(['/t/old.jsonl'])
+  expect(await bandText($)).toMatch(/初始化完毕。欢迎使用。/)
+  expect(w.store.get(`init:${LOGS}`)).toBe(true)
 })
 
 test('a start the bridge did not answer tries again by itself: the band says so meanwhile, and the stage appears once the bridge answers', async ($, on) => {

@@ -12,12 +12,15 @@ import { readArtifactRows } from "../dist/store/artifacts.js";
 
 const WS_DEV = fileURLToPath(new URL("./fixtures/ws-dev/", import.meta.url));
 
-/** A project on feat/x with the dev workflow, ignoring out/ and .geml/, and a transcripts folder with its own slug. */
-function project() {
+/**
+ * A project on feat/x with the dev workflow (with none: `workflow: false`, the light flows alone, as a project starts),
+ * ignoring out/ and .geml/, and a transcripts folder with its own slug.
+ */
+function project({ workflow = true } = {}) {
   const root = gitRepo("feat/x");
   writeFileSync(join(root, ".gitignore"), "out/\n.geml/\n");
   mkdirSync(join(root, "out"), { recursive: true });
-  withWorkflow(root, WS_DEV, "dev");
+  if (workflow) withWorkflow(root, WS_DEV, "dev");
   const transcripts = mkdtempSync(join(tmpdir(), "gemworks-transcripts-"));
   const slug = join(transcripts, slugOf(resolve(root)));
   mkdirSync(slug, { recursive: true });
@@ -65,6 +68,30 @@ test("backfill-list names the transcripts of the project's checkouts; backfill-o
   const again = hook(root, { op: "backfill-one", file: listed.backfill.sessions[0].file, transcripts });
   assert.deepEqual(again.backfill, { id: "s-1", turns: 0, files: 0, links: 0 }, "read again: nothing new");
   assert.equal(readArtifactRows(root).length, 2);
+});
+
+test("with no workflow the transcripts still go into the shared record: backfill-list names them, backfill-one writes the session's log; no work item to put artifacts under", () => {
+  const { root, transcripts, slug } = project({ workflow: false });
+  writeFileSync(join(root, "out", "a.md"), "# made for a person\n");
+  writeFileSync(join(slug, "s-1.jsonl"), [
+    user(root, "u1", "2026-10-20T01:00:01Z", "产物不是产品，叫artifacts"),
+    assistant(root, "2026-10-20T01:00:05Z", [{ type: "tool_use", id: "t1", name: "Write", input: { file_path: join(root, "out", "a.md") } }]),
+    result(root, "2026-10-20T01:00:06Z", "t1", "ok"),
+    assistant(root, "2026-10-20T01:00:12Z", [{ type: "text", text: "改好了：products 改名 artifacts。" }]),
+  ].join("\n") + "\n");
+  const listed = hook(root, { op: "backfill-list", transcripts });
+  assert.equal(listed.ok, true, JSON.stringify(listed));
+  assert.equal(listed.shell.status, null, "no workflow");
+  assert.deepEqual(listed.backfill?.sessions.map((s) => s.id), ["s-1"]);
+
+  const one = hook(root, { op: "backfill-one", file: listed.backfill.sessions[0].file, transcripts });
+  assert.equal(one.ok, true, JSON.stringify(one));
+  assert.deepEqual(one.backfill, { id: "s-1", turns: 1, files: 0, links: 0 });
+  const log = join(root, ".geml", "sessions", "claude-code-s-1.geml");
+  const s = summarize(parseLog(readFileSync(log, "utf8")));
+  assert.deepEqual([s.id, s.branch, s.backfilled], ["s-1", "feat/x", true]);
+  assert.deepEqual(s.turns.map((t) => [t.prompt, t.answer, t.backfilled]), [["产物不是产品，叫artifacts", "改好了：products 改名 artifacts。", true]]);
+  assert.deepEqual(readArtifactRows(root), []);
 });
 
 test("the session asking gets its turns back and its log is not written by the bridge; a scheduled task's session is named; a session writing its own log is left alone", () => {
