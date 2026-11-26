@@ -114,3 +114,11 @@ test("one build, four names on npm: @geml/gemworks, and @geml/gemwork for the na
   assert.equal(pkg.scripts.release, "node scripts/publish.mjs");
   assert.deepEqual(pkg.bin, { gemworks: "dist/cli.js", gwx: "dist/cli.js" }, "two commands, the long and the short, whichever name installed it");
 });
+
+test("CI loads the hooks module in the newest Claude Code: validate and the engine's own tests, on every push and every Monday", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/engine.yml", here), "utf8");
+  assert.match(workflow, /npm install --global @anthropic-ai\/claude-code@latest/, "the newest release, where a change in the plugin API shows first");
+  assert.match(workflow, /- run: npm run build\s[\s\S]*- run: claude plugin validate \.\s+- run: claude plugin test \./, "built first: the module imports dist/");
+  assert.match(workflow, /schedule:\s+- cron: "[^"]+"/, "and on a schedule, so a release shows within a week with nothing pushed");
+  assert.match(workflow, /permissions:\s+contents: read/);
+});

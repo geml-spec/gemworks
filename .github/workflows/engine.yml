@@ -1,0 +1,37 @@
+name: Engine
+
+# The hooks module in Claude Code's own engine. CI's tests job runs the node:test suites, which never load the module;
+# here `claude plugin validate` reads the manifest and the module the way a session loads them, and `claude plugin test`
+# runs test/claude-code/hooks.test.ts in the engine's test host. The plugin API is early access and changes between
+# releases, so this runs on the newest Claude Code, and every Monday as well: a release that breaks the module shows
+# within a week even when nothing was pushed. The type check (test/claude-code/hooks-types.test.mjs) is not here: the
+# engine writes its declarations only when a session loads the plugin.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+# Read-only: it only checks out and tests.
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    name: plugin validate + test (newest Claude Code)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - run: npm ci
+      # The module imports the pure parts from dist/.
+      - run: npm run build
+      - run: npm install --global @anthropic-ai/claude-code@latest
+      - run: claude --version
+      - run: claude plugin validate .
+      - run: claude plugin test .
