@@ -40,6 +40,7 @@
     "build": "tsc && node scripts/bundle.mjs",
     "test": "npm run build && node test/all.mjs",
     "test:claude": "npm run build && claude plugin validate . && claude plugin test .",
+    "coverage": "node scripts/coverage.mjs",
     "release": "node scripts/publish.mjs",
     "walkthrough": "node examples/walkthrough.mjs"
   },

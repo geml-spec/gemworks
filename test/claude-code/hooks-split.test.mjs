@@ -26,6 +26,8 @@ test("every file the package ships is under 256 KiB, and the package under 512 f
     else files.push(rel);
   };
   for (const f of [...pkg.files, "package.json", "README.md", "README.zh.md"]) walk(f);
+  // The coverage build (scripts/coverage.mjs) writes source maps beside dist/'s files for the run, and removes them after.
+  if (process.env["GEMWORKS_COVERAGE"] === "1") files.splice(0, files.length, ...files.filter((f) => !f.endsWith(".map")));
   assert.ok(files.includes("dist/gemworks.mjs"), "dist/ is built (npm run build) before this runs");
   const IMAGE_OR_FONT = /\.(png|jpe?g|gif|webp|svg|woff2?|ttf|otf)$/i;
   const over = files.filter((f) => !IMAGE_OR_FONT.test(f) && statSync(join(ROOT, f)).size >= 256 * 1024);

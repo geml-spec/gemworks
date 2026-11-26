@@ -122,3 +122,14 @@ test("CI loads the hooks module in the newest Claude Code: validate and the engi
   assert.match(workflow, /schedule:\s+- cron: "[^"]+"/, "and on a schedule, so a release shows within a week with nothing pushed");
   assert.match(workflow, /permissions:\s+contents: read/);
 });
+
+test("CI counts coverage: npm run coverage in a job of its own, failing below scripts/coverage.mjs's floors", () => {
+  assert.equal(pkg.scripts.coverage, "node scripts/coverage.mjs");
+  // As git checks them out: CRLF on a Windows checkout, LF elsewhere.
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", here), "utf8").replace(/\r\n/g, "\n");
+  assert.match(workflow, /\n {2}coverage:\n[\s\S]*- run: npm ci\s+- run: npm run coverage/, "a job of its own, from a clean install");
+  const script = readFileSync(new URL("../scripts/coverage.mjs", here), "utf8").replace(/\r\n/g, "\n");
+  assert.match(script, /"--check-coverage", "--lines", String\(LINES\), "--branches", String\(BRANCHES\)/, "the floors fail the run, not just the report");
+  assert.match(script, /"--include", "src\/\*\*", "--exclude-after-remap"/, "counted against src/, through the source maps");
+  assert.match(script, /finally \{\s+const rebuilt = build\(false\)/, "dist/ is built again without source maps, whatever the run did: a map left there would ship");
+});

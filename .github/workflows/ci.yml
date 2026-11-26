@@ -27,3 +27,17 @@ jobs:
       # @geml/geml comes from npm, so the lockfile holds: a clean install.
       - run: npm ci
       - run: npm test
+
+  # The suite once more under c8, counted against src/ through source maps: below the floor of lines or branches
+  # (scripts/coverage.mjs) the job fails. On Linux alone; the job above runs the suite on all three platforms.
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm run coverage

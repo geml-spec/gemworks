@@ -69,9 +69,12 @@ const start = {
 
 const entryPoints = { gemworks: START };
 for (const m of SPLIT) entryPoints[`gemworks-${m.replace(/^src\//, "").replace(/\.ts$/, "").replace(/\//g, "-")}`] = join(root, m);
+// The coverage build (scripts/coverage.mjs) asks for source maps, so the bundle's lines count as src/'s.
+const SOURCE_MAPS = process.env["GEMWORKS_SOURCEMAP"] === "1";
 const result = await build({
   entryPoints,
   outdir: dist,
+  sourcemap: SOURCE_MAPS,
   splitting: true,
   chunkNames: "gemworks-chunk-[hash]",
   outExtension: { ".js": ".mjs" },
@@ -91,6 +94,6 @@ copyFileSync(join(parserDir, "..", "LICENSE"), join(vendor, "LICENSE"));
 // reads its version from it (PARSER_VERSION looks beside and above geml.js), so the about dialog says the parser's.
 writeFileSync(join(vendor, "package.json"), `${JSON.stringify({ name: parserPkg.name, version: parserPkg.version, type: "module", license: parserPkg.license }, null, 2)}\n`);
 
-const written = [...Object.keys(result.metafile.outputs).map((o) => resolve(o)), ...[...parserFiles].map((f) => join(vendor, f))];
+const written = [...Object.keys(result.metafile.outputs).map((o) => resolve(o)).filter((f) => !f.endsWith(".map")), ...[...parserFiles].map((f) => join(vendor, f))];
 const over = written.filter((f) => statSync(f).size >= LIMIT);
 if (over.length > 0) throw new Error(`over 256 KiB, split further (SPLIT in scripts/bundle.mjs): ${over.map((f) => `${f} ${statSync(f).size}`).join(", ")}`);
