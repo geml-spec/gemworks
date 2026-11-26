@@ -3,7 +3,7 @@
 // question, not a correction. Six kinds of correction a check on a step could catch (FIXED_SUBS); three need the
 // person's own judgment (PERSON_SUBS). Corrections that say the same thing share a theme, and a theme a practice states
 // tells whether the practice holds: how often it was said before the practice, how often after. The ledger lives in
-// the person's ~/.gemworks/corrections.geml (corrections-store.ts), never in a repository: it holds their own words.
+// the person's ~/.gemworks/corrections.geml (store/corrections.ts), never in a repository: it holds their own words.
 // Pure and Node-free.
 import type { Practice } from "./practices.js";
 

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deleteMemory, memoryDir, readMemory, setMemoryHook } from "../dist/memory-store.js";
+import { deleteMemory, memoryDir, readMemory, setMemoryHook } from "../dist/store/memory.js";
 
 /** A memory folder of three entries, the index in the line ending given. */
 function folder(nl = "\n") {

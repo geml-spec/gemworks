@@ -7,8 +7,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { journalBaseOf } from "./host-git.js";
-import { parsePractices, practicesText, type Practice, type PracticeFile, type PracticeLayer } from "./core/practices.js";
+import { journalBaseOf } from "../host-git.js";
+import { parsePractices, practicesText, type Practice, type PracticeFile, type PracticeLayer } from "../core/practices.js";
 
 export const PRACTICES_FILE = "practices.geml";
 

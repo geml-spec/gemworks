@@ -8,9 +8,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logName, parseLog } from "../dist/core/session-log.js";
 import { answerProposal, callLoopTool, coachFlowsAt, gemlHome, isLoopTool, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, recordAsk, recordPractices, recordProposals, recordWork, workItemsAt } from "../dist/loop.js";
-import { readPractices } from "../dist/practice-store.js";
-import { updateLedger } from "../dist/corrections-store.js";
-import { readSessions, recordPrompt, sessionsDirOf } from "../dist/session-store.js";
+import { readPractices } from "../dist/store/practices.js";
+import { updateLedger } from "../dist/store/corrections.js";
+import { readSessions, recordPrompt, sessionsDirOf } from "../dist/store/sessions.js";
 import { gitRepo } from "./helpers/repo.mjs";
 
 // The person's own practices live under the home directory: this machine's must not reach the tests.

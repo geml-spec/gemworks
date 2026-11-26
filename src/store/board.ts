@@ -8,17 +8,17 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join } from "node:path";
-import { GEML_DIR } from "./core/layout.js";
-import { boardPage, type BoardAsk } from "./core/board-page.js";
-import type { ArtifactRow } from "./core/artifacts.js";
-import { BROWSER_PROGID_ARGV, browserCommandArgv, browserExeOf, fileUrl, openersFor, progIdOf } from "./hosts/claude-code/open-file.js";
-import { readArtifactRows } from "./artifacts-store.js";
-import { journalBaseOf } from "./host-git.js";
-import { coachFlowsAt, gemlHome, proposalsAt, workItemsAt } from "./loop.js";
-import { readPractices } from "./practice-store.js";
-import { decisionsFor, hostLabel, readSessions } from "./session-store.js";
-import { langOf, wordsFor, type Lang } from "./hosts/claude-code/text.js";
-import { flowsIn } from "./hosts/claude-code/coach.js";
+import { GEML_DIR } from "../core/layout.js";
+import { boardPage, type BoardAsk } from "../core/board-page.js";
+import type { ArtifactRow } from "../core/artifacts.js";
+import { BROWSER_PROGID_ARGV, browserCommandArgv, browserExeOf, fileUrl, openersFor, progIdOf } from "../hosts/claude-code/open-file.js";
+import { readArtifactRows } from "./artifacts.js";
+import { journalBaseOf } from "../host-git.js";
+import { coachFlowsAt, gemlHome, proposalsAt, workItemsAt } from "../loop.js";
+import { readPractices } from "./practices.js";
+import { decisionsFor, hostLabel, readSessions } from "./sessions.js";
+import { langOf, wordsFor, type Lang } from "../hosts/claude-code/text.js";
+import { flowsIn } from "../hosts/claude-code/coach.js";
 
 export const BOARD_FILE = "board.geml";
 

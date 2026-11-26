@@ -5,7 +5,7 @@ import { bindingOf, type DictRow } from "../../core/dictionary.js";
 import { isOutwardKey } from "../../core/outward.js";
 import type { Status } from "../../workspace.js";
 import type { BoardAction, BoardTab, JournalFilter, Pressable } from "./actions.js";
-import type { MemoryList } from "../../memory-store.js";
+import type { MemoryList } from "../../store/memory.js";
 import { cellWidth, howText, truncate, varSegment, wrapCells, type Tone } from "./band.js";
 import { othersWaiting, pendingList, shortReason, type InboxItem } from "./inbox.js";
 import type { BoardData, BoardItem, MadeAll, MadeEntry, Artifacts, ShellStatus, TimelineEntry } from "./protocol.js";

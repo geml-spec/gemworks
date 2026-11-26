@@ -30,8 +30,8 @@ import { serveMcp } from "./mcp.js";
 import { decodeRequest, type BridgeResponse } from "./hosts/claude-code/protocol.js";
 import { docReader, openWorkspace, resolvePromptRef, resolveWorkflow, type Workspace } from "./workspace.js";
 import { defaultPeriods, LABEL_GUIDE, localDay, parsePeriod, report, reportText, type Period } from "./core/corrections.js";
-import { addLabelled, labelledRows, readLedger, recordedUnlabelled, unlabelledPrompts } from "./corrections-store.js";
-import { readSessions } from "./session-store.js";
+import { addLabelled, labelledRows, readLedger, recordedUnlabelled, unlabelledPrompts } from "./store/corrections.js";
+import { readSessions } from "./store/sessions.js";
 import { cellWidth } from "./hosts/claude-code/band.js";
 
 const USAGE = [

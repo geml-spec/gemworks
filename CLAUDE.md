@@ -13,6 +13,8 @@ the published `@geml/geml` parser and nothing else at runtime.
   `hook.ts` (`src/hosts/hooked.ts` holds what five of them share); `dsh/` and `pi/` for the two that load gemworks
   in-process. `codex/`, `hooks.json` and `mcp_config.json` are Codex's and Antigravity's install files.
 - `src/bridge.ts` — the Node side the plugin asks through the CLI (git, gh, files).
+- `src/store/` — what the Node side keeps on disk: artifacts, session records, practices, corrections, the dictionary,
+  sign-off sheets, the GEML board page.
 - `workflows/`, `coach/` — bundled flows; `skills/` is what Claude Code loads, `host-skills/` what the hosts that read
   one folder load (the geml plugin's two skills are copies there).
 - `test/*.test.mjs` — node:test suites over `dist/`; `test/*.test.ts` — `claude plugin test` suites for the module.

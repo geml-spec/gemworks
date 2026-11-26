@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { closestPractices, isNew, likeness, newPractices, parsePractices, practicesAt, practicesText } from "../dist/core/practices.js";
-import { changePractice, practicePaths, readPractices, writePractices } from "../dist/practice-store.js";
+import { changePractice, practicePaths, readPractices, writePractices } from "../dist/store/practices.js";
 import { memoryMoveContext, practiceAnswer, practiceContext, practiceWords, WHY_SHOWN } from "../dist/hosts/claude-code/practice.js";
 import { COACH_FLOWS, readCoachFlow } from "../dist/hosts/claude-code/coach.js";
 import { gitRepo, hook } from "./helpers/repo.mjs";

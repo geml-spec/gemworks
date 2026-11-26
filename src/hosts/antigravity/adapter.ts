@@ -9,7 +9,7 @@
 // line: a `USER_INPUT` step holding `<USER_REQUEST>…</USER_REQUEST>`, the
 // model's `PLANNER_RESPONSE` steps).
 //
-// What it does is the project's shared session record (session-store.ts):
+// What it does is the project's shared session record (store/sessions.ts):
 // the session opens a log and the model is told about the note tool; each
 // prompt is a turn, the other sessions' decisions not yet read beside it as a
 // transient message; the files a write tool wrote and a commit a command made
@@ -25,10 +25,10 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { decisionsContext, SESSIONS_PROMPT } from "../../core/session-log.js";
-import { boardHasWork, openBoardOnce, writeBoard } from "../../board-file.js";
+import { boardHasWork, openBoardOnce, writeBoard } from "../../store/board.js";
 import { coachFlowsAt, loopContext, loopPrompt } from "../../loop.js";
 import { normalised } from "../claude-code/readers.js";
-import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../../session-store.js";
+import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../../store/sessions.js";
 
 export const ANTIGRAVITY_HOST = "antigravity";
 

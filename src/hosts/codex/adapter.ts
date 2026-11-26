@@ -38,9 +38,9 @@ import { allowCall, callOf, contextFor, denyCall, exitCodeIn, isWrapped, patchPa
 import type { Status } from "../../workspace.js";
 import { currentTurn, decisionsContext, SESSIONS_PROMPT } from "../../core/session-log.js";
 import { WORK_REMINDER } from "../../core/work.js";
-import { boardHasWork, openBoardOnce, writeBoard } from "../../board-file.js";
+import { boardHasWork, openBoardOnce, writeBoard } from "../../store/board.js";
 import { coachFlowsAt, loopContext, loopPrompt } from "../../loop.js";
-import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../../session-store.js";
+import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../../store/sessions.js";
 
 export interface CodexRun { stdout: string; code: number }
 const NOTHING: CodexRun = { stdout: "", code: 0 };
@@ -97,7 +97,7 @@ export async function runCodex(text: string, env: NodeJS.ProcessEnv, platform: s
   const file = stateFileFor(env, ev.session_id ?? "codex");
   const state = readState(file);
   const ask = (op: BridgeOp): Promise<BridgeResponse> => handleRequest({ v: 1, root, ...op });
-  // The project's shared session record (session-store.ts): what fails to be written there is missed, never a broken hook.
+  // The project's shared session record (store/sessions.ts): what fails to be written there is missed, never a broken hook.
   const sid = ev.session_id ?? "codex";
   const record = (f: () => void): void => { try { f(); } catch { /* the record misses this one */ } };
 

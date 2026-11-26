@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { readDictionary } from "../dist/core/dictionary-file.js";
-import { readDictionaryFile } from "../dist/dictionary-io.js";
+import { readDictionaryFile } from "../dist/store/dictionary.js";
 import { DSH_TOOLS } from "../dist/core/host-tools.js";
 import { readJournal } from "../dist/core/journal.js";
 import { statusOf } from "../dist/core/status.js";

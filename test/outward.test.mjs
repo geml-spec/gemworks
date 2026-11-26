@@ -1,5 +1,5 @@
 // Outward actions (src/core/outward.ts): which calls reach beyond this machine, how the question puts them, what an
-// answer does; the project dictionary's rows that let them through (src/dictionary-io.ts, the bridge's outward op);
+// answer does; the project dictionary's rows that let them through (src/store/dictionary.ts, the bridge's outward op);
 // and the tools tab's list of them (board.ts outwardRows).
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { commandsRun } from "../dist/core/command-line.js";
 import { allowedOutward, isOutwardKey, mcpOutward, outwardAnswer, outwardOf, outwardQuestion } from "../dist/core/outward.js";
 import { readDictionary } from "../dist/core/dictionary-file.js";
-import { outwardAllowed, projectDictionaryPath } from "../dist/dictionary-io.js";
+import { outwardAllowed, projectDictionaryPath } from "../dist/store/dictionary.js";
 import { outwardRows } from "../dist/hosts/claude-code/board.js";
 import { wordsFor } from "../dist/hosts/claude-code/text.js";
 import { gitRepo, hook } from "./helpers/repo.mjs";

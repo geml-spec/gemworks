@@ -1,4 +1,4 @@
-// The project's shared session record on disk (src/session-store.ts): one directory for every checkout of a
+// The project's shared session record on disk (src/store/sessions.ts): one directory for every checkout of a
 // repository, out of git; each session's own log; the other sessions' decisions; the session an MCP server writes for.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { logName, parseLog } from "../dist/core/session-log.js";
-import { appendSession, branchesElsewhere, decisionsFor, latestSessionOf, markOpen, readSessions, recordAnswer, recordDecisions, recordFile, recordNote, recordPrompt, sessionsDirOf } from "../dist/session-store.js";
+import { appendSession, branchesElsewhere, decisionsFor, latestSessionOf, markOpen, readSessions, recordAnswer, recordDecisions, recordFile, recordNote, recordPrompt, sessionsDirOf } from "../dist/store/sessions.js";
 import { gitRepo } from "./helpers/repo.mjs";
 
 const git = (root, ...a) => spawnSync("git", ["-C", root, ...a], { encoding: "utf8" });

@@ -6,9 +6,9 @@
 // engine's file calls.
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { GEML_DIR } from "./core/layout.js";
-import { appendEvents, currentTurn, decisionsSince, isLogName, legacyLogName, logName, nextTurn, parseLog, personPrompts, readNote, SESSIONS_DIR, SESSIONS_GITIGNORE, summarize, type NoteRead, type SessionEvent, type SessionSummary, type SharedDecision } from "./core/session-log.js";
-import { commitsOf, journalBaseOf, repoFacts } from "./host-git.js";
+import { GEML_DIR } from "../core/layout.js";
+import { appendEvents, currentTurn, decisionsSince, isLogName, legacyLogName, logName, nextTurn, parseLog, personPrompts, readNote, SESSIONS_DIR, SESSIONS_GITIGNORE, summarize, type NoteRead, type SessionEvent, type SessionSummary, type SharedDecision } from "../core/session-log.js";
+import { commitsOf, journalBaseOf, repoFacts } from "../host-git.js";
 
 /** The directory of a project's session logs, for any of its checkouts. */
 export function sessionsDirOf(root: string): string {

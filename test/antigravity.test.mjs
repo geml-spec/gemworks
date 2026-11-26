@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { activeOf, answerOf, installAntigravity, promptsAfter, requestOf, runAntigravity } from "../dist/hosts/antigravity/adapter.js";
 import { logName, parseLog } from "../dist/core/session-log.js";
-import { recordDecisions, recordPrompt, sessionsDirOf } from "../dist/session-store.js";
+import { recordDecisions, recordPrompt, sessionsDirOf } from "../dist/store/sessions.js";
 import { BUNDLE, gitRepo } from "./helpers/repo.mjs";
 
 // A session's start opens the GEML board: never a window from a test.

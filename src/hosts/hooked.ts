@@ -31,10 +31,10 @@ import type { BridgeOp, BridgeResponse } from "./claude-code/protocol.js";
 import { contextOf } from "./claude-code/readers.js";
 import { isWrapped, unwrapCommand, wrapCommand } from "./codex/hook.js";
 import type { Status } from "../workspace.js";
-import { boardHasWork, openBoardOnce, writeBoard } from "../board-file.js";
+import { boardHasWork, openBoardOnce, writeBoard } from "../store/board.js";
 import { projectPath } from "./cursor/adapter.js";
 import { coachFlowsAt, loopContext, loopPrompt } from "../loop.js";
-import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../session-store.js";
+import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../store/sessions.js";
 
 /** How a host names its tools, and where its calls say what they did. */
 export interface HostTools {

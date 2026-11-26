@@ -84,7 +84,7 @@ Node 的模块，`test/hooks-purity.test.mjs` 沿着这条 import 链逐个检�
 放键、模式和决定，`signals.ts` 放按来源分的证据，`supervisor.ts` 放闸和动词，
 `asking.ts` 放首选工具的那个问题和答案写下的东西。I/O 放在它旁边：`src/host-fs.ts`
 （文件、锁、原子写入、遍历项目）、`src/host-git.ts`（git 与 gh，每次都是带超时的参数
-数组）、`src/dictionary-io.ts`（磁盘上的词典，每次重读、在它的锁下重写），以及
+数组）、`src/store/dictionary.ts`（磁盘上的词典，每次重读、在它的锁下重写），以及
 `src/workspace.ts`——为 CLI 和任何建在它上面的宿主，对一个项目一次只做一个加锁的操作。
 
 目录结构就是从这条规矩来的：`src/core/supervisor.ts` 做判断，`src/hosts/dsh/` 与
@@ -100,5 +100,5 @@ Claude Code 外壳也按这条规矩分在桥的两侧。`src/bridge.ts` 是 `ge
 不依赖 Node 的一侧：请求与应答的类型、快路径、读 Claude Code 工具结果的函数，以及
 状态带、看板与 `/gemworks` 的文字——都是纯函数。`src/mcp.ts` 用 stdio MCP 提供同样的
 动词（`src/verbs.ts`）和工作循环的工具（`src/loop.ts`）；`src/hosts/codex/adapter.ts` 与
-`src/hosts/antigravity/adapter.ts` 是这两家的 hooks，`src/board-file.ts` 写出它们和 `gemworks mcp` 打开的
+`src/hosts/antigravity/adapter.ts` 是这两家的 hooks，`src/store/board.ts` 写出它们和 `gemworks mcp` 打开的
 那一页 GEML 看板。

@@ -21,7 +21,7 @@ import { dirname, join } from "node:path";
 import { Type, type TSchema } from "typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { appendOrCreate, exists, readText, realPath } from "../../host-fs.js";
-import { readDictionaryFile } from "../../dictionary-io.js";
+import { readDictionaryFile } from "../../store/dictionary.js";
 import { commandOf } from "../../core/command-line.js";
 import { PI_TOOLS } from "../../core/host-tools.js";
 import { writtenProjectPath } from "../../core/written.js";

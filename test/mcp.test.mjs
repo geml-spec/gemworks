@@ -178,7 +178,7 @@ test("--root names the project, wherever the server is started", () => {
 
 test("Codex starts the server in the plugin's directory: each call's project is the workspace its turn metadata names, its note goes to that session", async () => {
   const { logName, parseLog } = await import("../dist/core/session-log.js");
-  const { sessionsDirOf } = await import("../dist/session-store.js");
+  const { sessionsDirOf } = await import("../dist/store/sessions.js");
   const root = gitRepo();
   withWorkflow(root, WS_DEV, "dev");
   const plugin = mkdtempSync(join(tmpdir(), "gemworks-mcp-plugin-"));
@@ -273,7 +273,7 @@ test("status on an MCP-only host reads a file variable written since the last ca
 
 test("note: the decisions go into the log of this host's session that asked last; a list with nothing in it records nothing", async () => {
   const { logName, parseLog } = await import("../dist/core/session-log.js");
-  const { recordPrompt, sessionsDirOf } = await import("../dist/session-store.js");
+  const { recordPrompt, sessionsDirOf } = await import("../dist/store/sessions.js");
   const root = gitRepo();
   recordPrompt(root, "codex", "cx1", "问一句", "2026-10-19T08:00:00.000Z");
   const out = mcp(root, [
@@ -289,7 +289,7 @@ test("note: the decisions go into the log of this host's session that asked last
 });
 
 test("the work loop over MCP: what the model is told once, a work item recorded and read back by status with no workflow, a question registered, and the other sessions' decisions on a host with no hooks", async () => {
-  const { recordDecisions, recordPrompt } = await import("../dist/session-store.js");
+  const { recordDecisions, recordPrompt } = await import("../dist/store/sessions.js");
   const root = gitRepo();
   const now = new Date().toISOString();
   recordPrompt(root, "grok", "g1", "做个看板", now);

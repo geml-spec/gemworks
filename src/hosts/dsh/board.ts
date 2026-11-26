@@ -10,7 +10,7 @@
 // Pure but for the dictionary file a lesson is written to: the plugin reads
 // the journal file and serves the routes.
 import type { Dictionary } from "../../core/dictionary.js";
-import { learnInFile } from "../../dictionary-io.js";
+import { learnInFile } from "../../store/dictionary.js";
 import type { Journal } from "../../core/journal.js";
 import { flowPicture } from "../../core/picture.js";
 import { policyOf, type FlowPolicy } from "../../core/policy.js";

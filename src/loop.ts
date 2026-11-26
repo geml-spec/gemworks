@@ -2,7 +2,7 @@
 // and Antigravity's hooks, DeepSeek Harness, Pi): the light flows read from the
 // project's `.geml/coach/` and the ones the package ships; the work items, the
 // practices, the proposals and the questions the model reports with its tools,
-// written into the project's shared record (session-store.ts, practice-store.ts,
+// written into the project's shared record (store/sessions.ts, store/practices.ts,
 // `.geml/proposals.geml`) where every host and the Claude Code board read them;
 // and what the model is told once and beside each prompt. The Claude Code module
 // does the same through its engine's file calls (hooks/register.tsx); the pure
@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { ARTIFACT_TOOL } from "./core/artifact-tool.js";
 import { ASK_PROMPT_ON_BOARD, ASK_TOOL_ON_BOARD, askedOf } from "./core/ask-tool.js";
 import { practiceCounts, type PracticeCount } from "./core/corrections.js";
-import { readLedger } from "./corrections-store.js";
+import { readLedger } from "./store/corrections.js";
 import { ANSWER_TOOL, applyToFlow, flowText, GROWTH_PROMPT_ON_BOARD, newFlow, newProposals, parseProposals, PROPOSE_TOOL_ON_BOARD, proposalsText, type Proposal } from "./core/growth.js";
 import { GEML_DIR } from "./core/layout.js";
 import { PRACTICE_PROMPT, PRACTICE_TOOL, practiceAnswer, practiceContext } from "./core/practice-tool.js";
@@ -23,9 +23,9 @@ import { currentTurn, type SessionEvent } from "./core/session-log.js";
 import { COACH_FLOWS, readCoachFlow, turnItem, WORK_TOOL, workContext, workEvents, workItemsOf, workPrompt, type CoachFlow, type WorkItem } from "./core/work.js";
 import { handleRequest } from "./bridge.js";
 import { journalBaseOf } from "./host-git.js";
-import { readPractices, writePractices } from "./practice-store.js";
-import { appendSession, readSessions } from "./session-store.js";
-import { writeSignoffs } from "./signoff.js";
+import { readPractices, writePractices } from "./store/practices.js";
+import { appendSession, readSessions } from "./store/sessions.js";
+import { writeSignoffs } from "./store/signoffs.js";
 
 /** The flows the package ships, beside `dist/`. */
 export const SHIPPED_COACH = fileURLToPath(new URL("../coach/", import.meta.url));

@@ -1,4 +1,4 @@
-// The GEML board (src/core/board-page.ts, src/board-file.ts): the workbench on a host with no panel of its own, as one
+// The GEML board (src/core/board-page.ts, src/store/board.ts): the workbench on a host with no panel of its own, as one
 // GEML page — what waits on the person, the work items and their step's practices, their artifacts, the flows, the
 // other sessions' decisions — written into the main working tree's .geml/board.geml.
 import { test } from "node:test";
@@ -9,9 +9,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse } from "@geml/geml";
 import { boardPage, literal } from "../dist/core/board-page.js";
-import { boardLang, boardPath, boardText, writeBoard } from "../dist/board-file.js";
+import { boardLang, boardPath, boardText, writeBoard } from "../dist/store/board.js";
 import { coachFlowsAt, recordAsk, recordProposals, recordWork, workItemsAt } from "../dist/loop.js";
-import { recordDecisions, recordPrompt } from "../dist/session-store.js";
+import { recordDecisions, recordPrompt } from "../dist/store/sessions.js";
 import { gitRepo } from "./helpers/repo.mjs";
 
 const HOME = mkdtempSync(join(tmpdir(), "gemworks-board-home-"));

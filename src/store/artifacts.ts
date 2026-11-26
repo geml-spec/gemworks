@@ -9,10 +9,10 @@ import { closeSync, copyFileSync, mkdirSync, openSync, readSync, renameSync, sta
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { historyPathFor } from "@geml/geml";
 import { save as saveHistory } from "@geml/geml/dist/history.js";
-import { exists, readText, withLock, writeAtomic } from "./host-fs.js";
-import { unkeptOf } from "./host-git.js";
-import { GEML_DIR, ARTIFACTS_DOC } from "./core/layout.js";
-import { COPY_LIMIT, copyName, isGemlPath, isImagePath, isMadeForPeople, readArtifacts, withArtifacts, type ArtifactKind, type ArtifactRow } from "./core/artifacts.js";
+import { exists, readText, withLock, writeAtomic } from "../host-fs.js";
+import { unkeptOf } from "../host-git.js";
+import { GEML_DIR, ARTIFACTS_DOC } from "../core/layout.js";
+import { COPY_LIMIT, copyName, isGemlPath, isImagePath, isMadeForPeople, readArtifacts, withArtifacts, type ArtifactKind, type ArtifactRow } from "../core/artifacts.js";
 
 const lf = (s: string): string => s.replace(/\r\n?/g, "\n");
 const slashed = (p: string): string => p.split(sep).join("/");

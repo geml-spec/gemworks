@@ -46,9 +46,9 @@ import { contextOf, normalised } from "../claude-code/readers.js";
 import { isWrapped, unwrapCommand, wrapCommand } from "../codex/hook.js";
 import { bareTool, callOf, denyCall, exitCodeOf, pathOf, readEvent, rewriteCall, SHELL, writesFiles } from "./hook.js";
 import type { Status } from "../../workspace.js";
-import { boardHasWork, openBoardOnce, writeBoard } from "../../board-file.js";
+import { boardHasWork, openBoardOnce, writeBoard } from "../../store/board.js";
 import { coachFlowsAt, loopContext, loopPrompt } from "../../loop.js";
-import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../../session-store.js";
+import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../../store/sessions.js";
 
 export const CURSOR_HOST = "cursor";
 

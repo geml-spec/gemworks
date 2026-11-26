@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { branchRow, branchState, fileState, prOf, readOutline, renderOutline, withOutline } from "../dist/core/outline.js";
-import { updateOutline } from "../dist/outline-store.js";
+import { updateOutline } from "../dist/store/outline.js";
 import { realPath } from "../dist/host-fs.js";
 import { gitRepo } from "./helpers/repo.mjs";
 

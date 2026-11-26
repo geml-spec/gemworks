@@ -156,7 +156,7 @@ test("gemworks codex says nothing, and exits 0, where there is nothing to say: n
 
 test("the project's session record through Codex's hooks: the session opens a log, a prompt is a turn with the other sessions' new decisions beside it, a patch's file and the turn's answer go in", async () => {
   const { logName, parseLog } = await import("../dist/core/session-log.js");
-  const { recordDecisions, recordPrompt, sessionsDirOf } = await import("../dist/session-store.js");
+  const { recordDecisions, recordPrompt, sessionsDirOf } = await import("../dist/store/sessions.js");
   const root = project();
   const env = data();
   const log = () => parseLog(readFileSync(join(sessionsDirOf(root), logName("codex", "sess-1")), "utf8"));

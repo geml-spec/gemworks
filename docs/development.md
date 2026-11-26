@@ -102,7 +102,7 @@ the evidence by source, `supervisor.ts` the gate and the verbs, `asking.ts` the
 preferred-tool question a host puts to a person and what the answer writes. The I/O lives
 beside it: `src/host-fs.ts` (files, locks, atomic writes, the walk of a
 project), `src/host-git.ts` (git and gh, each an argument vector with a
-timeout), `src/dictionary-io.ts` (the dictionary on disk, read afresh and
+timeout), `src/store/dictionary.ts` (the dictionary on disk, read afresh and
 rewritten under its lock) and `src/workspace.ts`, which runs one locked
 operation at a time against a project for the CLI and for any host built on it.
 
@@ -124,5 +124,5 @@ imports: the request and answer types, the fast path, the readers of Claude
 Code's tool results, and the words of the band, the board and `/gemworks` as
 pure functions. `src/mcp.ts` serves the same verbs (`src/verbs.ts`) and the
 work loop's tools (`src/loop.ts`) over stdio MCP; `src/hosts/codex/adapter.ts` and
-`src/hosts/antigravity/adapter.ts` are those hosts' hooks, and `src/board-file.ts` writes the
+`src/hosts/antigravity/adapter.ts` are those hosts' hooks, and `src/store/board.ts` writes the
 GEML board page they and `gemworks mcp` open.

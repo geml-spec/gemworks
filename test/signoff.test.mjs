@@ -1,4 +1,4 @@
-// A work item's sign-off sheet (src/core/signoff-page.ts, src/signoff.ts): for each step of its flow, who judged it, on
+// A work item's sign-off sheet (src/core/signoff-page.ts, src/store/signoffs.ts): for each step of its flow, who judged it, on
 // what grounds and when — the person's words or the button they pressed, the model's report, a fact step's evidence and
 // the run the session saw for it — then what the work made and how it went; written into .geml/signoffs/<id>.geml, and
 // among the item's artifacts once it is done.
@@ -10,12 +10,12 @@ import { join } from "node:path";
 import { parse } from "@geml/geml";
 import { signoffPage } from "../dist/core/signoff-page.js";
 import { pressEvent, seenIn, workEvents } from "../dist/core/work.js";
-import { readArtifactRows } from "../dist/artifacts-store.js";
+import { readArtifactRows } from "../dist/store/artifacts.js";
 import { flowsIn } from "../dist/hosts/claude-code/coach.js";
 import { wordsFor } from "../dist/hosts/claude-code/text.js";
 import { coachFlowsAt, recordWork, workItemsAt } from "../dist/loop.js";
-import { appendSession } from "../dist/session-store.js";
-import { signoffPath, writeSignoffs } from "../dist/signoff.js";
+import { appendSession } from "../dist/store/sessions.js";
+import { signoffPath, writeSignoffs } from "../dist/store/signoffs.js";
 import { gitRepo } from "./helpers/repo.mjs";
 
 const HOME = mkdtempSync(join(tmpdir(), "gemworks-signoff-home-"));

@@ -11,7 +11,7 @@ import type { Status } from "../../workspace.js";
 import type { Suggestion } from "../../project.js";
 import type { AttentionFacts } from "./attention.js";
 import type { HostInfo } from "./env.js";
-import type { MemoryList } from "../../memory-store.js";
+import type { MemoryList } from "../../store/memory.js";
 import type { Practice } from "../../core/practices.js";
 import type { LabelledPrompt, LedgerCard, PracticeCount, Theme, ThemeAnswer, ToCheck, WorkKind } from "../../core/corrections.js";
 import type { QueuedMessage } from "../../core/transcript.js";
@@ -72,7 +72,7 @@ export type BridgeOp =
   | { op: "attention"; session?: string }
   /**
    * A turn's end: a version of each file the current work item wrote that git does not keep, when its content changed
-   * (artifacts-store.ts). With no workflow work item, `item` is the work item the turn is on (the coach's) and `written`
+   * (store/artifacts.ts). With no workflow work item, `item` is the work item the turn is on (the coach's) and `written`
    * the project paths the turn wrote: no journal has them.
    */
   | { op: "artifacts"; elsewhere?: string[]; notMade?: string[]; item?: string; written?: string[] }
@@ -105,13 +105,13 @@ export type BridgeOp =
   | { op: "signoff"; ids: string[]; lang?: string }
   /** The prompt rows the host's transcript of `session` still holds, by uuid: what the sessions tab and the record keep after turns were removed or split away. */
   | { op: "turn-ids"; session: string; transcripts?: string }
-  /** The project's Claude Code memory (memory-store.ts), as the sessions tab shows it. */
+  /** The project's Claude Code memory (store/memory.ts), as the sessions tab shows it. */
   | { op: "memory"; transcripts?: string }
   /** One memory's index line given a new hook. */
   | { op: "memory-set"; file: string; hook: string; transcripts?: string }
   /** One memory moved into gemworks's trash, its index line dropped. */
   | { op: "memory-delete"; file: string; transcripts?: string }
-  /** Every layer's practices (practice-store.ts). */
+  /** Every layer's practices (store/practices.ts). */
   | { op: "practices" }
   /** Practices the hooks module checked (core/practices.ts newPractices), written into their layers; `memory` marks the project's memory moved in. */
   | { op: "practice-add"; practices: Practice[]; memory?: boolean }

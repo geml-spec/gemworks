@@ -108,7 +108,7 @@ test("gemworks opencode, in event order: the stage at the start, a refused comma
 test("the plugin, loaded as OpenCode loads it: the MCP server registered; the start and the turn in every model request's system part; a refused call rejected; a turn that wrote and reported nothing sent back once by a synthetic message", async () => {
   const { WORK_REMINDER } = await import("../dist/core/work.js");
   const { logName, parseLog } = await import("../dist/core/session-log.js");
-  const { sessionsDirOf } = await import("../dist/session-store.js");
+  const { sessionsDirOf } = await import("../dist/store/sessions.js");
   const root = project();
   const env = homeEnv();
   // The plugin's own `gemworks opencode` runs inherit this process's environment: its home is the test's.

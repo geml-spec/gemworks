@@ -17,7 +17,7 @@ import { isMarkdownPath, parse } from "@geml/geml";
 import { guardText } from "@geml/geml/dist/statechart.js";
 import { appendOrCreate, exists, globExists, readText, realPath, withLock, writeAtomic } from "./host-fs.js";
 import { ghFacts as realGh, isLocalBranch, journalBaseOf, repoFacts as realRepo, treeFingerprint, type GhFacts, type RepoFacts } from "./host-git.js";
-import { learnInFile, readDictionaryFile } from "./dictionary-io.js";
+import { learnInFile, readDictionaryFile } from "./store/dictionary.js";
 import { blockText } from "./core/blocks.js";
 import { commandOf } from "./core/command-line.js";
 import { bindingOf, normalizedCommand, type Dictionary, type Lesson } from "./core/dictionary.js";

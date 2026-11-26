@@ -121,7 +121,7 @@ test("gemworks devin, in event order: the stage at the start, a refused command 
 
 test("the record and the work loop through Devin's hooks: a prompt once a turn; a written file; a turn that wrote and reported nothing sent back once, and not again on the retry", async () => {
   const { logName, parseLog } = await import("../dist/core/session-log.js");
-  const { sessionsDirOf } = await import("../dist/session-store.js");
+  const { sessionsDirOf } = await import("../dist/store/sessions.js");
   const { WORK_REMINDER } = await import("../dist/core/work.js");
   const root = gitRepo();
   const env = homeEnv();

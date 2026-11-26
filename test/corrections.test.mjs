@@ -8,7 +8,7 @@ import {
   addPrompts, applyChecks, applyThemes, checkRequest, claimThemes, defaultPeriods, dismiss, EMPTY_LEDGER, flowless, ledgerCards, ledgerText, linkKey, parseLedger, parsePeriod,
   practiceCounts, promptId, readChecks, readFlowDraft, readLabels, readThemes, report, reportText, tally, themeRequest, typedWords, unchecked, unthemed,
 } from "../dist/core/corrections.js";
-import { addLabelled, correctionsPath, labelledRows, readLedger, unlabelledPrompts, updateLedger } from "../dist/corrections-store.js";
+import { addLabelled, correctionsPath, labelledRows, readLedger, unlabelledPrompts, updateLedger } from "../dist/store/corrections.js";
 import { cellWidth } from "../dist/hosts/claude-code/band.js";
 import { COACH_FLOWS, ledgerCardRows, manualRows, readCoachFlow } from "../dist/hosts/claude-code/coach.js";
 import { wordsFor } from "../dist/hosts/claude-code/text.js";

@@ -124,7 +124,7 @@ test("practices shared with the team move into the repository's .gemworks/; the 
   const { mkdtempSync } = await import("node:fs");
   const { join } = await import("node:path");
   const { tmpdir } = await import("node:os");
-  const { readPractices, sharePractices, writePractices } = await import("../dist/practice-store.js");
+  const { readPractices, sharePractices, writePractices } = await import("../dist/store/practices.js");
   const { gitRepo, hook } = await import("./helpers/repo.mjs");
   const root = gitRepo();
   const home = mkdtempSync(join(tmpdir(), "gw-home-"));

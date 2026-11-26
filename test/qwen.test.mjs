@@ -151,7 +151,7 @@ test("gemworks qwen says nothing and exits 0 where there is nothing to say: no w
 
 test("the project's record and the work loop through Qwen Code's hooks: what is said beside a prompt, once a turn; a file, the answer; a turn that wrote and reported nothing sent back once, the reminder no prompt of the person's", async () => {
   const { logName, parseLog } = await import("../dist/core/session-log.js");
-  const { recordDecisions, recordPrompt, sessionsDirOf } = await import("../dist/session-store.js");
+  const { recordDecisions, recordPrompt, sessionsDirOf } = await import("../dist/store/sessions.js");
   const { recordWork } = await import("../dist/loop.js");
   const { WORK_REMINDER } = await import("../dist/core/work.js");
   const root = gitRepo();

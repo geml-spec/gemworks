@@ -417,7 +417,7 @@ test("pwsh: a command that holds gemworks and a person's verb as words is refuse
 test("the project's session record on DeepSeek Harness: the agent opens a log, gemworks_note writes the decisions, the other sessions' recent decisions are in its context", async () => {
   const { recordSession } = await import("../dist/hosts/dsh/plugin.js");
   const { logName, parseLog } = await import("../dist/core/session-log.js");
-  const { recordDecisions, recordPrompt, sessionsDirOf } = await import("../dist/session-store.js");
+  const { recordDecisions, recordPrompt, sessionsDirOf } = await import("../dist/store/sessions.js");
   const w = await world();
   recordSession(w.agent);
   const file = join(sessionsDirOf(w.dir), logName("dsh", String(w.agent.id)));

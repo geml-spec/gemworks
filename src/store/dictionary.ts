@@ -4,13 +4,13 @@
 // §5.3). The workspace, the dsh plugin and the pi extension all read and learn
 // through here.
 import { join } from "node:path";
-import { exists, readText, withLock, writeAtomic } from "./host-fs.js";
-import { EMPTY_DICTIONARY, learn, TOOLS_FILE, type Dictionary, type Lesson } from "./core/dictionary.js";
-import { readDictionary, withToolsTable } from "./core/dictionary-file.js";
-import { GEML_DIR } from "./core/layout.js";
-import type { Statechart } from "./core/statechart.js";
-import { journalBaseOf } from "./host-git.js";
-import { dictionaryPathOf } from "./project-home.js";
+import { exists, readText, withLock, writeAtomic } from "../host-fs.js";
+import { EMPTY_DICTIONARY, learn, TOOLS_FILE, type Dictionary, type Lesson } from "../core/dictionary.js";
+import { readDictionary, withToolsTable } from "../core/dictionary-file.js";
+import { GEML_DIR } from "../core/layout.js";
+import type { Statechart } from "../core/statechart.js";
+import { journalBaseOf } from "../host-git.js";
+import { dictionaryPathOf } from "../project-home.js";
 
 export { dictionaryPathOf };
 

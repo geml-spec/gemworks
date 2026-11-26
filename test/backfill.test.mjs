@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { gitRepo, hook, withWorkflow } from "./helpers/repo.mjs";
 import { slugOf } from "../dist/core/transcript.js";
 import { parseLog, summarize, formatLog } from "../dist/core/session-log.js";
-import { readArtifactRows } from "../dist/artifacts-store.js";
+import { readArtifactRows } from "../dist/store/artifacts.js";
 
 const WS_DEV = fileURLToPath(new URL("./fixtures/ws-dev/", import.meta.url));
 

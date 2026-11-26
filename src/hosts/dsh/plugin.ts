@@ -21,17 +21,17 @@ import type { Agent } from "@deepseek-ai/dsh-agent";
 import { defineTool, type ToolExecutionResult } from "@deepseek-ai/dsh-tools";
 import { POWERSHELL_TOOLS, powershellFencedRefusal, powershellPersonOnlyRefusal } from "./powershell.js";
 import { appendOrCreate, exists, readText, realPath } from "../../host-fs.js";
-import { readDictionaryFile } from "../../dictionary-io.js";
+import { readDictionaryFile } from "../../store/dictionary.js";
 import { commandOf } from "../../core/command-line.js";
 import { DSH_TOOLS } from "../../core/host-tools.js";
 import { writtenProjectPath } from "../../core/written.js";
 import { decisionsContext, NOTE_TOOL, noteReply, SESSIONS_PROMPT } from "../../core/session-log.js";
-import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordNote, recordPrompt } from "../../session-store.js";
+import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordNote, recordPrompt } from "../../store/sessions.js";
 import { readJournal } from "../../core/journal.js";
 import { actOnSession, boardReply, coachBoardReply, readQuery, type CoachData, type DshAction, type Supervision } from "./board.js";
 import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, workItemsAt } from "../../loop.js";
-import { readPractices } from "../../practice-store.js";
-import { readSessions } from "../../session-store.js";
+import { readPractices } from "../../store/practices.js";
+import { readSessions } from "../../store/sessions.js";
 import { hasErrors, loadStatechart, type Statechart } from "../../core/statechart.js";
 import type { Run } from "../../core/run.js";
 import { metaFor, openRun, Supervisor, type Gate } from "../../core/supervisor.js";
@@ -134,7 +134,7 @@ export function apply(ctx: Context, config: Config): void {
 }
 
 /**
- * One agent in the project's shared session record (session-store.ts): its
+ * One agent in the project's shared session record (store/sessions.ts): its
  * prompts as each turn opens, its answer as the turn closes (the text the
  * stream carried), the files its write tools wrote and the commits its
  * commands made, the decisions the model notes with `gemworks_note`; and the

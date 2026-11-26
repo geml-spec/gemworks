@@ -6,15 +6,15 @@
 // written is one the person does not see this time, never a stopped turn.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { readArtifactRows, recordBytes } from "./artifacts-store.js";
-import { boardLang } from "./board-file.js";
-import { signoffPage, type SignoffCommit } from "./core/signoff-page.js";
-import type { SessionEvent } from "./core/session-log.js";
-import { journalBaseOf } from "./host-git.js";
-import { flowsIn } from "./hosts/claude-code/coach.js";
-import { wordsFor, type Lang } from "./hosts/claude-code/text.js";
-import { coachFlowsAt, gemlHome, workItemsAt } from "./loop.js";
-import { readSessionLogs } from "./session-store.js";
+import { readArtifactRows, recordBytes } from "./artifacts.js";
+import { boardLang } from "./board.js";
+import { signoffPage, type SignoffCommit } from "../core/signoff-page.js";
+import type { SessionEvent } from "../core/session-log.js";
+import { journalBaseOf } from "../host-git.js";
+import { flowsIn } from "../hosts/claude-code/coach.js";
+import { wordsFor, type Lang } from "../hosts/claude-code/text.js";
+import { coachFlowsAt, gemlHome, workItemsAt } from "../loop.js";
+import { readSessionLogs } from "./sessions.js";
 
 export const SIGNOFF_DIR = "signoffs";
 

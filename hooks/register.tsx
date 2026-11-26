@@ -72,7 +72,7 @@ import type { PromptRecord } from '../dist/hosts/claude-code/sessions.js'
 import type { TurnMoved } from '../dist/hosts/claude-code/board.js'
 import { MADE_VIEW, type MadeView } from '../dist/hosts/claude-code/made.js'
 import type { MadeAll } from '../dist/hosts/claude-code/protocol.js'
-import type { MemoryList } from '../dist/memory-store.js'
+import type { MemoryList } from '../dist/store/memory.js'
 import { fitToBudget, stepDown } from '../dist/hosts/claude-code/budget.js'
 import { hhmm } from '../dist/hosts/claude-code/time.js'
 import { dayKey, mergeBooks, noteUse, pruneBook, usageKeys, usesSince } from '../dist/hosts/claude-code/usage.js'
@@ -1244,7 +1244,7 @@ async function recordWork($: EngineInterface, event: unknown): Promise<ToolCallR
   return { result: `Recorded ${said}.${errors.length > 0 ? ` Left out: ${errors.join('; ')}.` : ''}` }
 }
 
-/** The sign-off sheets of these work items written again (signoff.ts), in the person's language; nothing waits on it. */
+/** The sign-off sheets of these work items written again (store/signoffs.ts), in the person's language; nothing waits on it. */
 export function signoffAfter($: EngineInterface, ids: readonly string[]): void {
   if (ids.length === 0) return
   $.clock.after(0, () => {

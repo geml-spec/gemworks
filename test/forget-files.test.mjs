@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { forgetFiles, isUnder, readArtifactRows, recordFile } from "../dist/artifacts-store.js";
+import { forgetFiles, isUnder, readArtifactRows, recordFile } from "../dist/store/artifacts.js";
 import { folderLabel } from "../dist/hosts/claude-code/board.js";
 
 test("a draft recorded as an artifact is taken out again, every version under any work item; its copy goes to the trash, a copy another row keeps stays", () => {

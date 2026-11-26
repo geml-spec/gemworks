@@ -6,9 +6,9 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { withLock, writeAtomic } from "./host-fs.js";
-import type { SessionSummary } from "./core/session-log.js";
-import { addPrompts, EMPTY_LEDGER, hasPrompt, KINDS, ledgerText, parseLedger, promptId, SUBS, typedWords, WORKS, type CorrectionSub, type LabelledPrompt, type Ledger, type PromptKind, type WorkKind } from "./core/corrections.js";
+import { withLock, writeAtomic } from "../host-fs.js";
+import type { SessionSummary } from "../core/session-log.js";
+import { addPrompts, EMPTY_LEDGER, hasPrompt, KINDS, ledgerText, parseLedger, promptId, SUBS, typedWords, WORKS, type CorrectionSub, type LabelledPrompt, type Ledger, type PromptKind, type WorkKind } from "../core/corrections.js";
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -150,7 +150,7 @@ export function unlabelledPrompts(ledger: Ledger, transcripts: string, o: { sinc
 }
 
 /**
- * The prompts the project's other hosts recorded in its shared record (session-store.ts: Codex, Antigravity, Cursor, Qwen Code, OpenCode, Devin, TRAE, Kiro,
+ * The prompts the project's other hosts recorded in its shared record (store/sessions.ts: Codex, Antigravity, Cursor, Qwen Code, OpenCode, Devin, TRAE, Kiro,
  * DeepSeek Harness, Pi, an MCP-only host), with no label yet: what their sessions could not label themselves, for `gemworks
  * corrections pending` and whatever labels later. Claude Code's own are its transcripts' (unlabelledPrompts); a turn
  * read back from a transcript, or a prompt that was not the person's, is none. `before` is the answer of the turn before.

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { copyName, COPY_LIMIT, isMadeForPeople, pageTitle, artifactsOfItem, readArtifacts, renderArtifacts, withArtifacts } from "../dist/core/artifacts.js";
 import { publishedLink } from "../dist/core/artifact-tool.js";
-import { readArtifactRows, recordFile, recordLink, syncDocs, syncWritten } from "../dist/artifacts-store.js";
+import { readArtifactRows, recordFile, recordLink, syncDocs, syncWritten } from "../dist/store/artifacts.js";
 import { listRevisions } from "@geml/geml/dist/history.js";
 import { artifactRows, sizeText } from "../dist/hosts/claude-code/board.js";
 import { wordsFor } from "../dist/hosts/claude-code/text.js";

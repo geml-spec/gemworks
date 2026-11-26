@@ -19,7 +19,7 @@ import type { BridgeOp, BridgeResponse } from '../dist/hosts/claude-code/protoco
 import { promptLine } from '../dist/hosts/claude-code/sessions.js'
 import type { PromptRecord } from '../dist/hosts/claude-code/sessions.js'
 import { MADE_PAGE, MADE_VIEW } from '../dist/hosts/claude-code/made.js'
-import type { MemoryList } from '../dist/memory-store.js'
+import type { MemoryList } from '../dist/store/memory.js'
 import { hhmm } from '../dist/hosts/claude-code/time.js'
 import { captureFailed, capturesFor } from '../dist/hosts/claude-code/screenshot.js'
 import { withSetting } from '../dist/hosts/claude-code/settings.js'

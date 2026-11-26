@@ -13,7 +13,7 @@ import { journalFromEntries, SNAPSHOT_ENTRY } from "../dist/hosts/pi/journal-ent
 import { readJournal, verifyJournal } from "../dist/core/journal.js";
 import { loadStatechart } from "../dist/core/statechart.js";
 import { dictDoc, flowDoc } from "./helpers/flow.mjs";
-import { learnInFile } from "../dist/dictionary-io.js";
+import { learnInFile } from "../dist/store/dictionary.js";
 
 const FIX = fileURLToPath(new URL("./fixtures/refund.geml", import.meta.url));
 const REFUND_TOOLS = readFileSync(new URL("./fixtures/refund-tools.geml", import.meta.url), "utf8");

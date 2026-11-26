@@ -4,11 +4,11 @@
 // what a person wrote around it stays. A work item gone from the journals
 // keeps its row.
 import { join, relative, sep } from "node:path";
-import { exists, readText, withLock, writeAtomic } from "./host-fs.js";
-import { branchesFacts, holdsCommit } from "./host-git.js";
-import { PROJECT_DOC } from "./core/layout.js";
-import { branchRow, byLast, fileRow, readOutline, withOutline, type BranchFacts, type ItemFacts, type OutlineRow, type PrFact } from "./core/outline.js";
-import { projectDocOf } from "./project-home.js";
+import { exists, readText, withLock, writeAtomic } from "../host-fs.js";
+import { branchesFacts, holdsCommit } from "../host-git.js";
+import { PROJECT_DOC } from "../core/layout.js";
+import { branchRow, byLast, fileRow, readOutline, withOutline, type BranchFacts, type ItemFacts, type OutlineRow, type PrFact } from "../core/outline.js";
+import { projectDocOf } from "../project-home.js";
 
 /** A work item as the outline takes it: its journal's facts, the kind of its unit, and its flow's say on it. */
 export interface OutlineEntry extends ItemFacts { kind: "branch" | "file"; final: boolean; state: string }
