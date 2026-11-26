@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  addPrompts, applyChecks, applyThemes, checkRequest, claimThemes, defaultPeriods, dismiss, EMPTY_LEDGER, flowless, ledgerCards, ledgerText, linkKey, parseLedger, parsePeriod,
+  addPrompts, applyChecks, applyThemes, checkRequest, claimThemes, defaultPeriods, dismiss, EMPTY_LEDGER, flowless, labelRequest, ledgerCards, ledgerText, linkKey, parseLedger, parsePeriod,
   practiceCounts, promptId, readChecks, readFlowDraft, readLabels, readThemes, report, reportText, tally, themeRequest, typedWords, unchecked, unthemed,
 } from "../../dist/core/corrections.js";
 import { addLabelled, correctionsPath, labelledRows, readLedger, unlabelledPrompts, updateLedger } from "../../dist/store/corrections.js";
@@ -218,6 +218,93 @@ test("the tables count prompts per 100 by kind, by kind of work and by week (Mon
   assert.deepEqual(parsePeriod("2026-08-30..2026-10-25"), { from: "2026-08-30", to: "2026-10-25" });
   assert.equal(parsePeriod("2026-10-25..2026-08-30"), undefined);
   assert.deepEqual(defaultPeriods("2026-10-30"), { trial: { from: "2026-10-26", to: "2026-10-30" }, baseline: { from: "2026-08-31", to: "2026-10-25" } });
+});
+
+test("the tables since a day, without the kinds of work: a correction with no sub counts as other, a week with nothing typed is a row of dashes, and nothing unlabelled says nothing", () => {
+  const xs = [row("old", "2026-09-01T04:00:00Z", "task"), row("a", "2026-10-05T04:00:00Z", "task", { session: "s2bbbbbbbb" }), row("c", "2026-10-20T04:00:00Z", "correct")];
+  assert.deepEqual([tally(xs).corrections, tally(xs).by.other, tally(xs).sessions], [1, 1, 2]);
+  const r = report({ ...EMPTY_LEDGER, prompts: xs }, { baseline: { from: "2026-10-01", to: "2026-10-11" }, trial: { from: "2026-10-12", to: "2026-10-25" }, offset: 0, since: "2026-10-01" });
+  assert.equal(r.byWork, undefined);
+  assert.deepEqual([r.first, r.last, r.all.prompts, r.baseline.prompts, r.trial.corrections], ["2026-10-05", "2026-10-20", 2, 1, 1], "the prompt before the day is not read");
+  assert.deepEqual(r.weeks.map((w) => [w.week, w.prompts]), [["2026-10-05", 1], ["2026-10-12", 0], ["2026-10-19", 1]]);
+  const text = reportText(r, cellWidth);
+  assert.match(text.split("\n")[0], /^纠正 · 2026-10-05 至 2026-10-20 · 2 个会话 · 2 句 · 纠正 1 句$/);
+  assert.match(text, /\n10-12\s+—\s+—\s+—\s+—\n/);
+  assert.doesNotMatch(text, /按工作类型/);
+  const none = report(EMPTY_LEDGER, { baseline: { from: "2026-10-01", to: "2026-10-11" }, trial: { from: "2026-10-12", to: "2026-10-25" }, offset: 0 });
+  assert.deepEqual([none.first, none.last, none.weeks, none.all.prompts], ["", "", [], 0]);
+});
+
+test("the ledger's file read as it stands: a line that is no object and a blank line are passed over, and a block the file ends inside runs to the end", () => {
+  const a = fix("a", "2026-10-28T02:00:00Z", "verify"), b = row("b", "2026-10-28T03:00:00Z", "task");
+  const text = `=== meta\ntitle = "纠正"\n===\n\n=== data {#prompts format=jsonl}\nnull\n[1]\n"words"\n\n${JSON.stringify(a)}\n\n${JSON.stringify(b)}\n`;
+  assert.deepEqual(parseLedger(text), { ...EMPTY_LEDGER, prompts: [a, b] });
+});
+
+test("prompts said in the same second in two sessions are two, and keep the order they came in", () => {
+  const a = row("s1aaaaaa@2026-10-28T02:00:00", "2026-10-28T02:00:00Z", "task", { text: "甲" });
+  const b = row("s2bbbbbb@2026-10-28T02:00:00", "2026-10-28T02:00:00Z", "task", { session: "s2bbbbbbbb", text: "乙" });
+  const c = row("s1aaaaaa@2026-10-28T01:00:00", "2026-10-28T01:00:00Z", "task", { text: "丙" });
+  const { ledger, added } = addPrompts(EMPTY_LEDGER, [a, b, c]);
+  assert.deepEqual([added, ledger.prompts.map((p) => p.text)], [3, ["丙", "甲", "乙"]]);
+});
+
+test("the label request: the guide as the system prompt, each prompt numbered with the end of the reply before it, a long prompt clipped", () => {
+  const ask = labelRequest([{ text: "继续", before: "" }, { text: "长".repeat(1300), before: `开头 ${"x".repeat(500)}\n\n结尾` }]);
+  assert.match(ask.system, /^You label messages a person typed/);
+  assert.match(ask.system, /Reply with one JSON array and nothing else/);
+  const [one, two, more] = ask.prompt.split("\n");
+  assert.equal(one, `1. ${JSON.stringify({ before: "", text: "继续" })}`);
+  assert.equal(more, undefined);
+  assert.match(two, /^2\. \{/);
+  const second = JSON.parse(two.slice(3));
+  assert.equal(second.text, `${"长".repeat(1200)}…`);
+  assert.equal(second.before, `…${"x".repeat(397)} 结尾`, "the last 400 characters, its spaces made one");
+});
+
+test("a label reply that does not read labels nothing; an entry with no number is read by its place, one numbered past the batch or no object is passed over", () => {
+  assert.deepEqual(readLabels("[not, json]", 2), [undefined, undefined]);
+  const reply = '[1, {"kind": "task"}, {"kind": "inform", "work": "ui"}, {"n": 0, "kind": "task"}, {"n": 9, "kind": "status"}]';
+  assert.deepEqual(readLabels(reply, 3), [undefined, { kind: "task" }, { kind: "inform", work: "ui" }]);
+});
+
+test("the theme request with no new corrections asks only for links; a correction with no sub is other, and long words are clipped", () => {
+  const none = themeRequest([], [], []);
+  assert.match(none.prompt, /Themes so far:\n\(none\)\n/);
+  assert.match(none.prompt, /New corrections:\n\(none: only link the themes to the practices\)$/);
+  assert.deepEqual(none.handles, { c: [], t: [], p: [] });
+  const long = themeRequest([row("c1", "2026-10-28T02:00:00Z", "correct", { text: "改".repeat(250) })], [], []);
+  assert.match(long.prompt, /\nc1\. \[other\] 改{240}…$/);
+});
+
+test("a theme reply read strictly: a handle out of range, an empty rule, an entry that is no object and a list that is not one are left out", () => {
+  const handles = { c: ["id1", "id2", "id3", "id4"], t: ["th1"], p: ["pa"] };
+  assert.deepEqual(readThemes("{not json}", handles), { assign: [], links: [] });
+  assert.deepEqual(readThemes('{"assign": "c1", "links": {"theme": "t1"}}', handles), { assign: [], links: [] });
+  const reply = JSON.stringify({
+    assign: [7, { c: "c1", theme: "t9" }, { c: "c2", theme: { new: "   " } }, { c: "c3", theme: 5 }, { c: "c4", theme: { new: "改完附上路径" } }],
+    links: [null, { theme: "t1" }, { theme: "t1", practices: "p1" }, { theme: "改完附上路径", practices: ["p1", "p1", "p2"] }],
+  });
+  assert.deepEqual(readThemes(reply, handles), {
+    assign: [{ id: "id4", theme: { rule: "改完附上路径" } }],
+    links: [{ theme: "th1", practices: [] }, { theme: "th1", practices: [] }, { theme: { rule: "改完附上路径" }, practices: ["pa"] }],
+  });
+});
+
+test("a deleted practice counts nothing and is read against nothing; a correction under two practices is read against each, in time order", () => {
+  const l = {
+    ...EMPTY_LEDGER,
+    themes: [{ id: "t", rule: "改完先跑测试", at: "x", practices: ["p1", "p2", "pGone"] }],
+    prompts: [fix("x1", "2026-11-01T00:00:00Z", "verify", { theme: "t" }), fix("x2", "2026-11-02T00:00:00Z", "verify", { theme: "t" })],
+  };
+  const practices = [practice("p1", "2026-10-01T00:00:00Z"), practice("p2", "2026-10-02T00:00:00Z"), practice("pGone", "2026-10-03T00:00:00Z", { deleted: true })];
+  assert.deepEqual(practiceCounts(l, practices), { p1: { before: 0, after: 0 }, p2: { before: 0, after: 0 } });
+  assert.deepEqual(unchecked(l, practices).map((x) => [x.id, x.practice]), [["x1", "p1"], ["x1", "p2"], ["x2", "p1"], ["x2", "p2"]]);
+});
+
+test("a flow reply with no object, or one that does not parse, drafts no flow", () => {
+  assert.equal(readFlowDraft("I would not know."), undefined);
+  assert.equal(readFlowDraft('{"title": "写文章", "steps": [}'), undefined);
 });
 
 test("the store keeps the ledger in the person's home; prompts not labelled yet are read from the host's transcripts, reminders stripped", () => {

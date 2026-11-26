@@ -2,10 +2,10 @@ import { test, after as afterAll } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, cpSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { loadWorkspace, openWorkspace, resolvePromptRef, resolveWorkflow } from "../dist/workspace.js";
+import { fileUnitOf, itemProgress, loadWorkspace, openWorkspace, resolvePromptRef, resolveWorkflow } from "../dist/workspace.js";
 import { CLAUDE_CODE_TOOLS, NO_TOOLS } from "../dist/core/host-tools.js";
 import { readJournal, verifyJournal } from "../dist/core/journal.js";
 import { readContextDoc } from "../dist/core/stagehand.js";
@@ -849,4 +849,213 @@ test("elapsed evidence: the clock is read whenever the work item is opened or a 
   assert.equal(open().advance("c").ok, true);
   clock += 5 * 60 * 60_000;
   assert.deepEqual(at(), ["c", false], "closed: the clock is not read in a final state");
+});
+
+// --- edges of a workflow, its work items and its journals ---------------------------
+
+/** The ws-dev workflow with no title in its meta. */
+const UNTITLED = readFileSync(new URL("flow.geml", FIX), "utf8").replace(/^title\s*=[^\n]*\n/m, "");
+/** A file unit whose item files keep their state under the meta key `state`. */
+const KEYED = (glob) => FILE_UNIT(glob).replace('profile = "geml-statechart/v1"', 'profile = "geml-statechart/v1"\nflow-state-key = "state"');
+const DEV_FILE = ".geml/workflows/dev/flow.geml";
+const useWorkflow = (root, name) => writeFileSync(join(root, ".geml", "project.geml"), `=== meta\nprofile = "geml-statechart/v1"\nflow-workflow = "${name}"\n===\n`);
+
+test("a prompt reference that is empty names nothing, and one that names a folder finds nothing", () => {
+  const p = project();
+  const flow = join(p.dir, "flow.geml");
+  assert.deepEqual(resolvePromptRef("", flow, p.root), { kind: "missing" });
+  mkdirSync(join(p.root, "docs"));
+  assert.deepEqual(resolvePromptRef("docs", flow, p.root), { kind: "missing" });
+});
+
+test("a file unit's glob is read from the meta without loading the workflow; a file with no meta, or none at all, has none", () => {
+  const w = bare();
+  writeFileSync(join(w.root, "unit.geml"), '=== meta\nflow-unit = "file: episodes/*.md "\n===\n');
+  writeFileSync(join(w.root, "plain.geml"), "# No meta\n\nJust words.\n");
+  assert.equal(fileUnitOf(join(w.root, "unit.geml")), "episodes/*.md");
+  assert.equal(fileUnitOf(join(w.root, "plain.geml")), undefined);
+  assert.equal(fileUnitOf(join(w.root, "nowhere.geml")), undefined);
+});
+
+test("GEMWORKS_STATECHART naming a flow file in the project root itself names the workflow .", () => {
+  const w = bare();
+  writeFileSync(join(w.root, "flow.geml"), readFileSync(new URL("flow.geml", FIX), "utf8"));
+  assert.deepEqual(resolveWorkflow(w.root, { GEMWORKS_STATECHART: "flow.geml" }), { name: ".", path: join(w.root, "flow.geml") });
+});
+
+test("another work item's progress: none for an unsafe id, an item with no journal or a journal with nothing in it; a journal under a workflow that is gone has no flow, one naming no workflow is read under the default, an untitled flow goes by its name", () => {
+  const p = project();
+  p.open({ git: () => ({ branch: "feat/y", defaultBranch: "main", committed: true }) });
+  const text = readFileSync(p.journal("feat/y"), "utf8");
+  const put = (item, workflow) => {
+    mkdirSync(dirname(p.journal(item)), { recursive: true });
+    writeFileSync(p.journal(item), workflow === undefined ? "" : text.replace('"item":"feat/y"', `"item":"${item}"`).replace(`"workflow":"${DEV_FILE}"`, `"workflow":"${workflow}"`));
+  };
+  put("feat/empty");
+  put("feat/lost", ".geml/workflows/gone/flow.geml");
+  put("feat/blank", "");
+  mkdirSync(join(p.root, ".geml", "workflows", "untitled"));
+  writeFileSync(join(p.root, ".geml", "workflows", "untitled", "flow.geml"), UNTITLED);
+  put("feat/u", ".geml/workflows/untitled/flow.geml");
+  const progress = (id, def) => itemProgress(p.root, p.root, id, new Map(), def);
+  assert.equal(progress("../escape"), undefined);
+  assert.equal(progress("feat/none"), undefined);
+  assert.equal(progress("feat/empty"), undefined);
+  const y = progress("feat/y");
+  assert.deepEqual(y, { id: "feat/y", flow: "开发流程", state: "build", stateTitle: "构建", final: false, since: y.since, at: y.at, wrote: [] });
+  assert.deepEqual(progress("feat/lost"), { id: "feat/lost", state: "build", final: false, since: y.since, at: y.at, wrote: [] }, "no flow: no flow title, no state title");
+  assert.deepEqual(progress("feat/blank", DEV_FILE), { ...y, id: "feat/blank" });
+  assert.equal(progress("feat/blank").flow, undefined, "no default either: no flow");
+  assert.deepEqual([progress("feat/u").flow, progress("feat/u").stateTitle], ["untitled", "构建"]);
+});
+
+test("a workflow with no title goes by its name: the default, and a file one beside it takes", () => {
+  const p = project({ flow: UNTITLED, tools: DEV_TOOLS });
+  const ws = p.open().ws;
+  assert.equal(ws.title, "dev");
+  assert.equal(ws.status().workflow.title, "dev");
+  const notes = flowDoc({ initial: "draft", states: { draft: {}, done: { final: true } }, transitions: [{ from: "draft", to: "done" }], unit: "file:notes/*.md" }).replace(/^title = [^\n]*\n/m, "");
+  mkdirSync(join(p.root, ".geml", "workflows", "notes"));
+  writeFileSync(join(p.root, ".geml", "workflows", "notes", "flow.geml"), notes);
+  mkdirSync(join(p.root, "notes"));
+  writeFileSync(join(p.root, "notes", "a.md"), "# a\n");
+  const side = p.open({ lastFile: "notes/a.md" }).ws;
+  assert.deepEqual([side.workflowName, side.title, side.item], ["notes", "notes", { kind: "item", id: "notes/a" }]);
+});
+
+test("a workflow beside the default with errors: a file it takes does not open, and says where; any other file opens the default", () => {
+  const p = project();
+  mkdirSync(join(p.root, ".geml", "workflows", "notes"));
+  writeFileSync(join(p.root, ".geml", "workflows", "notes", "flow.geml"), '=== meta\nprofile = "geml-statechart/v1"\nflow-unit = "file:notes/*.md"\n===\n');
+  const o = p.open({ lastFile: "notes/a.md" });
+  assert.deepEqual([o.ok, o.kind], [false, "invalid"]);
+  assert.match(o.reason, /^\.geml\/workflows\/notes\/flow\.geml: flow-statechart: /);
+  assert.equal(p.open({ lastFile: "src/a.ts" }).ws.workflowName, "dev");
+});
+
+test("a work item goes on under the workflow its journal was started under: since left untitled, it goes by its name; since broken, it does not open", () => {
+  const p = project();
+  p.open();
+  cpSync(p.dir, join(p.root, ".geml", "workflows", "other"), { recursive: true });
+  useWorkflow(p.root, "other");
+  const flow = join(p.dir, "flow.geml");
+  writeFileSync(flow, UNTITLED);
+  const o = p.open();
+  assert.equal(o.ok, true);
+  assert.deepEqual(o.ws.status().workflow, { name: "dev", path: DEV_FILE, title: "dev", default: "other" });
+  writeFileSync(flow, '=== meta\nprofile = "geml-statechart/v1"\n===\n');
+  const broken = p.open();
+  assert.deepEqual([broken.ok, broken.kind], [false, "invalid"]);
+  assert.match(broken.reason, /^\.geml\/workflows\/dev\/flow\.geml: flow-statechart: /);
+});
+
+test("a file work item the context document remembers goes on under the workflow its journal was started under, with its file", () => {
+  const p = project({ flow: FILE_UNIT("episodes/*.md"), tools: DEV_TOOLS, git: () => ({}) });
+  mkdirSync(join(p.root, "episodes"));
+  writeFileSync(join(p.root, "episodes", "ep01.md"), "# 1\n");
+  p.open({ lastFile: "episodes/ep01.md" });
+  cpSync(p.dir, join(p.root, ".geml", "workflows", "other"), { recursive: true });
+  useWorkflow(p.root, "other");
+  const ws = p.open().ws;
+  assert.deepEqual([ws.workflowName, ws.item, ws.itemFile], ["dev", { kind: "item", id: "episodes/ep01" }, "episodes/ep01.md"]);
+  assert.equal(ws.status().workflow.default, "other");
+});
+
+test("a git that did not answer tracks nothing, and says so", () => {
+  assert.deepEqual(project({ git: () => ({ unanswered: true }) }).open().ws.item, { kind: "inactive", reason: "git did not answer (a busy machine?); nothing is judged until it does" });
+});
+
+test("the file of a work item: under a branch unit none; under a file unit the file named by the id, in the root too, and none in a folder that is not there", () => {
+  const branch = project().open().ws;
+  assert.equal(branch.itemFileOf("src/a.ts"), undefined);
+  assert.equal(branch.fileOfItem("feat/x"), undefined);
+  const p = project({ flow: FILE_UNIT("*.md"), tools: DEV_TOOLS, git: () => ({}) });
+  writeFileSync(join(p.root, "notes.md"), "# n\n");
+  const ws = p.open().ws;
+  assert.equal(ws.fileOfItem("notes"), "notes.md");
+  assert.equal(ws.fileOfItem("gone/notes"), undefined);
+  assert.equal(ws.fileOfItem("other"), undefined);
+});
+
+test("a journal kept outside the project that cannot be resumed is named by its whole path", () => {
+  const p = project({ pr: true });
+  const base = mkdtempSync(join(tmpdir(), "gemworks-base-"));
+  made.push(base);
+  p.open({ journalBase: base }).ws.after(NPM_TEST);
+  const journal = join(base, ".geml", "journals", "feat", "x.geml");
+  const text = readFileSync(journal, "utf8");
+  writeFileSync(journal, text.slice(0, text.length - 40));
+  const o = p.open({ journalBase: base });
+  assert.deepEqual([o.ok, o.kind], [false, "journal"]);
+  assert.ok(o.reason.startsWith(`${journal.split(sep).join("/")} cannot be resumed: `), o.reason);
+});
+
+test("an item file deleted while its workspace is open: the journal starts at the first state, the file is not made again, and evidence is stamped as made on content that is missing", () => {
+  const p = project({ flow: KEYED("episodes/*.md"), tools: DEV_TOOLS, git: () => ({}) });
+  mkdirSync(join(p.root, "episodes"));
+  const ep = join(p.root, "episodes", "ep01.md");
+  writeFileSync(ep, '=== meta\ntitle = "第一集"\ndepends = "episodes/ep02"\nstate = "review"\n===\n\n# 1\n');
+  const o = loadWorkspace({ root: p.root, tools: CLAUDE_CODE_TOOLS, git: () => ({}), getPrompt: GUIDE, lastFile: "episodes/ep01.md" });
+  assert.deepEqual(o.ws.item, { kind: "item", id: "episodes/ep01" });
+  rmSync(ep);
+  const s = o.ws.status();
+  assert.equal(s.state.id, "build", "the state the file kept is gone with it");
+  assert.deepEqual([s.title, o.ws.dependencies()], [undefined, []], "no title, nothing waited for");
+  o.ws.after(NPM_TEST);
+  const last = p.read("episodes/ep01").snapshots.at(-1);
+  assert.deepEqual([last.signal, last.vars["tests-pass"], last.tree], ["tests-pass", true, "missing"]);
+  assert.equal(existsSync(ep), false);
+});
+
+test("a work item waits for the items its file depends on: one with no journal yet, and one whose journal is under a workflow that is gone, are named by their ids and are not done", () => {
+  const p = project({ flow: FILE_UNIT("episodes/*.md"), tools: DEV_TOOLS, git: () => ({}) });
+  mkdirSync(join(p.root, "episodes"));
+  for (const n of ["02", "03"]) writeFileSync(join(p.root, "episodes", `ep${n}.md`), `# ${n}\n`);
+  writeFileSync(join(p.root, "episodes", "ep01.md"), '=== meta\ndepends = "episodes/ep02, episodes/ep03"\n===\n\n# 1\n');
+  p.open({ lastFile: "episodes/ep03.md" });
+  const j3 = p.journal("episodes/ep03");
+  writeFileSync(j3, readFileSync(j3, "utf8").replace(`"workflow":"${DEV_FILE}"`, '"workflow":".geml/workflows/gone/flow.geml"'));
+  const ws = p.open({ lastFile: "episodes/ep01.md" }).ws;
+  const [first] = p.read("episodes/ep03").snapshots;
+  assert.deepEqual(ws.dependencies(), [{ id: "episodes/ep02", done: false, wrote: [] }, { id: "episodes/ep03", done: false, since: first.at, at: first.at, wrote: [] }]);
+  assert.deepEqual(ws.advance("review"), { ok: false, reason: "episodes/ep01 waits for episodes/ep02, episodes/ep03, which is not done yet: until then it only goes back to #build" });
+});
+
+test("an inactive workspace takes no evidence, and a person's moves on it say why", () => {
+  const ws = project({ branch: "main" }).open().ws;
+  const reason = "main · not tracked (work items are branches)";
+  assert.deepEqual(ws.after(NPM_TEST), { entered: [] });
+  for (const r of [ws.advance("review"), ws.mark("review-ready", true), ws.pause(), ws.resume(), ws.rollback("checkpoint")]) assert.deepEqual(r, { ok: false, reason });
+});
+
+test("context() answers nothing while the document cannot be written, and the stage once it can", () => {
+  const p = project({ flow: APPROVAL_FLOW });
+  const ws = p.open().ws;
+  const doc = join(p.root, ".geml", "context.geml");
+  rmSync(doc);
+  mkdirSync(doc);
+  assert.equal(ws.context(), undefined);
+  rmSync(doc, { recursive: true });
+  assert.match(ws.context(), /^\[gemworks\] stage draft · rev 0\n/);
+});
+
+test("git facts that do not say whether the work is committed leave the committed variable as it was, and write nothing", () => {
+  let facts = { branch: "feat/x", defaultBranch: "main", committed: true };
+  const p = project({ flow: COMMITTED_FLOW, git: () => facts });
+  const ws = p.open().ws;
+  ws.refresh();
+  assert.equal(ws.status().vars.c, true);
+  const revs = p.read().snapshots.length;
+  facts = { branch: "feat/x", defaultBranch: "main" };
+  ws.refresh();
+  assert.equal(ws.status().vars.c, true);
+  assert.equal(p.read().snapshots.length, revs);
+});
+
+test("the CI workflows that finished failing on the branch's head: none when gh lists no runs or none failed", () => {
+  const gh = (ci) => () => ({ available: true, prOpen: true, prMerged: false, head: "abc1234", ...(ci !== undefined ? { ci } : {}) });
+  const p = project();
+  assert.equal(p.open({ gh: gh(undefined) }).ws.ciFailures(), undefined);
+  assert.equal(p.open({ gh: gh([{ workflow: "CI", success: true }]) }).ws.ciFailures(), undefined);
+  assert.deepEqual(p.open({ gh: gh([{ workflow: "CI", success: false, failed: true }, { workflow: "Lint", success: false }]) }).ws.ciFailures(), { head: "abc1234", workflows: ["CI"] });
 });

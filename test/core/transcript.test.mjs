@@ -1,7 +1,7 @@
 // A Claude Code transcript read into the session record's turns (transcript.ts), and earlier turns put before a log's own (session-log.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { newTurns, promptShown, promptWords, readTranscript, slugOf, transcriptEvents } from "../../dist/core/transcript.js";
+import { newTurns, promptShown, promptWords, queuedMessages, readTranscript, slugOf, transcriptEvents } from "../../dist/core/transcript.js";
 import { parseLog, formatLog, summarize, withEarlierTurns } from "../../dist/core/session-log.js";
 
 const rec = (o) => JSON.stringify({ sessionId: "s-1", cwd: "C:\\agentProjects\\geml-spec", gitBranch: "main", isSidechain: false, ...o });
@@ -102,4 +102,66 @@ test("earlier turns go before a log's own: numbered from 1, the live ones moved 
   ]);
   assert.deepEqual(withEarlierTurns(own, [earlier[2]]), own, "nothing new: the log as it was");
   assert.deepEqual(withEarlierTurns([], earlier.slice(0, 2)).map((e) => e.turn), [1, 1], "no session line: the earlier turns alone");
+});
+
+test("the lines typed while a turn ran, in order, at the time they were sent (the record's when the line has none); a subagent's, another attachment and a line that does not read are not", () => {
+  const lines = [
+    rec({ type: "attachment", uuid: "q1", timestamp: "2026-10-20T01:00:00Z", attachment: { type: "queued_command", prompt: "停一下", timestamp: "2026-10-20T01:00:02Z" } }),
+    rec({ type: "attachment", uuid: "q2", timestamp: "2026-10-20T01:00:05Z", attachment: { type: "queued_command", prompt: "再加一句" } }),
+    rec({ type: "attachment", uuid: "q3", timestamp: "2026-10-20T01:00:06Z", isSidechain: true, attachment: { type: "queued_command", prompt: "a subagent's" } }),
+    user("u1", "2026-10-20T01:00:07Z", "the words queued_command, typed"),
+    rec({ type: "attachment", uuid: "q4", timestamp: "2026-10-20T01:00:08Z", attachment: { type: "edited_text_file", note: "queued_command" } }),
+    '{"type": "attachment", "queued_command": ',
+    rec({ type: "attachment", timestamp: "2026-10-20T01:00:09Z", attachment: { type: "queued_command", prompt: "no uuid" } }),
+    rec({ type: "attachment", uuid: "q5", timestamp: "2026-10-20T01:00:10Z", attachment: { type: "queued_command", prompt: { text: "not words" } } }),
+    JSON.stringify({ type: "attachment", uuid: "q6", attachment: { type: "queued_command", prompt: "no time at all" } }),
+  ];
+  assert.deepEqual(queuedMessages(lines.join("\r\n")), [
+    { uuid: "q1", text: "停一下", at: "2026-10-20T01:00:02Z" },
+    { uuid: "q2", text: "再加一句", at: "2026-10-20T01:00:05Z" },
+  ]);
+  assert.deepEqual(queuedMessages(""), []);
+});
+
+test("a transcript with no session id, branch or folder: a prompt with no uuid is named by its time, an answer with no time takes its prompt's, and what does not read as a record is passed over", () => {
+  const raw = (o) => JSON.stringify(o);
+  const lines = [
+    "42", "null", '"a string"',
+    raw({ type: "summary", summary: "no time on this one" }),
+    raw({ type: "user", timestamp: "2026-10-20T01:00:00Z", message: { content: [{ type: "text", text: 7 }, { type: "text", text: "看看这张图" }, { type: "image", source: { type: "base64", data: "AAAA" } }, { type: "image", source: { type: "url", url: "https://example.com/a.png" } }] } }),
+    raw({ type: "assistant", message: { content: [
+      { type: "text", text: null }, { type: "text", text: "看了。" },
+      { type: "tool_use", id: "t0", input: "not an object" },
+      { type: "tool_use", id: "t1", name: "NotebookEdit", input: { notebook_path: "nb/a.ipynb" } },
+      { type: "tool_use", id: "t2", name: "Artifact", input: { file_path: "page.html" } },
+    ] } }),
+    raw({ type: "user", timestamp: "2026-10-20T01:00:03Z", message: { content: [
+      { type: "tool_result", content: "a result with no call id" },
+      { type: "tool_result", tool_use_id: "t2", content: [{ type: "text", text: "Published page.html at https://claude.ai/artifact/Bx7 (Version 2, version id y)" }, { type: "image" }] },
+    ] } }),
+    raw({ type: "user", timestamp: "2026-10-20T01:01:00Z", message: { content: "<command-message>review is running…</command-message>" } }),
+  ];
+  const tr = readTranscript(lines.join("\n"));
+  assert.deepEqual(tr, {
+    id: "", started: "2026-10-20T01:00:00Z", last: "2026-10-20T01:01:00Z",
+    turns: [{
+      uuid: "2026-10-20T01:00:00Z#0", at: "2026-10-20T01:00:00Z", text: "看看这张图", kind: "person", answer: "看了。",
+      files: ["nb/a.ipynb"], links: [{ url: "https://claude.ai/artifact/Bx7", version: "2" }], uploads: [{ data: "AAAA" }],
+    }],
+  }, "a command's message is no turn; a picture given by link is no upload; a page published with no title has none");
+  assert.deepEqual(transcriptEvents(tr, "claude-code", { head: true }), [
+    { t: "session", id: "", host: "claude-code", at: "2026-10-20T01:00:00Z", backfilled: true },
+    { t: "prompt", turn: 1, at: "2026-10-20T01:00:00Z", text: "看看这张图", uuid: "2026-10-20T01:00:00Z#0", backfilled: true },
+    { t: "answer", turn: 1, at: "2026-10-20T01:00:00Z", text: "看了。" },
+    { t: "file", turn: 1, at: "2026-10-20T01:00:00Z", path: "nb/a.ipynb" },
+  ]);
+  assert.equal(readTranscript(raw({ type: "summary", sessionId: "s-9" })), undefined, "a session id and no time: no session to read");
+});
+
+test("a scheduled task whose prompt names no task: its session is still marked scheduled, with an empty name", () => {
+  const tr = readTranscript(user("u1", "2026-10-19T08:12:00Z", '<scheduled-task file="C:\\x">\n审一下文档\n</scheduled-task>'));
+  assert.deepEqual([tr.turns[0].kind, tr.turns[0].scheduled], ["scheduled", undefined]);
+  const [head, prompt] = transcriptEvents(tr, "claude-code", { head: true });
+  assert.equal(head.scheduled, "");
+  assert.equal(prompt.kind, "scheduled");
 });
