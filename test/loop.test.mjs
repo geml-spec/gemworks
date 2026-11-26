@@ -3,11 +3,12 @@
 // what the model hears once and beside each prompt.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { logName, parseLog } from "../dist/core/session-log.js";
-import { answerProposal, callLoopTool, coachFlowsAt, gemlHome, isLoopTool, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, recordAsk, recordPractices, recordProposals, recordWork, workItemsAt } from "../dist/loop.js";
+import { answerProposal, callLoopTool, coachFlowsAt, gemlHome, isLoopTool, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, recordArtifact, recordAsk, recordPractices, recordProposals, recordWork, workItemsAt } from "../dist/loop.js";
+import { readArtifactRows } from "../dist/store/artifacts.js";
 import { readPractices } from "../dist/store/practices.js";
 import { updateLedger } from "../dist/store/corrections.js";
 import { readSessions, recordPrompt, sessionsDirOf } from "../dist/store/sessions.js";
@@ -17,6 +18,9 @@ import { gitRepo } from "./helpers/repo.mjs";
 const HOME = mkdtempSync(join(tmpdir(), "gemworks-loop-home-"));
 process.env.HOME = HOME;
 process.env.USERPROFILE = HOME;
+
+// A GEMWORKS_STATECHART in the developer's shell would pick the workflow for the artifact tests.
+delete process.env.GEMWORKS_STATECHART;
 
 const AT = "2026-11-09T08:00:00.000Z";
 const events = (root, host, id) => parseLog(readFileSync(join(sessionsDirOf(root), logName(host, id)), "utf8"));
@@ -125,4 +129,121 @@ test("the tools a host lists, called by name; what the model is told once names 
   assert.match(told, /feature 新功能: mockup 样稿 \(you\) → build/);
   assert.match(told, /`answer` tool/);
   assert.deepEqual(loopPrompt([]).length, 1, "with no flows, only the ask");
+});
+
+test("the flows beside an empty shipped folder: the project's own copy, else the team's in the checkout; an entry that does not read is left out", () => {
+  const root = gitRepo();
+  const none = mkdtempSync(join(tmpdir(), "gemworks-loop-shipped-"));
+  assert.deepEqual(coachFlowsAt(root, none), [], "no shipped flow and none of the project's: no flows");
+  assert.deepEqual(loopContext(root, "s1", []), [], "no flows: nothing beside the prompt");
+  mkdirSync(join(root, ".gemworks", "flows"), { recursive: true });
+  const bugfix = readFileSync(new URL("../coach/bugfix.geml", import.meta.url), "utf8");
+  writeFileSync(join(root, ".gemworks", "flows", "bugfix.geml"), bugfix.replace('"title": "复现"', '"title": "先复现"'));
+  const own = join(root, ".geml", "coach");
+  mkdirSync(join(own, "broken.geml"), { recursive: true });
+  writeFileSync(join(own, "feature.geml"), readFileSync(new URL("../coach/feature.geml", import.meta.url), "utf8"));
+  assert.deepEqual(coachFlowsAt(root, none).map((f) => f.name), ["feature", "bugfix"]);
+  assert.equal(coachFlowsAt(root).find((f) => f.name === "bugfix").states[0].title, "先复现", "the team's copy in the shipped one's place");
+});
+
+test("work: an empty report records nothing; a bad item beside a good one is left out by name; a finished item is said done", () => {
+  const root = gitRepo();
+  assert.deepEqual(recordWork(root, "codex", "cx1", { items: [] }, AT), { ok: false, text: "Nothing recorded: items is a list of work items." });
+  const mixed = recordWork(root, "codex", "cx1", { items: [{ title: "看板", flow: "feature" }, { title: "x", flow: "nope" }] }, AT);
+  assert.equal(mixed.ok, true, mixed.text);
+  assert.match(mixed.text, /^Recorded #\S+ «看板» \(feature: mockup\)\. Left out: item 2: flow must be one of design, feature/);
+  const [item] = workItemsAt(root, coachFlowsAt(root));
+  const done = recordWork(root, "codex", "cx1", { items: [{ id: item.id, flow: "feature", status: "done" }] }, "2026-11-09T08:05:00.000Z");
+  assert.equal(done.text, `Recorded #${item.id} «看板» (feature: mockup, done).`);
+});
+
+test("practice: a call with no list records nothing; one moved in from memory is marked so, and the project's memory with it", () => {
+  const root = gitRepo();
+  assert.deepEqual(recordPractices(root, "dsh", "s1", { practices: "样稿先画" }, AT), { ok: false, text: "Nothing recorded: practices is a list." });
+  const moved = recordPractices(root, "dsh", "s1", { memory: true, practices: [{ flow: "feature", step: "mockup", text: "样稿先画最简单的一版", layer: "project" }] }, AT);
+  assert.equal(moved.ok, true, moved.text);
+  const read = readPractices(root);
+  assert.deepEqual(read.practices.filter((p) => p.layer === "project").map((p) => [p.text, p.by]), [["样稿先画最简单的一版", "memory"]]);
+  assert.equal(read.memoryMoved, true);
+});
+
+test("propose: a call with no list records nothing; a bad proposal beside a good one is left out by name", () => {
+  const root = gitRepo();
+  assert.deepEqual(recordProposals(root, { proposals: "加一步" }, AT), { ok: false, text: "Nothing recorded: proposals is a list." });
+  const r = recordProposals(root, { proposals: [{ kind: "add-step", flow: "feature", after: "mockup", title: "评审样稿", why: "样稿改了三遍" }, { kind: "rename" }] }, AT);
+  assert.equal(r.ok, true, r.text);
+  assert.match(r.text, /^Proposed 1 \(q\S+\); the person answers in the conversation\. Left out: proposal 2: kind must be add-step or new-flow\.$/);
+});
+
+test("answer: yes is true or false; a yes to a new step changes the flow as the project's own; a no declines one and leaves the other as it was", () => {
+  const root = gitRepo();
+  recordProposals(root, { proposals: [
+    { kind: "add-step", flow: "feature", after: "mockup", title: "评审样稿", judge: "you", why: "样稿改了三遍" },
+    { kind: "add-step", flow: "bugfix", after: "fix", title: "回归", why: "修了又坏" },
+  ] }, AT);
+  const [step, other] = proposalsAt(root);
+  assert.deepEqual(answerProposal(root, { proposal: step.id, said: "加上" }), { ok: false, text: "Nothing done: yes is true or false." });
+  assert.match(answerProposal(root, { proposal: 7, yes: true, said: "加上" }).text, /^Nothing done: no open proposal  \(open: /, "a proposal named by no string is none");
+  assert.deepEqual(answerProposal(root, { proposal: `#${step.id}`, yes: true, said: "加上评审样稿" }), { ok: true, text: `Accepted ${step.id}: the flow feature is changed.` });
+  assert.deepEqual(coachFlowsAt(root).find((f) => f.name === "feature").states.slice(0, 2).map((s) => s.title), ["样稿", "评审样稿"]);
+  assert.deepEqual(answerProposal(root, { proposal: other.id, yes: false, said: "不用" }), { ok: true, text: `Declined ${other.id}; it is not proposed again.` });
+  assert.deepEqual(proposalsAt(root).map((p) => [p.id, p.status]), [[step.id, "accepted"], [other.id, "declined"]]);
+});
+
+test("answer: a yes to a step of a flow the project no longer has changes nothing and leaves the proposal open", () => {
+  const root = gitRepo();
+  const own = join(gemlHome(root), "coach");
+  mkdirSync(own, { recursive: true });
+  writeFileSync(join(own, "writing.geml"), readFileSync(new URL("../coach/feature.geml", import.meta.url), "utf8").replace(/^title\s*=.*$/m, 'title = "写文章"'));
+  assert.equal(recordProposals(root, { proposals: [{ kind: "add-step", flow: "writing", after: "mockup", title: "列提纲", why: "x" }] }, AT).ok, true);
+  const [p] = proposalsAt(root);
+  rmSync(join(own, "writing.geml"));
+  assert.deepEqual(answerProposal(root, { proposal: p.id, yes: true, said: "加上" }), { ok: false, text: "Nothing done: there is no flow writing to change." });
+  assert.equal(proposalsAt(root)[0].status, "open");
+});
+
+test("ask: a question for no work item is kept without one", () => {
+  const root = gitRepo();
+  recordPrompt(root, "antigravity", "c1", "怎么做", AT);
+  assert.equal(recordAsk(root, "antigravity", "c1", { question: "先做哪个？", options: ["看板", "页签"] }, AT).ok, true);
+  const ask = events(root, "antigravity", "c1").find((e) => e.t === "ask");
+  assert.deepEqual([ask.question, "item" in ask], ["先做哪个？", false]);
+});
+
+test("artifact: refused without a kind it knows or a where; recorded under this session's item with its name and version; a link that is no address is refused with why", async () => {
+  const root = gitRepo();
+  const refusal = { ok: false, text: "Nothing recorded: kind is link, image or file, and where is the address or the path." };
+  assert.deepEqual(await recordArtifact(root, "cx1", { kind: "video", where: "a.mp4" }), refusal);
+  assert.deepEqual(await recordArtifact(root, "cx1", { kind: "image", where: 7 }), refusal);
+  recordWork(root, "codex", "cx1", { items: [{ title: "看板", flow: "feature" }] }, AT);
+  const [item] = workItemsAt(root, coachFlowsAt(root));
+  assert.deepEqual(await recordArtifact(root, "cx1", { kind: "link", where: " https://example.com/board ", name: "看板页", version: "v2" }), { ok: true, text: `Recorded the link under ${item.id}'s artifacts.` });
+  writeFileSync(join(root, "shot.png"), "png");
+  const file = await recordArtifact(root, "cx1", { kind: "image", where: "shot.png" });
+  assert.equal(file.ok, true, file.text);
+  assert.match(file.text, /^Recorded shot\.png /);
+  const rows = readArtifactRows(dirname(gemlHome(root))).map((r) => [r.item, r.kind, r.name, r.version]);
+  assert.deepEqual(rows[0], [item.id, "link", "看板页", "v2"]);
+  assert.deepEqual(rows[1].slice(0, 3), [item.id, "image", "shot.png"]);
+  assert.deepEqual(await recordArtifact(root, "cx1", { kind: "link", where: "ftp://example.com/x" }), { ok: false, text: "Nothing recorded: a link's where is its http(s) address" });
+});
+
+test("artifact: in a project that runs a workflow, recorded under the workflow's current work item", async () => {
+  const root = gitRepo();
+  const dir = join(root, ".geml", "workflows", "refund");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "flow.geml"), readFileSync(new URL("./fixtures/refund.geml", import.meta.url), "utf8"));
+  writeFileSync(join(dir, "tools.geml"), readFileSync(new URL("./fixtures/refund-tools.geml", import.meta.url), "utf8"));
+  assert.deepEqual(await recordArtifact(root, "no-item", { kind: "link", where: "https://example.com/spec" }), { ok: true, text: "Recorded the link under feat/x's artifacts." });
+});
+
+test("the loop's tools called by name answer as the functions do; a record that cannot be written is answered with why, never thrown", async () => {
+  const root = gitRepo();
+  assert.deepEqual(await callLoopTool(root, "codex", "cx1", "practice", {}, AT), { ok: false, text: "Nothing recorded: practices is a list." });
+  assert.deepEqual(await callLoopTool(root, "codex", "cx1", "propose", {}, AT), { ok: false, text: "Nothing recorded: proposals is a list." });
+  assert.deepEqual(await callLoopTool(root, "codex", "cx1", "answer", { proposal: "q1", said: "好" }), { ok: false, text: "Nothing done: yes is true or false." });
+  mkdirSync(join(gemlHome(root), "proposals.geml"), { recursive: true });
+  const r = await callLoopTool(root, "codex", "cx1", "propose", { proposals: [{ kind: "add-step", flow: "feature", after: "mockup", title: "评审样稿", why: "x" }] }, AT);
+  assert.equal(r.ok, false);
+  assert.match(r.text, /^gemworks: E[A-Z]+: /);
 });
