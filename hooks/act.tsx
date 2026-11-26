@@ -35,7 +35,7 @@ import {
 } from './register.tsx'
 // The atoms act reads and updates, declared here as register.tsx declares them: the same plugin and key is the same
 // value, and the validator reads a state source only from an atom made in the file that reads it.
-// test/hooks-split.test.mjs holds each line to its twin in register.tsx.
+// test/claude-code/hooks-split.test.mjs holds each line to its twin in register.tsx.
 const artifactMenuAtom = atom({ plugin: 'gemworks', key: 'artifactMenu' } as const, null as string | null)
 const attentionAtom = atom({ plugin: 'gemworks', key: 'attention' } as const, null as GemworksJson)
 const coachFocusAtom = atom({ plugin: 'gemworks', key: 'coachFocus' } as const, null as GemworksJson)

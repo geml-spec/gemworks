@@ -10,7 +10,7 @@
 // arguments with, so gate 2's enum is enforced here by the same code that would
 // enforce it in production rather than by an assertion we wrote ourselves.
 //
-// `test/pi-parity.test.mjs` is what keeps this double honest about the shape.
+// `test/hosts/pi-parity.test.mjs` is what keeps this double honest about the shape.
 import { Value } from "typebox/value";
 
 export function fakePi({

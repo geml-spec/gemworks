@@ -70,12 +70,12 @@ npm run test:claude   # 构建，再 claude plugin validate 与 claude plugin te
 `npm run build` 先跑 `tsc`，再打包 Claude Code 插件启动的 CLI：`dist/gemworks.mjs` 和它加载的
 `dist/gemworks-*.mjs`，`@geml/geml` 原样拷进 `dist/vendor/geml/`，装上的插件不需要再装依赖。
 包里每个文件都不到 256 KiB——到了这个大小，Anthropic 插件目录会把那一版扣下等人工审——由
-`test/hooks-split.test.mjs` 守着。`hooks/register.tsx` 和从它拆出来的 `hooks/act.tsx`（按钮按下后
+`test/claude-code/hooks-split.test.mjs` 守着。`hooks/register.tsx` 和从它拆出来的 `hooks/act.tsx`（按钮按下后
 做什么）在没有 Node 的环境里运行：它们只 import `dist/hosts/claude-code/` 与 `dist/core/` 下不依赖
-Node 的模块，`test/hooks-purity.test.mjs` 沿着这条 import 链逐个检查。hooks 的测试是 `test/*.test.ts`，
-由 `claude plugin test` 跑（它不进 `node_modules`）；其余由 `test/*.test.mjs` 的 node:test 测，其中
-`test/fastpath-parity.test.mjs` 把插件的快路径钉在 workspace 会拒绝、会记录、会询问的
-范围上，`test/checks-conformance.test.mjs` 回放
+Node 的模块，`test/claude-code/hooks-purity.test.mjs` 沿着这条 import 链逐个检查。hooks 的测试是 `test/claude-code/hooks.test.ts`，
+由 `claude plugin test` 跑（它不进 `node_modules`）；其余由 `test/` 下各个 `*.test.mjs` 的 node:test 测，其中
+`test/claude-code/fastpath-parity.test.mjs` 把插件的快路径钉在 workspace 会拒绝、会记录、会询问的
+范围上，`test/core/checks-conformance.test.mjs` 回放
 `spec/checks.json`。
 
 `src/core/` 是纯函数库——不碰 `node:fs`、`process`、`console`，也不 import 任何

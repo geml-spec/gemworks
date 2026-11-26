@@ -1,8 +1,8 @@
 // The node:test gate, run the way geml's test/all.mjs runs its suites: every test file in its own `node --test`
 // process, several at a time, slowest first, at a lower CPU priority, and never stopping at the first failure.
 //
-//   node test/all.mjs                      every test/*.test.mjs
-//   node test/all.mjs test/a.test.mjs …    just those
+//   node test/all.mjs                      every *.test.mjs under test/
+//   node test/all.mjs test/core/a.test.mjs …    just those
 //   GEMWORKS_TEST_LANES=4 node test/all.mjs
 //
 // Lanes. The files are independent (each makes its own temp directories), and the time goes to starting processes
@@ -38,12 +38,17 @@ process.env.GEMWORKS_GH ??= "gh-definitely-not-installed";
 // A host with no panel opens the GEML board when its session starts: never a window from a test.
 process.env.GEMWORKS_OPEN_BOARD ??= "0";
 
+// Every *.test.mjs under test/, in the folders that follow src/ (core/, claude-code/, hosts/, store/, workflows/,
+// package/) and at the top; fixtures/ and helpers/ hold no tests.
+const NOT_TESTS = new Set(["fixtures", "helpers"]);
+const testsUnder = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+  e.isDirectory() ? (NOT_TESTS.has(e.name) ? [] : testsUnder(join(dir, e.name))) : e.name.endsWith(".test.mjs") ? [join(dir, e.name)] : []);
 const named = process.argv.slice(2).map((f) => resolve(f));
-const files = named.length > 0 ? named : readdirSync(here).filter((f) => f.endsWith(".test.mjs")).sort().map((f) => join(here, f));
+const files = named.length > 0 ? named : testsUnder(here).sort();
 
 // Longest first, measured (each run prints its slowest): with a shared queue the first LANES files take a lane each
 // at once, so two long ones never stack in one lane behind each other; the quick ones fill whichever lane frees up.
-const SLOWEST = ["attribution", "fastpath-parity", "codex", "bridge", "artifacts", "workspace", "mcp", "dev-workflow", "video-workflow", "cli"];
+const SLOWEST = ["attribution", "fastpath-parity", "codex", "bridge", "artifacts", "workspace", "mcp", "dev", "video", "cli"];
 const rank = (f) => { const i = SLOWEST.indexOf(basename(f).replace(/\.test\.mjs$/, "")); return i < 0 ? Infinity : i; };
 const ordered = [...files].sort((a, b) => rank(a) - rank(b));
 

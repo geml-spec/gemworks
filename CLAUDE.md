@@ -17,7 +17,9 @@ the published `@geml/geml` parser and nothing else at runtime.
   sign-off sheets, the GEML board page.
 - `workflows/`, `coach/` — bundled flows; `skills/` is what Claude Code loads, `host-skills/` what the hosts that read
   one folder load (the geml plugin's two skills are copies there).
-- `test/*.test.mjs` — node:test suites over `dist/`; `test/*.test.ts` — `claude plugin test` suites for the module.
+- `test/` — node:test suites over `dist/` (`*.test.mjs`) in folders that follow `src/`: `core/`, `claude-code/`,
+  `hosts/`, `store/`, `workflows/` (the bundled flows end to end), `package/` (what the package ships), and the tests of
+  `src/`'s own modules at the top. `test/claude-code/hooks.test.ts` is the `claude plugin test` suite for the module.
 
 ## Build and check
 
@@ -27,11 +29,12 @@ Before a sync, run each gate as its own command and report it; together they tak
 npm run build                                     # tsc + bundle
 claude plugin validate .
 claude plugin test .
-node test/all.mjs test/hooks-types.test.mjs test/<module>.test.mjs …   # the files the change touches
+node test/all.mjs test/claude-code/hooks-types.test.mjs test/<area>/<module>.test.mjs …   # the files the change touches
 ```
 
 The last gate runs the test file of each module the change touched (`src/hosts/claude-code/board.ts` →
-`test/board.test.mjs`), and `hooks-split` and `hooks-purity` as well when `hooks/` changed. The whole suite
+`test/claude-code/board.test.mjs`, `src/store/sessions.ts` → `test/store/sessions.test.mjs`), and `hooks-split` and
+`hooks-purity` as well when `hooks/` changed. The whole suite
 (`node test/all.mjs`) runs on CI, on all three platforms, on every push to main; a red CI run is fixed before anything
 else goes to main. On this machine the whole suite takes four to seven minutes and, when the machine is busy, a git call
 can pass its ten-second limit and fail a test that passes run alone.

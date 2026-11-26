@@ -12,7 +12,7 @@
 // session's work item's: a call that may act in another checkout
 // (`elsewhere`, from checkoutProbe and the hooks module's look for `.git`) is
 // always the bridge's to attribute and judge.
-// test/fastpath-parity.test.mjs pins all this against a workspace and the
+// test/claude-code/fastpath-parity.test.mjs pins all this against a workspace and the
 // bridge's attribution.
 import type { FlowPolicy } from "../../core/policy.js";
 import { changesDirectory, commandOf, personOnlyRefusal, runsGitOrGh, switchesWorkItemOnly } from "../../core/command-line.js";

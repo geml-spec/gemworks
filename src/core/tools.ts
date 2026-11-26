@@ -5,7 +5,7 @@
 //
 // One DSH constraint is load-bearing and MEASURED: `defineTool` refuses an
 // object schema that does not state `additionalProperties`; every object this
-// module emits closes itself (test/dsh-parity.test.mjs pins it).
+// module emits closes itself (test/hosts/dsh-parity.test.mjs pins it).
 import type { Schema } from "./schema.js";
 import type { Snapshot } from "./snapshot.js";
 import { modelVars, outgoing, type Statechart } from "./statechart.js";

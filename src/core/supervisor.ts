@@ -3,7 +3,7 @@
 // An adapter translates these answers into its host's API and translates the
 // host's tool events back into this alphabet. Every gate DECISION lives here,
 // so a host difference can only ever be a difference in mechanism, never in
-// policy. test/purity.test.mjs pins that nothing here touches the file system.
+// policy. test/core/purity.test.mjs pins that nothing here touches the file system.
 import type { JsonValue } from "./schema.js";
 import { outgoing, type State, type Statechart, type Transition } from "./statechart.js";
 import { scopeIn } from "./policy.js";

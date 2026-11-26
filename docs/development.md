@@ -82,15 +82,15 @@ starts: `dist/gemworks.mjs` and the `dist/gemworks-*.mjs` files it loads, with
 `@geml/geml` copied unchanged into `dist/vendor/geml/`, so an installed plugin
 needs no dependency install. No file the package ships reaches 256 KiB, the
 size at which Anthropic's plugin directory holds a version for a reviewer
-(`test/hooks-split.test.mjs`). `hooks/register.tsx` and `hooks/act.tsx` (what a
+(`test/claude-code/hooks-split.test.mjs`). `hooks/register.tsx` and `hooks/act.tsx` (what a
 press does, split from it) run with no Node: they import only Node-free modules
-from `dist/hosts/claude-code/` and `dist/core/`, and `test/hooks-purity.test.mjs`
-walks that closure. The hooks tests are `test/*.test.ts`, which
+from `dist/hosts/claude-code/` and `dist/core/`, and `test/claude-code/hooks-purity.test.mjs`
+walks that closure. The hooks tests are `test/claude-code/hooks.test.ts`, which
 `claude plugin test` runs (it does not descend into `node_modules`); the
-node:test suite, `test/*.test.mjs`, covers the rest, including
-`test/fastpath-parity.test.mjs`, which holds the plugin's fast path to what the
+node:test suite, every `*.test.mjs` under `test/`, covers the rest, including
+`test/claude-code/fastpath-parity.test.mjs`, which holds the plugin's fast path to what the
 workspace would refuse, record and ask about, and
-`test/checks-conformance.test.mjs`, which replays
+`test/core/checks-conformance.test.mjs`, which replays
 `spec/checks.json`.
 
 `src/core/` is a pure library — no `node:fs`, no `process`, no `console`, and
