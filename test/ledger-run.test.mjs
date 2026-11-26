@@ -1,11 +1,11 @@
-// The person's ledger on a host whose model Gemworks borrows (src/ledger-run.ts), and the prompts other hosts recorded
+// The person's ledger on a host whose model Gemworks borrows (src/hosts/pi/ledger-run.ts), and the prompts other hosts recorded
 // waiting to be labelled (corrections-store.ts recordedUnlabelled): Pi labels each typed prompt with its own model.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkLedger, labelPrompt } from "../dist/ledger-run.js";
+import { checkLedger, labelPrompt } from "../dist/hosts/pi/ledger-run.js";
 import { handleRequest } from "../dist/bridge.js";
 import { readLedger, recordedUnlabelled } from "../dist/corrections-store.js";
 import { readSessions, recordAnswer, recordPrompt } from "../dist/session-store.js";

@@ -99,6 +99,6 @@ Claude Code 外壳也按这条规矩分在桥的两侧。`src/bridge.ts` 是 `ge
 一次调用作用在哪个检出、哪个工作项。`src/hosts/claude-code/` 是 hooks 模块 import 的、
 不依赖 Node 的一侧：请求与应答的类型、快路径、读 Claude Code 工具结果的函数，以及
 状态带、看板与 `/gemworks` 的文字——都是纯函数。`src/mcp.ts` 用 stdio MCP 提供同样的
-动词（`src/verbs.ts`）和工作循环的工具（`src/loop.ts`）；`src/codex.ts` 与
-`src/antigravity.ts` 是这两家的 hooks，`src/board-file.ts` 写出它们和 `gemworks mcp` 打开的
+动词（`src/verbs.ts`）和工作循环的工具（`src/loop.ts`）；`src/hosts/codex/adapter.ts` 与
+`src/hosts/antigravity/adapter.ts` 是这两家的 hooks，`src/board-file.ts` 写出它们和 `gemworks mcp` 打开的
 那一页 GEML 看板。

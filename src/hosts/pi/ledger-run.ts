@@ -8,12 +8,12 @@
 // bridge's (corrections ops), shared with every session. Nothing here throws at
 // a caller: a model that does not answer leaves the prompt for `gemworks
 // corrections pending`.
-import { checkRequest, flowRequest, labelRequest, linkKey, promptId, readChecks, readFlowDraft, readLabels, readThemes, themeRequest, type LabelledPrompt } from "./core/corrections.js";
-import { newProposals } from "./core/growth.js";
-import type { CorrectionsView } from "./hosts/claude-code/protocol.js";
-import { langOf, wordsFor } from "./hosts/claude-code/text.js";
-import { handleRequest } from "./bridge.js";
-import { coachFlowsAt, proposalsAt, saveProposals } from "./loop.js";
+import { checkRequest, flowRequest, labelRequest, linkKey, promptId, readChecks, readFlowDraft, readLabels, readThemes, themeRequest, type LabelledPrompt } from "../../core/corrections.js";
+import { newProposals } from "../../core/growth.js";
+import type { CorrectionsView } from "../claude-code/protocol.js";
+import { langOf, wordsFor } from "../claude-code/text.js";
+import { handleRequest } from "../../bridge.js";
+import { coachFlowsAt, proposalsAt, saveProposals } from "../../loop.js";
 
 /** The borrowed model: a system text and a prompt in, the reply's text out; undefined when it did not answer. */
 export type Complete = (system: string, prompt: string, maxTokens: number) => Promise<string | undefined>;

@@ -1,6 +1,6 @@
 // `gemworks kiro`: Gemworks's adapter for Kiro, the IDE and CLI V3. A Kiro hook is a file of `.kiro/hooks/` —
 // `{ version: "v1", hooks: [{ name, trigger, matcher?, action: { type: "command", command }, timeout? }] }` — whose
-// command gets one JSON event on stdin; the decisions are src/hooked.ts's, with Kiro's tool names (src/hosts/kiro).
+// command gets one JSON event on stdin; the decisions are src/hosts/hooked.ts's, with Kiro's tool names (src/hosts/kiro).
 //
 // What Kiro's hooks can do is narrower than Claude Code's: a command that exits 0 has its stdout added to the agent's
 // context, as plain text; one that exits otherwise has its stderr sent to the agent, and on PreToolUse the call is
@@ -17,9 +17,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { runHooked, type HookedEvent, type HostTools } from "./hooked.js";
-import { bareTool, callOf, exitCodeOf, isShell, writes } from "./hosts/kiro/hook.js";
-import { readSettings } from "./cursor.js";
+import { runHooked, type HookedEvent, type HostTools } from "../hooked.js";
+import { bareTool, callOf, exitCodeOf, isShell, writes } from "./hook.js";
+import { readSettings } from "../cursor/adapter.js";
 
 export const KIRO_HOST = "kiro";
 

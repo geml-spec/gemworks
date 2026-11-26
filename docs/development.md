@@ -123,6 +123,6 @@ acts in. `src/hosts/claude-code/` is the Node-free side the hooks module
 imports: the request and answer types, the fast path, the readers of Claude
 Code's tool results, and the words of the band, the board and `/gemworks` as
 pure functions. `src/mcp.ts` serves the same verbs (`src/verbs.ts`) and the
-work loop's tools (`src/loop.ts`) over stdio MCP; `src/codex.ts` and
-`src/antigravity.ts` are those hosts' hooks, and `src/board-file.ts` writes the
+work loop's tools (`src/loop.ts`) over stdio MCP; `src/hosts/codex/adapter.ts` and
+`src/hosts/antigravity/adapter.ts` are those hosts' hooks, and `src/board-file.ts` writes the
 GEML board page they and `gemworks mcp` open.

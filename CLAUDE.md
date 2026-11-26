@@ -9,7 +9,9 @@ the published `@geml/geml` parser and nothing else at runtime.
 - `src/core/` — host-agnostic: statecharts, the tool dictionary, policy, journals, session logs, work items.
 - `src/hosts/claude-code/` — the Claude Code plugin's pure parts (band, board, coach, text); `hooks/register.tsx` is
   the plugin module itself and imports them from `dist/`.
-- `src/hosts/dsh/`, `src/hosts/pi/`, `codex/` — the other hosts' adapters.
+- `src/hosts/<host>/` — the other hosts' adapters: for a host with hooks, `adapter.ts` beside the pure event reader
+  `hook.ts` (`src/hosts/hooked.ts` holds what five of them share); `dsh/` and `pi/` for the two that load gemworks
+  in-process. `codex/`, `hooks.json` and `mcp_config.json` are Codex's and Antigravity's install files.
 - `src/bridge.ts` — the Node side the plugin asks through the CLI (git, gh, files).
 - `workflows/`, `coach/` — bundled flows; `skills/` is what Claude Code loads, `host-skills/` what the hosts that read
   one folder load (the geml plugin's two skills are copies there).

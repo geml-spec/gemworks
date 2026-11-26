@@ -7,7 +7,7 @@
 // deny or allow (`updatedInput` rewriting the call) and `additionalContext`
 // the model reads. Codex's shell result carries no exit status, so a command
 // whose status is evidence is wrapped to print `[gemworks exit N]` last and the
-// status is read back from the output. Pure: the CLI side (src/codex.ts) does
+// status is read back from the output. Pure: the CLI side (src/hosts/codex/adapter.ts) does
 // the files and the workspace.
 import { CODEX_TOOLS } from "../../core/host-tools.js";
 import type { CallFacts } from "../claude-code/fastpath.js";

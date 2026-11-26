@@ -24,11 +24,11 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { decisionsContext, SESSIONS_PROMPT } from "./core/session-log.js";
-import { boardHasWork, openBoardOnce, writeBoard } from "./board-file.js";
-import { coachFlowsAt, loopContext, loopPrompt } from "./loop.js";
-import { normalised } from "./hosts/claude-code/readers.js";
-import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "./session-store.js";
+import { decisionsContext, SESSIONS_PROMPT } from "../../core/session-log.js";
+import { boardHasWork, openBoardOnce, writeBoard } from "../../board-file.js";
+import { coachFlowsAt, loopContext, loopPrompt } from "../../loop.js";
+import { normalised } from "../claude-code/readers.js";
+import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../../session-store.js";
 
 export const ANTIGRAVITY_HOST = "antigravity";
 

@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { activeOf, hooksWith, installCursor, projectOf, projectPath } from "../dist/cursor.js";
+import { activeOf, hooksWith, installCursor, projectOf, projectPath } from "../dist/hosts/cursor/adapter.js";
 import { callOf, denyCall, exitCodeOf, readEvent, rewriteCall } from "../dist/hosts/cursor/hook.js";
 import { wrapCommand } from "../dist/hosts/codex/hook.js";
 import { BUNDLE, fakeGh, gitRepo, hook, withWorkflow } from "./helpers/repo.mjs";

@@ -8,7 +8,7 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { installOpencode, pluginsDir, readRequest } from "../dist/opencode.js";
+import { installOpencode, pluginsDir, readRequest } from "../dist/hosts/opencode/adapter.js";
 import { bareTool, callOf, exitCodeOf, writes } from "../dist/hosts/opencode/hook.js";
 import { wrapCommand } from "../dist/hosts/codex/hook.js";
 import { BUNDLE, fakeGh, gitRepo, hook, withWorkflow } from "./helpers/repo.mjs";

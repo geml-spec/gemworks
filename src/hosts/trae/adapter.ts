@@ -1,7 +1,7 @@
 // `gemworks trae`: Gemworks's adapter for TRAE. TRAE's hooks are Claude Code's — one command per hook with the event on
 // stdin (`session_id`, `cwd`, `hook_event_name`, `workspace_roots`, and per event `source`, `prompt`, `tool_use_id`,
 // `tool_name`, `tool_input`, `tool_response`, `stop_hook_active`, `last_assistant_message`), Claude Code's
-// `hookSpecificOutput` back — so the adapter is Qwen Code's with TRAE's names, and the decisions are src/hooked.ts's.
+// `hookSpecificOutput` back — so the adapter is Qwen Code's with TRAE's names, and the decisions are src/hosts/hooked.ts's.
 // TRAE names its tools by Claude Code's names already, but for the shell, `RunCommand`; `updatedInput` replaces a
 // call's whole input; "allow" skips none of TRAE's own confirmations.
 //
@@ -13,10 +13,10 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import type { CallFacts } from "./hosts/claude-code/fastpath.js";
-import { runHooked, type HookedEvent, type HostTools } from "./hooked.js";
-import { bareTool, contextFor, denyCall, exitCodeOf, pathOf, readEvent } from "./hosts/qwen/hook.js";
-import { readSettings } from "./cursor.js";
+import type { CallFacts } from "../claude-code/fastpath.js";
+import { runHooked, type HookedEvent, type HostTools } from "../hooked.js";
+import { bareTool, contextFor, denyCall, exitCodeOf, pathOf, readEvent } from "../qwen/hook.js";
+import { readSettings } from "../cursor/adapter.js";
 
 export const TRAE_HOST = "trae";
 

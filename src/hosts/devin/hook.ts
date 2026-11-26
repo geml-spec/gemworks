@@ -4,7 +4,7 @@
 // `exec`, `write`, `edit`, `apply_patch`, `notebook_edit`, `read`, `notebook_read`, `grep`, `glob`, `webfetch`,
 // `todo_write`, `run_subagent` and `mcp__<server>__<tool>`. The gate and the bundled dictionaries speak Claude Code's
 // names, so a call is handed over as Claude Code would have made it. A call's result is `{ success, output, error }`,
-// with no exit status of its own. Pure: the CLI side (src/devin.ts) does the rest.
+// with no exit status of its own. Pure: the CLI side (src/hosts/devin/adapter.ts) does the rest.
 import type { CallFacts } from "../claude-code/fastpath.js";
 import { exitCodeIn, patchPaths } from "../codex/hook.js";
 import { bareTool } from "../qwen/hook.js";

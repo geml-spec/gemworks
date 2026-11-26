@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { hooksWith, installQwen, projectOf } from "../dist/qwen.js";
+import { hooksWith, installQwen, projectOf } from "../dist/hosts/qwen/adapter.js";
 import { allowCall, bareTool, callOf, denyCall, exitCodeOf, readEvent } from "../dist/hosts/qwen/hook.js";
 import { wrapCommand } from "../dist/hosts/codex/hook.js";
 import { BUNDLE, fakeGh, gitRepo, hook, withWorkflow } from "./helpers/repo.mjs";

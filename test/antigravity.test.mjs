@@ -1,4 +1,4 @@
-// The Antigravity editor's adapter (src/antigravity.ts): its transcript read for the prompt and the answer, its hook
+// The Antigravity editor's adapter (src/hosts/antigravity/adapter.ts): its transcript read for the prompt and the answer, its hook
 // events into the project's shared session record, the install, and the MCP server finding the project the hooks saw.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { activeOf, answerOf, installAntigravity, promptsAfter, requestOf, runAntigravity } from "../dist/antigravity.js";
+import { activeOf, answerOf, installAntigravity, promptsAfter, requestOf, runAntigravity } from "../dist/hosts/antigravity/adapter.js";
 import { logName, parseLog } from "../dist/core/session-log.js";
 import { recordDecisions, recordPrompt, sessionsDirOf } from "../dist/session-store.js";
 import { BUNDLE, gitRepo } from "./helpers/repo.mjs";
@@ -111,7 +111,7 @@ test("the work loop through Antigravity's hooks: a new prompt's transient messag
 });
 
 test("the Antigravity plugin in this folder: its manifest has what the Marketplace asks, its hooks and MCP server run the bundle it ships, its skills are only the ones skills/ lacks", async () => {
-  const { hooksFor } = await import("../dist/antigravity.js");
+  const { hooksFor } = await import("../dist/hosts/antigravity/adapter.js");
   const { existsSync, readdirSync } = await import("node:fs");
   const at = (p) => new URL(`../${p}`, import.meta.url);
   const json = (p) => JSON.parse(readFileSync(at(p), "utf8"));

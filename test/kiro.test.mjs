@@ -7,9 +7,9 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { hookFile, installKiro } from "../dist/kiro.js";
+import { hookFile, installKiro } from "../dist/hosts/kiro/adapter.js";
 import { bareTool, callOf, exitCodeOf, isShell, writes } from "../dist/hosts/kiro/hook.js";
-import { mcpRootOf } from "../dist/hooked.js";
+import { mcpRootOf } from "../dist/hosts/hooked.js";
 import { BUNDLE, fakeGh, gitRepo, hook, withWorkflow } from "./helpers/repo.mjs";
 
 const WS_DEV = fileURLToPath(new URL("./fixtures/ws-dev/", import.meta.url));

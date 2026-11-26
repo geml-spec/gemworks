@@ -7,8 +7,8 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { callOf, hooksWith, installTrae, mcpEntry, projectOf } from "../dist/trae.js";
-import { mcpRootOf } from "../dist/hooked.js";
+import { callOf, hooksWith, installTrae, mcpEntry, projectOf } from "../dist/hosts/trae/adapter.js";
+import { mcpRootOf } from "../dist/hosts/hooked.js";
 import { wrapCommand } from "../dist/hosts/codex/hook.js";
 import { BUNDLE, fakeGh, gitRepo, hook, withWorkflow } from "./helpers/repo.mjs";
 

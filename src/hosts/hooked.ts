@@ -1,5 +1,5 @@
-// What the adapters of hosts with Claude Code-like hooks share — Qwen Code (src/qwen.ts) and OpenCode
-// (src/opencode.ts): one event in, what the host should do out, decided with the same functions the Claude Code module
+// What the adapters of hosts with Claude Code-like hooks share — Qwen Code (src/hosts/qwen/adapter.ts) and OpenCode
+// (src/hosts/opencode/adapter.ts): one event in, what the host should do out, decided with the same functions the Claude Code module
 // and the Codex adapter decide with. Each event opens the workspace through the bridge's own `handleRequest`, in this
 // process; each adapter reads its host's event into a `HookedEvent` and writes the `HookedAnswer` back in its host's
 // shape.
@@ -17,24 +17,24 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { handleRequest } from "./bridge.js";
-import { commandOf } from "./core/command-line.js";
-import { bindingOf, evidenceKeys, type Dictionary } from "./core/dictionary.js";
-import { CONTEXT_DOC } from "./core/layout.js";
-import type { FlowPolicy } from "./core/policy.js";
-import { currentTurn, decisionsContext, SESSIONS_PROMPT } from "./core/session-log.js";
-import { isOwnTool } from "./core/verb-specs.js";
-import { WORK_REMINDER } from "./core/work.js";
-import { exists, readText } from "./host-fs.js";
-import { afterNeeded, beforeDecision, paramsToFill, type CallFacts } from "./hosts/claude-code/fastpath.js";
-import type { BridgeOp, BridgeResponse } from "./hosts/claude-code/protocol.js";
-import { contextOf } from "./hosts/claude-code/readers.js";
-import { isWrapped, unwrapCommand, wrapCommand } from "./hosts/codex/hook.js";
-import type { Status } from "./workspace.js";
-import { boardHasWork, openBoardOnce, writeBoard } from "./board-file.js";
-import { projectPath } from "./cursor.js";
-import { coachFlowsAt, loopContext, loopPrompt } from "./loop.js";
-import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "./session-store.js";
+import { handleRequest } from "../bridge.js";
+import { commandOf } from "../core/command-line.js";
+import { bindingOf, evidenceKeys, type Dictionary } from "../core/dictionary.js";
+import { CONTEXT_DOC } from "../core/layout.js";
+import type { FlowPolicy } from "../core/policy.js";
+import { currentTurn, decisionsContext, SESSIONS_PROMPT } from "../core/session-log.js";
+import { isOwnTool } from "../core/verb-specs.js";
+import { WORK_REMINDER } from "../core/work.js";
+import { exists, readText } from "../host-fs.js";
+import { afterNeeded, beforeDecision, paramsToFill, type CallFacts } from "./claude-code/fastpath.js";
+import type { BridgeOp, BridgeResponse } from "./claude-code/protocol.js";
+import { contextOf } from "./claude-code/readers.js";
+import { isWrapped, unwrapCommand, wrapCommand } from "./codex/hook.js";
+import type { Status } from "../workspace.js";
+import { boardHasWork, openBoardOnce, writeBoard } from "../board-file.js";
+import { projectPath } from "./cursor/adapter.js";
+import { coachFlowsAt, loopContext, loopPrompt } from "../loop.js";
+import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../session-store.js";
 
 /** How a host names its tools, and where its calls say what they did. */
 export interface HostTools {

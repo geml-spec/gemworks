@@ -2,7 +2,7 @@
 // `read`, `grep`, `glob`, `webfetch`, `websearch`, `todowrite`, `subagent`, and an MCP server's tools
 // `<server>.<tool>`; a file tool names its file in `path`, `patch` in its patch text. The gate and the bundled
 // dictionaries speak Claude Code's names, so a call is handed over as Claude Code would have made it. A shell call's
-// result carries its exit status in `output.exit`. Pure: the CLI side (src/opencode.ts) and the plugin OpenCode loads
+// result carries its exit status in `output.exit`. Pure: the CLI side (src/hosts/opencode/adapter.ts) and the plugin OpenCode loads
 // do the rest.
 import type { CallFacts } from "../claude-code/fastpath.js";
 import { exitCodeIn, patchPaths } from "../codex/hook.js";

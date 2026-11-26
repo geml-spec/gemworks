@@ -2,7 +2,7 @@
 // hook system. `gemworks devin install` puts the hooks under `hooks` in Devin's user config
 // (`~/.config/devin/config.json`, `%APPDATA%\devin\config.json` on Windows) and the MCP server in
 // `mcp_config.json` beside it. Devin runs one command per hook with the event on stdin; its hooks are Claude Code's, so
-// the adapter is Qwen Code's with Devin's names, and the decisions are src/hooked.ts's.
+// the adapter is Qwen Code's with Devin's names, and the decisions are src/hosts/hooked.ts's.
 //
 // What differs: a refusal is exit code 2 with the reason on stderr, the way Devin's docs block a call; before a call
 // only `updatedInput` reaches Devin (it merges it into the call's arguments), so a note for the model there is not
@@ -14,10 +14,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { activeOf as hookedActiveOf, mcpRootOf as hookedMcpRootOf, runHooked, type Active, type HookedEvent, type HostTools } from "./hooked.js";
-import { bareTool, callOf, exitCodeOf, failedIn, SHELL, writes } from "./hosts/devin/hook.js";
-import { readEvent } from "./hosts/qwen/hook.js";
-import { readSettings } from "./cursor.js";
+import { activeOf as hookedActiveOf, mcpRootOf as hookedMcpRootOf, runHooked, type Active, type HookedEvent, type HostTools } from "../hooked.js";
+import { bareTool, callOf, exitCodeOf, failedIn, SHELL, writes } from "./hook.js";
+import { readEvent } from "../qwen/hook.js";
+import { readSettings } from "../cursor/adapter.js";
 
 export const DEVIN_HOST = "devin";
 
@@ -29,7 +29,7 @@ export function projectOf(env: NodeJS.ProcessEnv, cwd: string | undefined, here:
   return resolve(dir);
 }
 
-/** The session the hooks last saw and its project, and what the MCP server works in: src/hooked.ts keeps them. */
+/** The session the hooks last saw and its project, and what the MCP server works in: src/hosts/hooked.ts keeps them. */
 export const activeOf = (home: string = homedir()): Active | undefined => hookedActiveOf(DEVIN_HOST, home);
 export const mcpRootOf = (root: string, home: string = homedir()): Active | undefined => hookedMcpRootOf(DEVIN_HOST, root, home);
 

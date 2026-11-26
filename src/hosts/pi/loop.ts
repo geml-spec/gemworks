@@ -18,7 +18,7 @@ import { currentTurn, decisionsContext, NOTE_TOOL, noteReply, SESSIONS_PROMPT, t
 import { itemProgress, turnItem, WORK_REMINDER, type CoachFlow, type WorkItem } from "../../core/work.js";
 import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, workItemsAt } from "../../loop.js";
 import { readPractices } from "../../practice-store.js";
-import { labelPrompt, type Complete } from "../../ledger-run.js";
+import { labelPrompt, type Complete } from "./ledger-run.js";
 import { typedWords } from "../../core/corrections.js";
 import { appendSession, decisionsFor, hostLabel, readSessions, recordAnswer, recordNote, recordPrompt } from "../../session-store.js";
 

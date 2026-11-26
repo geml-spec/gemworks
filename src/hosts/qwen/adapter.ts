@@ -6,7 +6,7 @@
 // the same functions the Claude Code module and the Codex adapter decide with.
 //
 // Qwen Code's hooks are Claude Code's, so the adapter is Codex's with Qwen
-// Code's names (the decisions are src/hooked.ts's): SessionStart hands the model the work loop's standing
+// Code's names (the decisions are src/hosts/hooked.ts's): SessionStart hands the model the work loop's standing
 // instructions, the note tool and the stage text, and opens the GEML board
 // when it has work on it; UserPromptSubmit records the prompt and says beside
 // it the stage text when it changed, the other sessions' decisions not yet
@@ -29,9 +29,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { hostStateDir, runHooked, type HookedEvent, type HostTools } from "./hooked.js";
-import { allowCall, bareTool, callOf, contextFor, denyCall, exitCodeOf, pathOf, readEvent, SHELL, writesFiles } from "./hosts/qwen/hook.js";
-import { readSettings } from "./cursor.js";
+import { hostStateDir, runHooked, type HookedEvent, type HostTools } from "../hooked.js";
+import { allowCall, bareTool, callOf, contextFor, denyCall, exitCodeOf, pathOf, readEvent, SHELL, writesFiles } from "./hook.js";
+import { readSettings } from "../cursor/adapter.js";
 
 export const QWEN_HOST = "qwen";
 

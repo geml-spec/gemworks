@@ -12,7 +12,7 @@
 // by runtime id — `run_shell_command`, `write_file`, `edit`,
 // `notebook_edit`, `read_file`, `grep_search`, `glob` — and the gate and the
 // bundled dictionaries speak Claude Code's names, so a call is handed over as
-// Claude Code would have made it. Pure: the CLI side (src/qwen.ts) does the
+// Claude Code would have made it. Pure: the CLI side (src/hosts/qwen/adapter.ts) does the
 // files and the workspace.
 import type { CallFacts } from "../claude-code/fastpath.js";
 import { exitCodeIn } from "../codex/hook.js";

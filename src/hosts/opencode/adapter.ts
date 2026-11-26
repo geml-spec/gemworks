@@ -1,7 +1,7 @@
 // `gemworks opencode`: Gemworks's adapter for OpenCode (2.x). OpenCode loads plugins in its own process, so
 // `gemworks opencode install` puts a small plugin in OpenCode's global plugins folder; the plugin registers the
 // gemworks MCP server and, on each hook, runs `gemworks opencode` with one event on stdin — `{ session, root, event }`,
-// the event already in no host's shape (src/hooked.ts) — and reads the answer from stdout.
+// the event already in no host's shape (src/hosts/hooked.ts) — and reads the answer from stdout.
 //
 // The plugin's hooks: a session's first prompt starts it (OpenCode has no session-start hook), and each prompt is one
 // turn (OpenCode runs the prompt hook for the person's prompts only); what the model should read goes into the system
@@ -13,8 +13,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { runHooked, type HookedEvent, type HostTools } from "./hooked.js";
-import { bareTool, callOf, exitCodeOf, SHELL, writes } from "./hosts/opencode/hook.js";
+import { runHooked, type HookedEvent, type HostTools } from "../hooked.js";
+import { bareTool, callOf, exitCodeOf, SHELL, writes } from "./hook.js";
 
 export const OPENCODE_HOST = "opencode";
 
