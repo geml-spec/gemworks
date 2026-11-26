@@ -893,6 +893,12 @@ function answer(req: BridgeRequest): BridgeResponse {
       const r = recordArtifact(undefined, root, req);
       return r.ok ? { v: 1, ok: true, shell, text: r.text } : { v: 1, ok: false, error: r.reason, shell };
     }
+    // Nor the sign-off sheets of the light flows' work items, written again after each work report.
+    if (req.op === "signoff") {
+      const lang: Lang | undefined = req.lang === "zh" || req.lang === "en" || req.lang === "ja" ? req.lang : undefined;
+      writeSignoffs(root, req.ids, ...(lang !== undefined ? [lang] : []));
+      return { v: 1, ok: true, shell };
+    }
     // Nor the host's transcripts, read into that record on the first start.
     if (req.op === "backfill-list") return { v: 1, ok: true, shell, backfill: { sessions: transcriptFiles(root, transcriptsRoot(req)).map(({ file, id, size }) => ({ file, id, size })) } };
     if (req.op === "backfill-one") {
