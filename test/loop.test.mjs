@@ -68,6 +68,17 @@ test("practice: recorded on its step into the project's layer, and read back bes
   assert.match(lines[1], /样稿先画最简单的一版 — 11-09 改了三遍; corrected 1 before, 0 since$/, "the ledger's count, read beside the prompt");
   assert.deepEqual(loopContext(root, "another"), [lines[0]], "another session hears the items, not this one's step");
   assert.equal(recordPractices(root, "dsh", "s1", { practices: [] }, AT).ok, false);
+  // Another, with one kept: the closest shown first, with how it fared; nothing written until it says new or which it rewrites.
+  const LATER = "2026-11-09T08:10:00.000Z";
+  const again = { flow: "feature", step: "mockup", text: "样稿先画最简单的那一版", layer: "project" };
+  const held = recordPractices(root, "dsh", "s1", { practices: [again] }, LATER);
+  assert.equal(held.ok, false);
+  assert.match(held.text, new RegExp(`^Not recorded yet: «样稿先画最简单的那一版».*\\n\\[${id}\\] feature mockup: 样稿先画最简单的一版 — 11-09 改了三遍; corrected 1 before, 0 since\\n`));
+  assert.equal(readPractices(root).practices.filter((p) => p.layer === "project").length, 1);
+  const rewrote = recordPractices(root, "dsh", "s1", { practices: [{ ...again, replaces: id }] }, LATER);
+  assert.equal(rewrote.ok, true, rewrote.text);
+  assert.match(rewrote.text, new RegExp(`takes the place of \\[${id}\\] \\(corrected 1 before, 0 since\\)`));
+  assert.deepEqual(readPractices(root).practices.filter((p) => p.layer === "project").map((p) => [p.text, p.deleted === true, p.replacedBy !== undefined]), [["样稿先画最简单的一版", true, true], ["样稿先画最简单的那一版", false, false]]);
 });
 
 test("propose and answer: a proposal kept open until the person's words answer it; a yes adds the flow as the project's own", () => {

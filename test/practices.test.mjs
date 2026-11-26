@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { isNew, newPractices, parsePractices, practicesAt, practicesText } from "../dist/core/practices.js";
+import { closestPractices, isNew, likeness, newPractices, parsePractices, practicesAt, practicesText } from "../dist/core/practices.js";
 import { changePractice, practicePaths, readPractices, writePractices } from "../dist/practice-store.js";
-import { memoryMoveContext, practiceContext, practiceWords, WHY_SHOWN } from "../dist/hosts/claude-code/practice.js";
+import { memoryMoveContext, practiceAnswer, practiceContext, practiceWords, WHY_SHOWN } from "../dist/hosts/claude-code/practice.js";
 import { COACH_FLOWS, readCoachFlow } from "../dist/hosts/claude-code/coach.js";
 import { gitRepo, hook } from "./helpers/repo.mjs";
 
@@ -37,8 +37,8 @@ test("the practices of a step: its own first, then the flow's for every step, th
 test("practices given are checked: a text, a flow and a step the flows have; one kept, or one the person took out, is not added again", () => {
   const kept = [p({}), p({ id: "gone", text: "长命令先说一声", step: "verify", deleted: true })];
   const r = newPractices([
-    { flow: "bugfix", step: "reproduce", text: "先证实跑的是哪一版", why: "10-21", layer: "project" },
-    { flow: "*", step: "*", text: "回复用中文", layer: "personal", from: "memory:reply-in-chinese.md" },
+    { flow: "bugfix", step: "reproduce", text: "先证实跑的是哪一版", why: "10-21", layer: "project", new: true },
+    { flow: "*", step: "*", text: "回复用中文", layer: "personal", from: "memory:reply-in-chinese.md", new: true },
     { flow: "bugfix", step: "fix", text: "同一现象再现，先回头读引擎契约" },
     { flow: "bugfix", step: "verify", text: "长命令 先说一声" },
     { flow: "release", step: "a", text: "x" },
@@ -54,6 +54,58 @@ test("practices given are checked: a text, a flow and a step the flows have; one
   assert.equal(isNew(p({}), "2026-10-26T00:00:00Z"), true);
   assert.equal(isNew(p({ by: "memory" }), "2026-10-26T00:00:00Z"), false);
   assert.equal(isNew(p({ at: "2026-10-01T00:00:00Z" }), "2026-10-26T00:00:00Z"), false);
+});
+
+test("before the model writes one, the closest kept are shown: it says new or which it rewrites; a rewrite takes that one's place, not the person's or the team's", () => {
+  const kept = [
+    p({ id: "main", flow: "*", step: "*", text: "小改动直接提交 main 不起分支，大功能才走 feat 分支", why: "07-15", at: "2026-07-15T00:00:00Z" }),
+    p({ id: "zh", flow: "*", step: "*", text: "回复用中文", by: "person" }),
+    p({ id: "gone", text: "改动先开分支再说", deleted: true }),
+    p({ id: "old", text: "小改动也开分支", deleted: true, replacedBy: "main" }),
+    p({ id: "team", text: "提交前跑三道门", layer: "team" }),
+  ];
+  // Alike by the characters they share: the restatement first, by far; one a rewrite replaced is never listed.
+  assert.ok(likeness("小改动直接进 main，别新开分支", kept[0].text) > 0.3);
+  assert.ok(likeness("小改动直接进 main，别新开分支", "回复用中文") < 0.1);
+  assert.deepEqual(closestPractices(kept, "小改动直接进 main，别新开分支").map((x) => x.id), ["main", "gone", "zh", "team"]);
+  const at = "2026-11-26T10:00:00Z";
+  const give = (x) => newPractices([{ flow: "*", step: "*", text: "小改动直接进 main，别新开分支", why: "11-26 又开了分支", layer: "project", ...x }], kept, at, "model", (n) => `n${n}`, steps);
+  // Neither said: held back, nothing written.
+  assert.deepEqual([give({}).added, give({}).unreviewed], [[], [{ n: 0, text: "小改动直接进 main，别新开分支" }]]);
+  assert.deepEqual(give({ new: true }).added.map((x) => [x.id, x.replaces]), [["n0", undefined]]);
+  const rewrite = give({ replaces: "[main]" });
+  assert.deepEqual([rewrite.added.map((x) => [x.id, x.replaces]), rewrite.replaced], [[["n0", "main"]], [{ id: "main", by: "n0" }]]);
+  assert.deepEqual(["zh", "team", "gone", "nobody"].map((id) => give({ replaces: id }).errors[0]), [
+    "practice 1: zh is the person's, not replaced: give yours as new", "practice 1: team is the team's, not replaced: give yours as new",
+    "practice 1: gone is taken out already", "practice 1: there is no practice nobody to replace",
+  ]);
+  // The move from memory, and the person's own, are written as given; with nothing kept, there is nothing to look at first.
+  assert.equal(newPractices([{ flow: "*", step: "*", text: "小改动直接进 main", layer: "project" }], kept, at, "memory", (n) => `n${n}`, steps).added.length, 1);
+  assert.equal(newPractices([{ flow: "*", step: "*", text: "小改动直接进 main", layer: "project" }], kept, at, "person", (n) => `n${n}`, steps).added.length, 1);
+  assert.equal(newPractices([{ flow: "*", step: "*", text: "小改动直接进 main", layer: "project" }], [], at, "model", (n) => `n${n}`, steps).added.length, 1);
+  // What the tool answers: the closest, each with how it fared and whose; then what to call it with. Then the rewrite.
+  const held = practiceAnswer(give({}), kept, { main: { before: 0, after: 3 } });
+  assert.equal(held.ok, false);
+  assert.deepEqual(held.text.split("\n").slice(0, 5), [
+    "Not recorded yet: «小改动直接进 main，别新开分支». Say first whether it is new or rewrites one already kept. The closest of the project's 4 practices:",
+    "[main] * *: 小改动直接提交 main 不起分支，大功能才走 feat 分支 — 07-15; corrected 0 before, 3 since: not holding",
+    "[gone] bugfix fix: 改动先开分支再说 — 10-22 页签连死四次 (taken out by the person)",
+    "[zh] * *: 回复用中文 — 10-22 页签连死四次 (the person's)",
+    "[team] bugfix fix: 提交前跑三道门 — 10-22 页签连死四次 (the team's)",
+  ]);
+  assert.match(held.text, /\nCall practice again with replaces: <id> .* or new: true/);
+  assert.deepEqual(practiceAnswer(rewrite, kept, { main: { before: 0, after: 3 } }), { ok: true, text: "Recorded 1 practice; they remind at their steps.\n[n0] takes the place of [main] (not holding: corrected 3 since)." });
+});
+
+test("a rewrite on disk: the one it replaces is kept taken out, naming it; the person taking the rewrite out gives that one back", () => {
+  const root = gitRepo();
+  const home = mkdtempSync(join(tmpdir(), "gw-home-"));
+  writePractices(root, [p({ id: "main", layer: "personal", flow: "*", step: "*", text: "小改动直接提交 main" })], false, home);
+  writePractices(root, [p({ id: "n0", layer: "project", flow: "*", step: "*", text: "小改动直接进 main，别新开分支", replaces: "main" })], false, home);
+  const now = () => readPractices(root, home).practices.map((x) => [x.id, x.layer, x.deleted === true, x.replacedBy, x.replaces]);
+  assert.deepEqual(now(), [["n0", "project", false, undefined, "main"], ["main", "personal", true, "n0", undefined]], "across layers");
+  assert.equal(changePractice(root, "n0", { deleted: true }, home), true);
+  assert.deepEqual(now(), [["n0", "project", true, undefined, "main"], ["main", "personal", false, undefined, undefined]]);
 });
 
 test("the layers on disk: the person's in their home, the project's beside its sessions, the team's in the repository; taken out stays, moved changes file", () => {

@@ -17,7 +17,7 @@ import { practiceCounts, type PracticeCount } from "./core/corrections.js";
 import { readLedger } from "./corrections-store.js";
 import { ANSWER_TOOL, applyToFlow, flowText, GROWTH_PROMPT_ON_BOARD, newFlow, newProposals, parseProposals, PROPOSE_TOOL_ON_BOARD, proposalsText, type Proposal } from "./core/growth.js";
 import { GEML_DIR } from "./core/layout.js";
-import { PRACTICE_PROMPT, PRACTICE_TOOL, practiceContext } from "./core/practice-tool.js";
+import { PRACTICE_PROMPT, PRACTICE_TOOL, practiceAnswer, practiceContext } from "./core/practice-tool.js";
 import { newPractices } from "./core/practices.js";
 import { currentTurn, type SessionEvent } from "./core/session-log.js";
 import { COACH_FLOWS, readCoachFlow, turnItem, WORK_TOOL, workContext, workEvents, workItemsOf, workPrompt, type CoachFlow, type WorkItem } from "./core/work.js";
@@ -108,9 +108,12 @@ export function recordPractices(root: string, host: string, session: string, arg
   const stamp = stampOf(now);
   const turn = currentTurn(appendSession(root, host, session, () => [], now));
   const r = newPractices(given, kept, now, memory ? "memory" : "model", (n) => `p${stamp}${n}`, flows.map((f) => ({ name: f.name, steps: f.states.map((s) => s.id) })), { session, turn });
-  if (r.added.length === 0 && !memory) return { ok: false, text: `Nothing recorded: ${r.errors.join("; ") || "practices is a list"}.` };
+  let counts: Record<string, PracticeCount> = {};
+  try { counts = practiceCounts(readLedger(), kept.filter((p) => p.deleted !== true)); } catch { /* listed without how they fared */ }
+  const answer = practiceAnswer(r, kept, counts);
+  if (r.added.length === 0 && !memory) return { ok: false, text: r.unreviewed.length > 0 ? answer.text : `Nothing recorded: ${r.errors.join("; ") || "practices is a list"}.` };
   writePractices(root, r.added, memory);
-  return { ok: true, text: `Recorded ${r.added.length} practice${r.added.length === 1 ? "" : "s"}; they remind at their steps.${r.errors.length > 0 ? ` Left out: ${r.errors.join("; ")}.` : ""}` };
+  return { ok: true, text: answer.text };
 }
 
 /** The proposals kept in the project's `.geml/proposals.geml`. */

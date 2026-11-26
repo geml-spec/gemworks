@@ -40,14 +40,20 @@ export function readPractices(root: string, home?: string): { practices: Practic
   return { practices: [...team.practices, ...project.practices, ...personal.practices], memoryMoved: project.memoryMoved };
 }
 
-/** Practices written into their layers (personal or project); `memory` marks the project's memory moved. */
+/**
+ * Practices written into their layers (personal or project); `memory` marks the project's memory moved. One that
+ * `replaces` another takes its place: that one, in whichever of the two layers, is kept taken out, naming it.
+ */
 export function writePractices(root: string, added: readonly Practice[], memory: boolean, home?: string): void {
   const paths = practicePaths(root, home);
+  const by = new Map(added.flatMap((p) => (p.replaces !== undefined ? [[p.replaces, p.id] as const] : [])));
   for (const layer of ["personal", "project"] as const) {
     const mine = added.filter((p) => p.layer === layer);
-    if (mine.length === 0 && !(layer === "project" && memory)) continue;
     const file = readLayer(paths[layer], layer);
-    writeLayer(paths[layer], { practices: [...file.practices, ...mine], memoryMoved: file.memoryMoved || (layer === "project" && memory) });
+    const replacing = file.practices.some((p) => by.has(p.id));
+    if (mine.length === 0 && !replacing && !(layer === "project" && memory)) continue;
+    const kept = file.practices.map((p) => (by.has(p.id) ? { ...p, deleted: true, replacedBy: by.get(p.id) as string } : p));
+    writeLayer(paths[layer], { practices: [...kept, ...mine], memoryMoved: file.memoryMoved || (layer === "project" && memory) });
   }
 }
 
@@ -55,9 +61,20 @@ export function writePractices(root: string, added: readonly Practice[], memory:
  * One practice changed: taken out (kept as a tombstone, so it is not learned again), moved to the other of the
  * person's and the project's layers, or hung on every flow and step (`everywhere`: what it asks was said off its step
  * too). A team practice is changed in the repository, not here. False when there is no such practice it can change.
+ * A rewrite taken out gives back the one it took the place of: the person undoes the model's rewrite.
  */
 export function changePractice(root: string, id: string, change: { deleted?: boolean; layer?: "personal" | "project"; everywhere?: boolean }, home?: string): boolean {
   const paths = practicePaths(root, home);
+  if (change.deleted === true) {
+    const rewrite = readPractices(root, home).practices.find((p) => p.id === id && p.layer !== "team");
+    if (rewrite?.replaces !== undefined) {
+      for (const layer of ["personal", "project"] as const) {
+        const file = readLayer(paths[layer], layer);
+        if (!file.practices.some((p) => p.id === rewrite.replaces && p.replacedBy === id)) continue;
+        writeLayer(paths[layer], { ...file, practices: file.practices.map((p) => (p.id === rewrite.replaces ? (({ replacedBy: _by, deleted: _deleted, ...back }) => back)(p) : p)) });
+      }
+    }
+  }
   const changed = (p: Practice): Practice => ({ ...p, ...(change.deleted !== undefined ? { deleted: change.deleted } : {}), ...(change.everywhere === true ? { flow: "*", step: "*" } : {}) });
   for (const layer of ["personal", "project"] as const) {
     const file = readLayer(paths[layer], layer);

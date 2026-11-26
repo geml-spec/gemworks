@@ -590,6 +590,7 @@ export const WORDS: Readonly<Record<string, Entry>> = {
   "提议": { en: "Proposal", ja: "提案" },
   // --- the ledger of corrections, on the flow tab ---
   "纠正 {0} → {1}": { en: "corrected {0} → {1}", ja: "訂正 {0} → {1}" },
+  "改写自「{0}」": { en: "rewrites «{0}»", ja: "「{0}」の書き直し" },
   "失效": { en: "Not holding", ja: "効いていない" },
   "生效后仍纠正 {0} 次：{1}": { en: "Corrected {0} times since it was written: {1}", ja: "書いた後も {0} 回訂正：{1}" },
   "已有替代做法（{0}）：{1}": { en: "Replaced ({0}) by: {1}", ja: "代わりのやり方あり（{0}）：{1}" },

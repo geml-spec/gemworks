@@ -46,7 +46,7 @@ import { ARTIFACT_TOOL, isMadeForPeople, publishedLink } from '../dist/core/arti
 import { ASK_PROMPT, ASK_TOOL, askedOf } from '../dist/core/ask-tool.js'
 import { COACH_FLOWS, coachBand, goneOnAfterTurn, itemProgress, readCoachFlow, stripText, turnItem, turnWords, WORK_REMINDER, WORK_TOOL, workContext, workEvents, workItemsOf, workPrompt } from '../dist/hosts/claude-code/coach.js'
 import type { CoachFlow, CoachFocus, Doing, GoneOn, WorkGroup, WorkItem } from '../dist/hosts/claude-code/coach.js'
-import { memoryMoveContext, PRACTICE_PROMPT, PRACTICE_TOOL, practiceContext } from '../dist/hosts/claude-code/practice.js'
+import { memoryMoveContext, PRACTICE_PROMPT, PRACTICE_TOOL, practiceAnswer, practiceContext } from '../dist/hosts/claude-code/practice.js'
 import { isNew, newPractices, type Practice } from '../dist/core/practices.js'
 import { expireEvent, expiring, exportText as flowExport, flowText, GROWTH_PROMPT, isRulesFile, newProposals, parseProposals, parseRules, PROPOSE_TOOL, proposalsText, RULE_TOOL, ruleRefusal, rulesText, skippedSteps, type Proposal, type Rule } from '../dist/hosts/claude-code/growth.js'
 import { keysOf } from '../dist/core/dictionary.js'
@@ -1207,13 +1207,15 @@ async function recordPractices($: EngineInterface, event: unknown): Promise<Tool
   const session = await $.session.id().catch(() => '')
   const turn = currentTurn(parseLog(await ownLogText($, (await read($, sessionsDirAtom)) ?? '', session).catch(() => '')))
   const r = newPractices(given, kept, at, memory ? 'memory' : 'model', (n) => `p${stamp}${n}`, flows.map((f) => ({ name: f.name, steps: f.states.map((s) => s.id) })), { session, turn })
-  if (r.added.length === 0 && !memory) return { result: `Nothing recorded: ${r.errors.join('; ') || 'practices is a list'}.` }
+  // Held back or not, the answer lists the closest kept with how each fared: the ledger as last read.
+  const answer = practiceAnswer(r, kept, (await correctionsKept($))?.counts ?? {})
+  if (r.added.length === 0 && !memory) return { result: r.unreviewed.length > 0 ? answer.text : `Nothing recorded: ${r.errors.join('; ') || 'practices is a list'}.` }
   const res = await bridge($, { op: 'practice-add', practices: r.added, ...(memory ? { memory: true } : {}) }).catch(() => undefined)
   if (res === undefined || !res.ok) return { result: 'Nothing recorded: gemworks could not write the practices.' }
   if (res.practices !== undefined) await update($, practicesAtom, () => res.practices as unknown as GemworksJson)
   // A new practice may state a theme the person kept saying: the themes are linked again, behind.
   if (r.added.length > 0) $.clock.after(0, () => { void themeLedger($).catch(() => undefined) })
-  return { result: `Recorded ${r.added.length} practice${r.added.length === 1 ? '' : 's'}; they remind at their steps.${r.errors.length > 0 ? ` Left out: ${r.errors.join('; ')}.` : ''}` }
+  return { result: answer.text }
 }
 
 /** The work tool: the turn's work items, checked against the flows, into this session's log; the board shows them. */

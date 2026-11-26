@@ -468,3 +468,12 @@ test("the starter flows speak the person's language: every title, need, pitfall,
   assert.deepEqual(flowsIn([grown], wordsFor("en"))[0].states[0].title, "先截图", "a step the project grew keeps its own words");
   assert.deepEqual(flowsIn(flows, t), flows, "in Chinese nothing changes");
 });
+
+test("a practice the model rewrote says which it took the place of, by that one's first words; the one replaced is not listed", () => {
+  const pr = (over) => ({ id: "n1", flow: "bugfix", step: "fix", text: "改之前先复现一遍再动手", why: "11-26 又修错了地方", at: "2026-11-26T00:00:00Z", by: "model", layer: "project", ...over });
+  const practices = [pr({ id: "o1", text: "修之前先复现：同一个现象出现两次就回头读引擎契约", why: "10-22", at: "2026-10-22T00:00:00Z", deleted: true, replacedBy: "n1" }), pr({ replaces: "o1" })];
+  const rows = manualRows([item({ state: "fix" })], flows, practices, t, { focus: null, expanded: ["bugfix"], now: "2026-11-26T01:00:00Z" });
+  assert.deepEqual(rows.filter((r) => r.kind === "practice").map((r) => [r.key, r.tag, r.why]), [["practice-n1", "新学到", "11-26 又修错了地方 · 改写自「修之前先复现：同一个现象出现两次…」"]]);
+  // One whose replaced practice is no longer there says nothing of it.
+  assert.equal(manualRows([item({ state: "fix" })], flows, [pr({ replaces: "gone" })], t, { focus: null, expanded: ["bugfix"] }).find((r) => r.key === "practice-n1").why, "11-26 又修错了地方");
+});

@@ -356,8 +356,10 @@ function menuRow(key: string, items: Pressable[], t: T): BoardRow {
  * from, and beside them 改成规定 (a practice on a step), × (one learned or moved in, the person's to take out) and ⋯;
  * ⋯ opens the rest under it (its layer, sharing), so the row carries only what the design shows.
  */
-function practiceRows(p: Practice, t: T, o: ManualOptions): BoardRow[] {
+function practiceRows(p: Practice, t: T, o: ManualOptions, replaced?: Practice): BoardRow[] {
   const fresh = o.now !== undefined && isNew(p, o.now);
+  // A rewrite by the model says which practice it took the place of, by that one's first words: × gives it back.
+  const was = replaced !== undefined ? t("改写自「{0}」", [...replaced.text].length > 16 ? `${[...replaced.text].slice(0, 16).join("")}…` : replaced.text) : "";
   const count = o.ledger?.counts[p.id];
   const tag = p.layer === "team" ? t("团队") : fresh ? t("新学到") : p.by === "memory" ? t("从记忆搬来") : t("做法");
   const key = `practice:${p.id}`;
@@ -368,7 +370,7 @@ function practiceRows(p: Practice, t: T, o: ManualOptions): BoardRow[] {
     menuPress(key, o.menu),
   ];
   const row: BoardRow = {
-    kind: "practice", key: `practice-${p.id}`, text: p.text, why: [p.why, p.ref ?? ""].filter((x) => x !== "").join(" · "), tag, fresh, actions,
+    kind: "practice", key: `practice-${p.id}`, text: p.text, why: [p.why, p.ref ?? "", was].filter((x) => x !== "").join(" · "), tag, fresh, actions,
     ...(count !== undefined && count.before + count.after > 0 ? { count: { text: t("纠正 {0} → {1}", count.before, count.after), held: count.after === 0 } } : {}),
   };
   if (p.layer === "team" || o.menu !== key) return [row];
@@ -433,6 +435,8 @@ export function ledgerCardRows(cards: readonly LedgerCard[], flows: readonly Coa
 export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow[], practices: readonly Practice[], t: T, o: ManualOptions): BoardRow[] {
   flows = flowsIn(flows, t);
   const live = practices.filter((p) => p.deleted !== true);
+  // The one a rewrite took the place of, still kept (taken out, naming the rewrite).
+  const replacedOf = (p: Practice): Practice | undefined => (p.replaces !== undefined ? practices.find((x) => x.id === p.replaces && x.replacedBy === p.id) : undefined);
   const open = items.filter((i) => i.status === "open");
   const latest = (f: CoachFlow): string => open.filter((i) => i.flow === f.name).reduce((m, i) => (i.at > m ? i.at : m), "");
   const focused = o.focus !== null ? open.find((i) => i.id === o.focus?.id) : undefined;
@@ -468,7 +472,7 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
       const k = listed ? 0 : onStep(step).length - 1;
       return k > 0 ? { more: { key: `manual-more-${f.name}-${step}`, label: `${t("还有 {0} 条", k)} ▾`, action: { op: "manual-open", flow: f.name, open: true } } } : {};
     };
-    const own = (step: string): BoardRow[] => (listed ? onStep(step) : newest(step)).flatMap((p) => practiceRows(p, t, o));
+    const own = (step: string): BoardRow[] => (listed ? onStep(step) : newest(step)).flatMap((p) => practiceRows(p, t, o, replacedOf(p)));
     if (at > 0) rows.push({ kind: "rule", key: `manual-rule-${f.name}` });
     // Its heading: its name; where it has practices, the press that lists them all or folds them back, an icon whose
     // name shows under the pointer; and a ⋯ whose menu holds sharing and exporting. What the project changed from the
@@ -572,7 +576,7 @@ export function manualRows(items: readonly WorkItem[], flows: readonly CoachFlow
       const from = Math.min(last, Math.max(0, Math.floor((o.anywhereFrom ?? 0) / ANYWHERE_PAGE) * ANYWHERE_PAGE));
       const page = anywhere.slice(from, from + ANYWHERE_PAGE);
       if (from > 0) rows.push({ kind: "button", key: "manual-anywhere-first", label: t("前 {0} 条已收起 · 回到开头", from), action: { op: "manual-anywhere", from: 0 } });
-      rows.push(...page.flatMap((p) => practiceRows(p, t, o)));
+      rows.push(...page.flatMap((p) => practiceRows(p, t, o, replacedOf(p))));
       const rest = anywhere.length - from - page.length;
       if (rest > 0) rows.push({ kind: "button", key: "manual-anywhere-more", label: t("再看 {0} 条（共 {1}）", Math.min(ANYWHERE_PAGE, rest), anywhere.length), action: { op: "manual-anywhere", from: from + ANYWHERE_PAGE } });
     }

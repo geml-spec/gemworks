@@ -1008,6 +1008,25 @@ test('the practices beside a prompt say why each was learned and how often the s
   expect((contexts.at(-1) ?? []).find((x) => x.includes('the practices:'))).toBe('[gemworks] at bugfix confirm 你确认 for «导出跳过不留», the practices: (1) 按他报的现象原样去验 — 10-21 被批找借口糊弄; corrected 4 before, 0 since (2) 交给他确认的还差要能当场做到 — 10-29 那一步没有这个按钮; corrected 1 before, 2 since: not holding')
 })
 
+test('the practice tool shows the closest practices kept before it writes one; told which it rewrites, it writes it in that one\'s place', async ($, on) => {
+  const w = world(on)
+  w.workflow = false
+  w.sessionsDir = LOGS
+  w.practices = { list: [{ id: 'p1', flow: '*', step: '*', text: '小改动直接提交 main 不起分支', why: '07-15 他说不用起分支', at: '2026-07-15T00:00:00.000Z', by: 'model', layer: 'project' }], memoryMoved: true }
+  w.corrections = { cards: [], counts: { p1: { before: 0, after: 3 } }, flowless: [], unthemed: 0, stale: false, unchecked: 0 }
+  on('prompt.submit', ($, e) => ({ text: e.text }))
+  const clock = await start($, on)
+  await clock.advance(1)
+  await $.prompt.submit({ text: '又开分支了', wait: false, origin: COMPOSER })
+  const given = { flow: '*', step: '*', text: '小改动直接进 main', why: '11-26 又开了分支', layer: 'project' }
+  const held = await $.tool.call({ tool: 'mcp__gemworks__practice', tool_use_id: 'r1', practices: [given] })
+  expect(String(held.text ?? held.result)).toMatch(/^Not recorded yet: «小改动直接进 main»[\s\S]*\n\[p1\] \* \*: 小改动直接提交 main 不起分支 — 07-15 他说不用起分支; corrected 0 before, 3 since: not holding\n/)
+  expect(w.sent.some((r) => r.op === 'practice-add'), 'nothing written yet').toBe(false)
+  const done = await $.tool.call({ tool: 'mcp__gemworks__practice', tool_use_id: 'r2', practices: [{ ...given, replaces: 'p1' }] })
+  expect(String(done.text ?? done.result)).toMatch(/takes the place of \[p1\] \(not holding: corrected 3 since\)\.$/)
+  expect((w.sent.find((r) => r.op === 'practice-add')?.practices as { replaces?: string }[] | undefined)?.[0]?.replaces).toBe('p1')
+})
+
 test('新学到 n 条 on the band is a press: the flow tab opens with the flows of the practices learned today unfolded', async ($, on) => {
   const w = world(on)
   // A project on the light flows, as one with no workflow of its own: the flow tab is their manual, practices under their steps.
