@@ -10,8 +10,8 @@ test("the plugin manifest names gemworks, keeps the package's version and points
   const pkg = json("package.json");
   assert.equal(plugin.name, "gemworks");
   assert.equal(plugin.version, pkg.version);
-  assert.equal(plugin.types, "./types/index.d.ts");
-  assert.ok(existsSync(at("types/index.d.ts")));
+  assert.equal(plugin.types, "./hooks/state.d.ts");
+  assert.ok(existsSync(at("hooks/state.d.ts")));
   assert.equal(plugin.mcpServers, undefined, "the hooks module serves the flow_* tools; a manifest MCP server would list them twice");
 });
 
@@ -39,7 +39,7 @@ test("no skill shares its name with a command the hooks module registers", () =>
 
 test("the package ships the plugin folders, builds the bundle and pins esbuild", () => {
   const pkg = json("package.json");
-  for (const f of [".claude-plugin/plugin.json", "hooks", "types", "workflows", "dist"]) assert.ok(pkg.files.includes(f), f);
+  for (const f of [".claude-plugin/plugin.json", "hooks", "workflows", "dist"]) assert.ok(pkg.files.includes(f), f);
   // Claude Code lays the engine's declarations in .claude-plugin/types/ when it loads the plugin from this folder: never shipped, never committed.
   assert.ok(!pkg.files.includes(".claude-plugin"), "the manifest by name, so .claude-plugin/types/ stays out of the package");
   assert.match(readFileSync(at(".gitignore"), "utf8"), /^\.claude-plugin\/types\/$/m);

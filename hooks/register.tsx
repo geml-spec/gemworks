@@ -25,7 +25,7 @@
 // plugin's store; the words follow the chosen language.
 import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
 import { atom, read, update } from 'claude-code'
-import type { GemworksJson, GemworksTab } from '../types'
+import type { GemworksJson, GemworksTab } from './state'
 import { preferAnswer, preferQuestion } from '../dist/core/asking.js'
 import type { Answered } from '../dist/core/asking.js'
 import { CLAUDE_CODE_TOOLS } from '../dist/core/host-tools.js'

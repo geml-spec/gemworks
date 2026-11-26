@@ -60,7 +60,7 @@ test("the hooks module type-checks against the plugin API", { skip: found === nu
     const dir = mkdtempSync(join(tmpdir(), "gemworks-hooks-types-"));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     project = join(dir, "tsconfig.json");
-    writeFileSync(project, JSON.stringify({ extends: CONFIG, include: [], files: [found.file, join(ROOT, "hooks", "register.tsx"), join(ROOT, "types", "index.d.ts")] }));
+    writeFileSync(project, JSON.stringify({ extends: CONFIG, include: [], files: [found.file, join(ROOT, "hooks", "register.tsx"), join(ROOT, "hooks", "state.d.ts")] }));
   }
   const r = spawnSync(process.execPath, [join(ROOT, "node_modules", "typescript", "bin", "tsc"), "-p", project], { encoding: "utf8" });
   assert.equal(r.status, 0, `checked against ${found.file}\n${r.stdout}${r.stderr}`);

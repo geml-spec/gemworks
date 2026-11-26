@@ -3,7 +3,7 @@
 // 256 KiB Anthropic's plugin directory reads whole. Only register.tsx calls act, after both modules have loaded.
 import type { EngineInterface } from 'claude-code'
 import { atom, read, update } from 'claude-code'
-import type { GemworksJson, GemworksTab } from '../types'
+import type { GemworksJson, GemworksTab } from './state'
 import type { BoardAction } from '../dist/hosts/claude-code/actions.js'
 import { answered, picksText } from '../dist/hosts/claude-code/attention.js'
 import { currentTurn, isDeferral } from '../dist/core/session-log.js'
