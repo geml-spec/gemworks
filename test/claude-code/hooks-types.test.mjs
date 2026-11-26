@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { REQUIRED_CALLS } from "../../dist/hosts/claude-code/engine.js";
 
 // The hooks module type-checks against the engine's declarations of the
 // plugin API, with hooks/tsconfig.json. No package ships them: Claude Code
@@ -49,8 +50,98 @@ function declarations() {
 }
 
 const found = declarations();
+const SKIP = found === null && process.env["CI"] ? `${MISSING} (CI has no Claude Code)` : false;
 
-test("the hooks module type-checks against the plugin API", { skip: found === null && process.env["CI"] ? `${MISSING} (CI has no Claude Code)` : false }, (t) => {
+/**
+ * The calls and hook events the declarations name, and those of them marked deprecated: each `'noun.event':` key of the
+ * API's maps, deprecated when the doc comment right above it says @deprecated. Fields and element props marked so (a
+ * hook input's team_name, a Text's bold) are not keys of that shape and are not read here.
+ */
+function declaredCalls(text) {
+  const named = new Set();
+  const deprecated = new Set();
+  let doc = null; // the doc comment that ended on the line before, while nothing else has come since
+  let open = null; // the lines of a doc comment not yet ended
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (open !== null) {
+      open.push(trimmed);
+      if (trimmed.includes("*/")) { doc = open.join("\n"); open = null; }
+      continue;
+    }
+    if (trimmed.startsWith("/**")) {
+      if (trimmed.includes("*/")) doc = trimmed; else open = [trimmed];
+      continue;
+    }
+    const key = /^'([a-z]\w*(?:\.\w+)+)'\??:/.exec(trimmed);
+    if (key !== null) {
+      named.add(key[1]);
+      if (doc !== null && doc.includes("@deprecated")) deprecated.add(key[1]);
+    }
+    if (trimmed !== "") doc = null;
+  }
+  return { named, deprecated };
+}
+
+/** The engine calls (`$.noun.event(`) and hook events (`on('noun.event'`) the hooks module's files spell, each with the files that do. */
+function moduleCalls() {
+  const used = new Map();
+  const add = (call, file) => used.set(call, [...new Set([...(used.get(call) ?? []), file])]);
+  const dir = join(ROOT, "hooks");
+  for (const file of readdirSync(dir).filter((n) => n.endsWith(".tsx")).sort()) {
+    const text = readFileSync(join(dir, file), "utf8");
+    for (const m of text.matchAll(/\$\.([a-z]\w*)\.(\w+)\(/g)) add(`${m[1]}.${m[2]}`, file);
+    for (const m of text.matchAll(/\bon\(\s*['"]([a-z]\w*(?:\.\w+)+)['"]/g)) add(m[1], file);
+  }
+  return used;
+}
+
+/** Deprecated calls the module keeps on purpose, each with why. An entry the module no longer spells is taken out. */
+const KEPT = new Map([
+  ["session.surface", "outward.tsx asks it only when session.surfaces() throws: the fallback for an engine from before surfaces()"],
+]);
+
+test("a key is deprecated by the doc comment right above it, on one line or several, with either line ending", () => {
+  const text = [
+    "  type Args = {",
+    "      /**",
+    "       * The argument of `$.session.surface()`.",
+    "       *",
+    "       * @deprecated with `$.session.surface()`; hook `session.surfaces`",
+    "       */",
+    "      'session.surface': NoArgs;",
+    "      /** The argument of `$.session.surfaces()`. */",
+    "      'session.surfaces': NoArgs;",
+    "      /** @deprecated use `fs.read` */",
+    "      'fs.slurp'?: NoArgs;",
+    "      /** @deprecated said of the field below, not of the key after it */",
+    "      worktreePath?: string;",
+    "      'process.run': ProcessRunArgs;",
+    "      'classic.Stop': NoArgs;",
+    "  };",
+  ];
+  for (const eol of ["\n", "\r\n"]) {
+    const { named, deprecated } = declaredCalls(text.join(eol));
+    assert.deepEqual([...named].sort(), ["classic.Stop", "fs.slurp", "process.run", "session.surface", "session.surfaces"]);
+    assert.deepEqual([...deprecated].sort(), ["fs.slurp", "session.surface"]);
+  }
+});
+
+test("the hooks module calls nothing the plugin API marks deprecated, but for the fallbacks it keeps on purpose", { skip: SKIP }, (t) => {
+  assert.ok(found !== null, MISSING);
+  assert.ok(existsSync(found.file), `CLAUDE_CODE_TYPES names ${found.file}, which does not exist`);
+  t.diagnostic(`checked against ${found.file}`);
+  const { named, deprecated } = declaredCalls(readFileSync(found.file, "utf8"));
+  // The reading found the API's maps: they name every call the module cannot do without.
+  for (const call of REQUIRED_CALLS) assert.ok(named.has(call), `${found.file} does not declare ${call}: the module needs it, or this test no longer reads the declarations`);
+  t.diagnostic(`deprecated there: ${[...deprecated].sort().join(", ") || "none"}`);
+  const used = moduleCalls();
+  const offending = [...used].filter(([call]) => deprecated.has(call) && !KEPT.has(call)).map(([call, files]) => `${call} (${files.join(", ")})`);
+  assert.deepEqual(offending, [], `the hooks module calls what ${found.file} marks deprecated: move it to the call that replaces it`);
+  for (const call of KEPT.keys()) assert.ok(used.has(call), `KEPT lists ${call}, which the hooks module no longer calls: take it out`);
+});
+
+test("the hooks module type-checks against the plugin API", { skip: SKIP }, (t) => {
   assert.ok(found !== null, MISSING);
   assert.ok(existsSync(found.file), `CLAUDE_CODE_TYPES names ${found.file}, which does not exist`);
   t.diagnostic(`checked against ${found.file}`);
