@@ -2234,7 +2234,7 @@ const RULE = '#8a898666'
 const HEADING = '#8a8986'
 /** A work item's step as a cell: met, the one it stands at (bold), not reached (dim), passed unmet (a warning). */
 const CELL_MARK = { met: '✓', here: '●', ahead: '○', skipped: '⚠' } as const
-const CELL_TONE = { met: {}, here: { bold: true as const }, ahead: { dimColor: true as const }, skipped: toneProps('warning') } as const
+const CELL_TONE = { met: {}, here: { weight: 'semibold' as const }, ahead: { dimColor: true as const }, skipped: toneProps('warning') } as const
 const SHADE = '#8a89861a'
 const SELECTED = '#2a6fdb24'
 /** A rule one CSS pixel high in the grey at 22%: wider than any slot, so drawn with no width it spans the slot it is in. */
@@ -2337,7 +2337,7 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
   switch (row.kind) {
     case 'section': return row.tucked === true ? drawHeading($, els, row, i) : (
       <Box key={row.key} gap={1} marginTop={i > 0 ? 1 : 0} {...(row.actions !== undefined ? { flexWrap: 'wrap' as const } : {})}>
-        {els.Svg !== undefined ? <Text color={HEADING} bold>{row.text}</Text> : <Text dimColor bold>{row.text}</Text>}
+        {els.Svg !== undefined ? <Text color={HEADING} weight="semibold">{row.text}</Text> : <Text dimColor weight="semibold">{row.text}</Text>}
         {row.count !== undefined && <Text dimColor>{String(row.count)}</Text>}
         {row.note !== undefined && <Text dimColor>{row.note}</Text>}
         {(row.fold !== undefined || row.actions !== undefined) && <Box flexGrow={1} />}
@@ -2354,7 +2354,7 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
           {/* Its words in a box that never shrinks, the title wrapping instead: To decide went onto two lines beside a long
               title, and a title made to give up more room (flexShrink) did not hold it on the desktop. */}
           {row.verb !== '' && <Box flexShrink={0}><Text dimColor>{row.verb}</Text></Box>}
-          <Box flexShrink={1} minWidth={0}><Text bold wrap="wrap">{row.title}</Text></Box>
+          <Box flexShrink={1} minWidth={0}><Text weight="semibold" wrap="wrap">{row.title}</Text></Box>
           {row.tag !== undefined && row.tag !== '' && <Text dimColor>{row.tag}</Text>}
         </Box>
         {row.detail.map((d, n) => <Text key={`d${n}`} dimColor wrap="truncate-end">{d}</Text>)}
@@ -2381,8 +2381,8 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
       <Box key={row.key} flexDirection="column" paddingX={1} {...(row.current === true && els.Svg !== undefined ? { backgroundColor: SELECTED } : row.action !== undefined ? { hover: { backgroundColor: SHADE } } : {})}>
         <Box gap={2}>
           {row.action !== undefined
-            ? <Button key={`go-${row.key}`} plain onPress={press($, row.action)}><Text {...toneProps(row.tone)} {...(row.current === true ? { bold: true } : {})}>{row.title}</Text></Button>
-            : <Text {...toneProps(row.tone)} {...(row.current === true ? { bold: true } : {})} wrap="truncate-end">{row.title}</Text>}
+            ? <Button key={`go-${row.key}`} plain onPress={press($, row.action)}><Text {...toneProps(row.tone)} {...(row.current === true ? { weight: 'semibold' as const } : {})}>{row.title}</Text></Button>
+            : <Text {...toneProps(row.tone)} {...(row.current === true ? { weight: 'semibold' as const } : {})} wrap="truncate-end">{row.title}</Text>}
           <Box flexGrow={1} flexShrink={0} justifyContent="flex-end">{row.tag !== '' && <Text dimColor>{row.tag}</Text>}</Box>
           {row.link !== undefined && drawLink(els, `open-${row.key}`, row.link.href, row.link.label)}
         </Box>
@@ -2524,16 +2524,16 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
     case 'flow': return els.Svg !== undefined && row.svg !== '' ? <els.Svg key={row.key} source={row.svg} alt="flow" /> : drawFlow($, els, row)
     case 'image': return els.Svg !== undefined
       ? <els.Svg key={row.key} source={row.svg} alt={row.alt} {...(row.width !== undefined ? { width: row.width } : {})} />
-      : <Text key={row.key} bold>{row.alt}</Text>
+      : <Text key={row.key} weight="semibold">{row.alt}</Text>
     // A work item's way through its flow, in one line: the passed states ticked, the current one in the accent.
     case 'steps': return (
       <Box key={row.key} gap={1} flexWrap="wrap">
-        {row.steps.map((s, n) => <Text key={`s${n}`} {...(s.current ? { color: BRAND_RED, bold: true } : s.passed ? {} : { dimColor: true })}>{`${n > 0 ? '→ ' : ''}${s.title}${s.passed ? ' ✓' : ''}`}</Text>)}
+        {row.steps.map((s, n) => <Text key={`s${n}`} {...(s.current ? { color: BRAND_RED, weight: 'semibold' as const } : s.passed ? {} : { dimColor: true })}>{`${n > 0 ? '→ ' : ''}${s.title}${s.passed ? ' ✓' : ''}`}</Text>)}
       </Box>
     )
     case 'heading': return (
       <Box key={row.key} gap={1}>
-        <Text bold>{row.text}</Text>
+        <Text weight="semibold">{row.text}</Text>
         {row.sub !== '' && <Text dimColor>{row.sub}</Text>}
         {row.action !== undefined && <Box flexGrow={1} />}
         {row.action !== undefined && <Button key={row.action.key} plain label={row.action.label} onPress={press($, row.action.action)} />}
@@ -2653,7 +2653,7 @@ function drawFlow($: EngineInterface, els: Els, row: Extract<BoardRow, { kind: '
             <Box gap={1} flexWrap="wrap">
               {rank.map((s) => (
                 <Box key={s.id} borderStyle={s.final ? 'double' : 'round'} {...(s.current ? { borderColor: BRAND_RED } : { borderDimColor: true })} paddingX={1}>
-                  <Text {...(s.current ? { color: BRAND_RED, bold: true } : {})}>{`${s.initial ? '● ' : ''}${s.current ? '▶ ' : ''}${s.title}`}</Text>
+                  <Text {...(s.current ? { color: BRAND_RED, weight: 'semibold' as const } : {})}>{`${s.initial ? '● ' : ''}${s.current ? '▶ ' : ''}${s.title}`}</Text>
                   {s.count > 0 && <Text dimColor>{` ${s.count}`}</Text>}
                 </Box>
               ))}
@@ -2915,7 +2915,7 @@ function drawHeader($: EngineInterface, els: Els, head: Header | undefined, t: T
       {head !== undefined && (
         <Box gap={1} alignItems="center">
           {els.Svg !== undefined ? <els.Svg source={LOCKUP_SVG} alt="Gemworks" width={HEADER_LOCKUP.width} height={HEADER_LOCKUP.height} /> : <Text {...toneProps(MARK.tone)}>{MARK.text}</Text>}
-          {els.Svg === undefined && <Text bold>Gemworks</Text>}
+          {els.Svg === undefined && <Text weight="semibold">Gemworks</Text>}
           {head.version !== '' && (els.Svg !== undefined
             ? <Box key="version" borderStyle="round" borderColor={RULE} paddingX={1}><Text dimColor>{head.version}</Text></Box>
             : <Text dimColor>{head.version}</Text>)}
@@ -2931,16 +2931,16 @@ function drawHeader($: EngineInterface, els: Els, head: Header | undefined, t: T
       {head?.name !== undefined && (els.Svg !== undefined
         ? (
           <Box key="item-row" gap={1} alignItems="center" backgroundColor={SHADE} paddingX={1}>
-            <Text bold>{head.name}</Text>
-            {head.stage !== undefined && <Text bold color="inverseText" backgroundColor="text">{` ${head.stage} `}</Text>}
+            <Text weight="semibold">{head.name}</Text>
+            {head.stage !== undefined && <Text weight="semibold" color="inverseText" backgroundColor="text">{` ${head.stage} `}</Text>}
             {head.flow !== undefined && <Text dimColor>{head.flow}</Text>}
             <Box flexGrow={1} />
           </Box>
         )
         : (
           <Box gap={1}>
-            <Text bold>{head.name}</Text>
-            {head.stage !== undefined && <Text {...toneProps('brand')} bold>{head.stage}</Text>}
+            <Text weight="semibold">{head.name}</Text>
+            {head.stage !== undefined && <Text {...toneProps('brand')} weight="semibold">{head.stage}</Text>}
             {head.flow !== undefined && <Text dimColor>{head.flow}</Text>}
             <Box flexGrow={1} />
           </Box>
@@ -3654,7 +3654,7 @@ export const register: Register = (on) => {
           {tabs(t).map((x) => els.Svg !== undefined
             ? iconButton($, els, { key: `tab-${x.id}`, label: x.label, action: { op: 'tab', tab: x.id } }, x.id, { tone: x.id === tab ? 'active' : 'dim', from: 'left' })
             : x.id === tab
-              ? <Button key={`tab-${x.id}`} plain onPress={press($, { op: 'tab', tab: x.id })}><Text bold underline>{x.label}</Text></Button>
+              ? <Button key={`tab-${x.id}`} plain onPress={press($, { op: 'tab', tab: x.id })}><Text weight="semibold" underline>{x.label}</Text></Button>
               : <Button key={`tab-${x.id}`} plain dimColor label={x.label} onPress={press($, { op: 'tab', tab: x.id })} />)}
         </Box>
         {hairline(els, 'rule-tabs')}

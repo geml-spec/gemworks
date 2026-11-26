@@ -146,7 +146,7 @@ export function drawStep($: EngineInterface, els: Els, row: Row<'step'>, inner: 
       <Box gap={1}>
         {/* The title and the chip in boxes that never shrink, the need truncating instead: Try it and the model's chip went
             onto two lines when all three shrank alike. The chip's box is the one that pushes it right. */}
-        <Box flexShrink={0}><Text {...(row.final ? { dimColor: true } : row.here ? { bold: true } : {})}>{row.here && !pictures ? `▸${row.title}` : row.title}</Text></Box>
+        <Box flexShrink={0}><Text {...(row.final ? { dimColor: true } : row.here ? { weight: 'semibold' as const } : {})}>{row.here && !pictures ? `▸${row.title}` : row.title}</Text></Box>
         {row.grown !== undefined && <Box flexShrink={0}><Text {...toneProps('warning')}>{row.grown}</Text></Box>}
         {row.need !== '' && <Box flexShrink={1} minWidth={0}><Text dimColor wrap="truncate-end">{`· ${row.need}`}</Text></Box>}
         <Box flexGrow={1} flexShrink={0} justifyContent="flex-end">{row.judge !== '' && judgeChip(els, row.judgeKind, row.judge, `${row.key}-judge`)}</Box>

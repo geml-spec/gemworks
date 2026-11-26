@@ -96,11 +96,11 @@ export function fitSegments(segments: readonly Segment[], columns: number): Segm
 
 const TONE_COLOR: Readonly<Record<Tone, string | undefined>> = { normal: undefined, dim: undefined, success: "success", warning: "warning", error: "error", brand: BRAND_RED, mark: MARK_VIOLET };
 
-/** A `Text`'s props for a tone: a theme color, the brand's red or the mark's violet in bold, or dim. */
-export function toneProps(tone: Tone): { color?: string; dimColor?: true; bold?: true } {
+/** A `Text`'s props for a tone: a theme color, the brand's red or the mark's violet in semibold, or dim. */
+export function toneProps(tone: Tone): { color?: string; dimColor?: true; weight?: "semibold" } {
   if (tone === "dim") return { dimColor: true };
-  if (tone === "brand") return { color: BRAND_RED, bold: true };
-  if (tone === "mark") return { color: MARK_VIOLET, bold: true };
+  if (tone === "brand") return { color: BRAND_RED, weight: "semibold" };
+  if (tone === "mark") return { color: MARK_VIOLET, weight: "semibold" };
   const color = TONE_COLOR[tone];
   return color !== undefined ? { color } : {};
 }

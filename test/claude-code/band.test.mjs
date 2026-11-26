@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SEP, bandSegments, bandView, cellWidth, fitSegments, nextText, toneProps, truncate, varSegment } from "../../dist/hosts/claude-code/band.js";
+import { BRAND_RED, MARK_VIOLET, SEP, bandSegments, bandView, cellWidth, fitSegments, nextText, toneProps, truncate, varSegment } from "../../dist/hosts/claude-code/band.js";
 import { wordsFor } from "../../dist/hosts/claude-code/text.js";
 
 const NOW = "2026-10-14T08:00:00.000Z";
@@ -137,6 +137,8 @@ test("the next step's words: who takes it, and what a machine guard still waits 
   assert.equal(nextText(edge({ to: "review" })), "→ #review 自动");
   assert.equal(nextText(edge({ to: "review", reads: ["ready"], missing: ["ready"], holds: false })), "→ #review 自动 · 待 ready");
   assert.deepEqual([toneProps("dim"), toneProps("warning"), toneProps("normal")], [{ dimColor: true }, { color: "warning" }, {}]);
+  // The engine's `weight`, never its deprecated `bold`.
+  assert.deepEqual([toneProps("brand"), toneProps("mark")], [{ color: BRAND_RED, weight: "semibold" }, { color: MARK_VIOLET, weight: "semibold" }]);
 });
 
 test("a registration that failed is said after the stage, and alone when there is no stage", () => {
