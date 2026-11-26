@@ -427,3 +427,77 @@ test("pause holds the work item: evidence lands, nothing moves; resume lets it g
   assert.deepEqual(journal.snapshots.map((s) => [s.cause, s.by ?? ""]).slice(1), [["transition", "human"], ["pause", "human"], ["patch", "signal"], ["resume", "human"], ["transition", "human"]]);
   rmSync(d, { recursive: true, force: true });
 });
+
+test("a verb missing its file, given one too many, or one the CLI does not know is a usage error", () => {
+  for (const args of [["check"], ["check", "a.geml", "b.geml"], ["snapshot"], ["snapshot", "--json"], ["verify"], ["export"], ["init", "a", "b"], ["status", "extra"], ["rollback", "1", "2"], ["nonsense"], ["mcp", "extra"]]) {
+    const r = run(args, ws());
+    assert.equal(r.code, 2, args.join(" "));
+    assert.match(r.err, USAGE, args.join(" "));
+  }
+  const p = run(["run", "--profile"], ws());
+  assert.equal(p.code, 2);
+  assert.match(p.err, /--profile needs a value/);
+});
+
+test("export takes only --to md; verify with a workflow that does not load prints its diagnostics and exits 1", () => {
+  const dir = ws();
+  journalIn(dir);
+  for (const args of [["export", "journal.geml"], ["export", "journal.geml", "--to", "html"]]) {
+    const r = run(args, dir);
+    assert.equal(r.code, 2, args.join(" "));
+    assert.match(r.err, /^export: only --to md is supported$/m);
+  }
+  writeFileSync(join(dir, "bad.geml"), '=== meta\nprofile = "geml-statechart/v1"\n===\n');
+  const v = run(["verify", "journal.geml", "--workflow", "bad.geml"], dir);
+  assert.equal(v.code, 1);
+  assert.match(v.err, /^error: flow-statechart: /m);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("snapshot names the revision a rollback restored", () => {
+  const d = repo();
+  installWorkflow(d, "abc", ABC);
+  run(["advance", "b"], d);
+  assert.equal(run(["rollback", "0"], d).code, 0);
+  const journal = join(".geml", "journals", "feat", "x.geml");
+  assert.match(run(["snapshot", journal], d).out, /^rev 2 · state #a · cause rollback · from #b · restores 0$/m);
+  rmSync(d, { recursive: true, force: true });
+});
+
+test("rollback to a revision that is not there is one clean line and exit 1; resume with nothing that holds enters nothing", () => {
+  const d = repo();
+  installWorkflow(d, "abc", ABC);
+  const r = run(["rollback", "99"], d);
+  assert.equal(r.code, 1);
+  assert.match(r.err, /^gemworks: /m);
+  assert.equal(run(["pause"], d).code, 0);
+  const resumed = run(["resume"], d);
+  assert.equal(resumed.code, 0, resumed.err);
+  assert.equal(resumed.out.trim(), "resumed");
+  rmSync(d, { recursive: true, force: true });
+});
+
+test("status says how each next step is taken: by move under a guard the model judges, a person approving, on its own once its guard holds", () => {
+  const d = repo();
+  installWorkflow(d, "refund", readFileSync(FIX, "utf8"));
+  assert.match(run(["status"], d).out, /^ {2}→ #review {2}by move {2}when the order id and the amount are known$/m);
+  assert.equal(run(["advance", "review"], d).code, 0);
+  assert.match(run(["status"], d).out, /^ {2}→ #pay {2}a person approves {2}when .* \(missing approved\)$/m);
+  rmSync(d, { recursive: true, force: true });
+  const p = repo();
+  installWorkflow(p, "abc", ABC);
+  run(["advance", "b"], p);
+  run(["pause"], p);
+  run(["mark", "ok"], p);
+  assert.match(run(["status"], p).out, /^ {2}→ #c {2}on its own {2}when ok = true \(holds\)$/m, "paused: the guard holds and the step waits");
+  rmSync(p, { recursive: true, force: true });
+});
+
+test("init into a path that is a file is one clean line and exit 1", () => {
+  const d = ws();
+  writeFileSync(join(d, "a-file"), "");
+  const r = run(["init", "a-file"], d);
+  assert.equal(r.code, 1);
+  assert.doesNotMatch(r.err, /\n\s+at /);
+  rmSync(d, { recursive: true, force: true });
+});

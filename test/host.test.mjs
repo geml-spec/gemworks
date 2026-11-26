@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { withLock, writeAtomic, globExists } from "../dist/host-fs.js";
-import { checkoutOf, commitsOf, forgetGitFacts, ghFacts, gitTimeoutFrom, journalBaseOf, repoFacts, treeFingerprint } from "../dist/host-git.js";
+import { checkoutOf, commitsOf, forgetGitFacts, ghFacts, gitTimeoutFrom, journalBaseOf, openPullRequests, pullRequestsByBranch, repoFacts, treeFingerprint } from "../dist/host-git.js";
 
 const made = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "gemworks-host-")); made.push(d); return d; };
@@ -330,7 +330,27 @@ const mode = process.env.FAKE_GH_MODE;
 if (process.env.FAKE_GH_LOG) appendFileSync(process.env.FAKE_GH_LOG, JSON.stringify(args) + "\\n");
 const head = () => spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).stdout.trim();
 const flag = (name) => args[args.indexOf(name) + 1];
-if (cmd === "pr" && sub === "list") {
+if (mode === "hang") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30000);
+if (cmd === "pr" && sub === "list" && args.includes("--author")) {
+  if (mode === "garbage") { process.stdout.write("<html>\\n"); process.exit(0); }
+  process.stdout.write(JSON.stringify([
+    { number: 12, headRefName: "feat/a", statusCheckRollup: [{ name: "ci", status: "COMPLETED", conclusion: "SUCCESS" }, { context: "lint", state: "SUCCESS" }] },
+    { number: 13, headRefName: "feat/b", statusCheckRollup: [{ name: "ci", status: "COMPLETED", conclusion: "FAILURE" }, { name: "ci", status: "COMPLETED", conclusion: "FAILURE" }, { name: "e2e", status: "IN_PROGRESS", conclusion: "" }, { status: "COMPLETED", conclusion: "ERROR" }, null] },
+    { number: 14, headRefName: "feat/c" },
+    { number: "15", headRefName: "feat/d" },
+    null,
+  ]) + "\\n");
+} else if (cmd === "pr" && sub === "list" && args.includes("number,state,headRefName")) {
+  process.stdout.write(JSON.stringify([
+    { number: 3, state: "MERGED", headRefName: "feat/a" }, { number: 5, state: "OPEN", headRefName: "feat/a" }, { number: 2, state: "CLOSED", headRefName: "feat/a" },
+    { number: 4, state: "CLOSED", headRefName: "feat/b" }, { number: 6, state: "DRAFT", headRefName: "feat/c" }, { number: 8, headRefName: "feat/e" },
+    { number: "9", state: "OPEN", headRefName: "feat/d" }, null,
+  ]) + "\\n");
+} else if (cmd === "pr" && sub === "list") {
+  if (mode === "silent") process.exit(1);
+  if (mode === "stdout-error") { process.stdout.write("error connecting to api.github.com\\n"); process.exit(1); }
+  if (mode === "long") { process.stderr.write("x".repeat(300) + "\\n"); process.exit(1); }
+  if (mode === "badpr") { process.stdout.write(JSON.stringify([{ number: 7 }]) + "\\n"); process.exit(0); }
   if (mode === "auth") { process.stderr.write("HTTP 401: Bad credentials\\nTry authenticating with:  gh auth login\\n"); process.exit(1); }
   if (mode === "garbage") { process.stdout.write("<html>\\n"); process.exit(0); }
   const state = mode === "merged" ? "MERGED" : mode === "closed" ? "CLOSED" : "OPEN";
@@ -348,6 +368,7 @@ if (cmd === "pr" && sub === "list") {
   if (mode === "rerun-passed") runs = [run("ci", "success", "2026-10-12T10:05:00Z"), run("ci", "failure", "2026-10-12T10:00:00Z"), run("lint", "success", "2026-10-12T10:01:00Z")];
   if (mode === "rerun-failed") runs = [run("ci", "failure", "2026-10-12T10:05:00Z"), run("ci", "success", "2026-10-12T10:00:00Z"), run("lint", "success", "2026-10-12T10:01:00Z")];
   if (mode === "rerun-unsorted") runs = [run("ci", "failure", "2026-10-12T10:00:00Z"), run("ci", "success", "2026-10-12T10:05:00Z")];
+  if (mode === "bare-runs") runs = [{ conclusion: "success", headSha: h }];
   if (mode === "skipped") runs = [run("ci", "success", "2026-10-12T10:00:00Z"), run("docs", "skipped", "2026-10-12T10:00:00Z"), run("lint", "neutral", "2026-10-12T10:00:00Z"), run("deploy", "cancelled", "2026-10-12T10:00:00Z")];
   process.stdout.write(JSON.stringify(runs) + "\\n");
 } else process.exit(2);
@@ -544,4 +565,104 @@ test("journalBaseOf: the main working tree's copy of the project's directory, sh
   git(bare, "worktree", "add", "-q", other, "main");
   assert.equal(checkoutOf(other)?.main, undefined);
   assert.equal(journalBaseOf(other), other);
+});
+
+test("ghFacts: a gh that fails saying nothing, saying it on stdout, or at length gives a reason a person can read", () => {
+  const { bin, root, answer } = standIn("silent");
+  assert.equal(ghFacts(root, "feat/x", { gh: bin }).reason, "gh could not be queried (not logged in, or no GitHub remote)");
+  answer("stdout-error");
+  assert.match(ghFacts(root, "feat/x", { gh: bin }).reason, /remote\): error connecting to api\.github\.com$/);
+  answer("long");
+  const long = ghFacts(root, "feat/x", { gh: bin }).reason;
+  assert.ok(long.endsWith(`: ${"x".repeat(200)}...`), "the first 200 characters of gh's line");
+});
+
+test("ghFacts: a pull request without a state is not a list of pull requests; a run without a name or a time still counts", () => {
+  const { bin, root, answer } = standIn("badpr");
+  assert.match(ghFacts(root, "feat/x", { gh: bin }).reason, /not a JSON list of pull requests/);
+  answer("bare-runs");
+  assert.deepEqual(ghFacts(root, "feat/x", { gh: bin }).ci, [{ workflow: "", success: true }]);
+});
+
+test("ghFacts: a gh that does not answer within the deadline is unavailable, and says how long it was given", () => {
+  const { bin, root } = standIn("hang");
+  delete process.env.FAKE_GH_MODE;
+  const hostGit = new URL("../dist/host-git.js", import.meta.url).href;
+  const script = `import { ghFacts } from ${JSON.stringify(hostGit)}; process.stdout.write(JSON.stringify(ghFacts(${JSON.stringify(root)}, "feat/x", { gh: ${JSON.stringify(bin)} })));`;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", timeout: 60_000, env: { ...process.env, FAKE_GH_MODE: "hang", GEMWORKS_GIT_TIMEOUT_MS: "500" } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { available: false, reason: "gh did not answer within 0.5 s" });
+});
+
+test("openPullRequests: each open pull request with whether every check passed and the checks that failed; undefined when gh's answer is no list or gh cannot be asked", () => {
+  const { bin, root, answer } = standIn("open");
+  assert.deepEqual(openPullRequests(root, { gh: bin }), [
+    { number: 12, branch: "feat/a", green: true, failing: [] },
+    { number: 13, branch: "feat/b", green: false, failing: ["ci", "check"] },
+    { number: 14, branch: "feat/c", green: false, failing: [] },
+  ]);
+  answer("garbage");
+  assert.equal(openPullRequests(root, { gh: bin }), undefined);
+  assert.equal(openPullRequests(root, { gh: "gh-definitely-not-installed" }), undefined);
+});
+
+test("pullRequestsByBranch: the newest pull request of each branch, open, merged or closed; none when gh cannot be asked", () => {
+  const { bin, root } = standIn("open");
+  assert.deepEqual(pullRequestsByBranch(root, { gh: bin }), new Map([["feat/a", { number: 5, state: "open" }], ["feat/b", { number: 4, state: "closed" }]]));
+  assert.deepEqual(pullRequestsByBranch(root, { gh: "gh-definitely-not-installed" }), new Map());
+});
+
+test("gh's own answer is kept for a minute by the checkout and the question: within it gh is not started; a fresh question, a stale or unreadable answer ask gh again", () => {
+  const root = tmp();
+  const cache = tmp();
+  const key = (branch) => [root, "pr", "list", "--head", branch, "--state", "all", "--json", "state,number"].join("\0");
+  const file = join(cache, "gemworks", "gh-answers.json");
+  mkdirSync(join(cache, "gemworks"));
+  const now = Date.now();
+  writeFileSync(file, JSON.stringify({
+    [key("feat/x")]: { at: now, out: JSON.stringify([{ state: "MERGED", number: 4 }]) },
+    [key("feat/old")]: { at: now - 61_000, out: "[]" },
+    [key("feat/odd")]: { at: now, out: 42 },
+  }));
+  const names = ["GEMWORKS_GH", "PATH", "TMPDIR", "TEMP", "TMP"];
+  const saved = Object.fromEntries(names.map((k) => [k, process.env[k]]));
+  // No gh anywhere on PATH: an answer that came from gh would say it is not installed.
+  delete process.env.GEMWORKS_GH;
+  process.env.PATH = tmp();
+  for (const k of ["TMPDIR", "TEMP", "TMP"]) process.env[k] = cache;
+  try {
+    assert.deepEqual(ghFacts(root, "feat/x"), { available: true, prOpen: false, prMerged: true }, "the kept answer");
+    assert.match(ghFacts(root, "feat/x", { fresh: true }).reason, /gh is not installed/, "fresh: gh is asked");
+    assert.match(ghFacts(root, "feat/old").reason, /gh is not installed/, "older than a minute");
+    assert.match(ghFacts(root, "feat/odd").reason, /gh is not installed/, "not an answer");
+    writeFileSync(file, "not json");
+    assert.match(ghFacts(root, "feat/x").reason, /gh is not installed/, "a file that cannot be read keeps nothing");
+  } finally {
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+});
+
+// A gh found on PATH (not named): POSIX only, since Windows starts no script from PATH without a shell.
+test("an answer from the gh on PATH is kept, and the next question within the minute does not start it", { skip: process.platform === "win32" }, () => {
+  const root = tmp();
+  const cache = tmp();
+  const bin = tmp();
+  const log = join(bin, "calls.log");
+  writeFileSync(join(bin, "gh"), `#!/bin/sh\necho "$1 $2" >> "${log}"\necho '[{"state":"OPEN","number":7}]'\n`);
+  chmodSync(join(bin, "gh"), 0o755);
+  const names = ["GEMWORKS_GH", "PATH", "TMPDIR", "TEMP", "TMP"];
+  const saved = Object.fromEntries(names.map((k) => [k, process.env[k]]));
+  delete process.env.GEMWORKS_GH;
+  process.env.PATH = bin;
+  for (const k of ["TMPDIR", "TEMP", "TMP"]) process.env[k] = cache;
+  try {
+    assert.equal(ghFacts(root, "feat/x").prOpen, true);
+    assert.equal(ghFacts(root, "feat/x").prOpen, true);
+    assert.equal(readFileSync(log, "utf8"), "pr list\n", "started once");
+    ghFacts(root, "feat/x", { fresh: true });
+    assert.equal(readFileSync(log, "utf8"), "pr list\npr list\n");
+    assert.ok(existsSync(join(cache, "gemworks", "gh-answers.json")));
+  } finally {
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
 });
