@@ -56,7 +56,7 @@ test("a checkout whose git directory is kept elsewhere (git init --separate-git-
   assert.deepEqual(repoFacts(work), { branch: "main", defaultBranch: "main", committed: false });
 });
 
-test("a worktree whose administrative directory is gone (pruned) says nothing of its branch or its content", () => {
+test("a worktree whose administrative directory is gone (pruned) says nothing of its branch, its content or its checkout", () => {
   const d = repo("feat/x");
   const wt = join(tmp(), "wt");
   git(d, "worktree", "add", "-q", "-b", "w", wt);
@@ -64,6 +64,8 @@ test("a worktree whose administrative directory is gone (pruned) says nothing of
   forgetGitFacts();
   assert.deepEqual(repoFacts(wt), {}, "its HEAD cannot be read, and git says it is no repository: not established");
   assert.equal(treeFingerprint(wt), undefined);
+  assert.equal(checkoutOf(wt), undefined, "the .git file names a directory that is gone: git says it is no repository");
+  assert.equal(journalBaseOf(wt), wt, "no main working tree to share: the project's own");
 });
 
 test("a directory inside .git, below its top, is in no working tree", () => {

@@ -114,7 +114,8 @@ function once<T>(key: string, read: () => T): T {
 /**
  * The checkout's git directory and the repository's common one (a worktree's
  * .git is a file naming its own directory, whose commondir names the shared
- * one); undefined when root holds no .git, or one this does not read.
+ * one); undefined when root holds no .git, one this does not read, or one
+ * naming a directory that is gone (a pruned worktree's: git says no repository).
  */
 function gitDirsOf(root: string): { git: string; common: string } | undefined {
   const dot = join(root, ".git");
@@ -123,6 +124,7 @@ function gitDirsOf(root: string): { git: string; common: string } | undefined {
     const named = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dot, "utf8"));
     if (named === null) return undefined;
     const git = resolve(root, named[1] as string);
+    if (!existsSync(git)) return undefined;
     let common = git;
     try { common = resolve(git, readFileSync(join(git, "commondir"), "utf8").trim()); } catch { /* a directory of its own */ }
     return { git, common };
