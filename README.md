@@ -175,5 +175,6 @@ the other three are described in [docs/workflows.md](docs/workflows.md).
 
 - **Command line**: `gemworks` (short: `gwx`) shows the state, moves stages and exports the record from a terminal; see [docs/cli.md](docs/cli.md).
 - **Development**: the project layout and how to build and test it; see [docs/development.md](docs/development.md).
+  What each part does, where it is built and why: [spec/design.md](spec/design.md) (in Chinese).
 - **License**: AGPL-3.0-only. Using it asks nothing of you; if you change the code and distribute it,
   or let others use your changed version over a network, publish your changed source under the AGPL.

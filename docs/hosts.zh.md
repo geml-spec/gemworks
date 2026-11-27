@@ -14,7 +14,7 @@
 在会话的输入框里逐行输入（Claude Code 2.1.275 以上），装的时候选范围。第一行加的是
 GEML 自己的插件市场：gemworks 依赖 geml 插件，加了这个市场，装 gemworks 时会一并装上
 geml；没加的话 gemworks 能装上，但加载不起来。第二行加上 gemworks 的市场并安装，这个市场
-里的条目从 npm 装已发布的 `gemworks` 包。在命令行里依次用
+里的条目从 npm 装已发布的 `@geml/gemworks` 包。在命令行里依次用
 `claude plugin marketplace add geml-spec/geml`、
 `claude plugin marketplace add geml-spec/gemworks`、
 `claude plugin install gemworks@gemworks` 也一样。
@@ -162,7 +162,7 @@ hooks 信任之后，Codex 上有的就是 Claude Code 上的减去状态带和�
 模型工作循环的工具和各条流程的步骤，有进行中的工作项就打开那一页看板；每条提示词带上
 进行中的工作项、当前这一步的做法和别的会话新定下的事；改了东西却没报工作项的一轮，在
 结束时被打回一次；阶段文字在会话开始、变化之后的下一条 prompt、以及改变了它的那次调用的
-结果里交给模型；封路用途或只许人做的命令
+结果里交给模型；封路用途或只许人做的命令、被项目的规定拦住的调用
 被拒并说明原因；词典里没有行的工具照常放行；工具的默认参数补齐；补丁写的文件，以及回合结束时的回答和这一轮的提交，记进项目的会话记录；退出码是证据的 shell 命令被包一层、把退出码打印在输出末尾
 （`[gemworks exit N]`，调用后读回来——Codex 的结果不带退出码；命令自己的退出状态照样到
 Codex；Windows 上不包）。这里的编辑器是 `apply_patch`：内置词典把它绑到 `edit`，补丁
@@ -192,7 +192,7 @@ Antigravity 的 App、CLI 和 IDE 共用这套 hooks。两种装法只选一种�
 装上之后，模型用 MCP 工具记工作项、做法、提议、产物和定下的事；会话开始时 hook 交代这些工具和
 流程的步骤，每条提示词旁边带上进行中的工作项、这一步的做法和别的会话新定下的事。工作台是上面那页
 GEML 看板（`.geml/board.geml`），每条提示词和每轮结束时重写。和 Codex 一样，没有状态带和看板按钮，
-要你定的事在对话里回答；「改成规定」和从纠正里学的纠正账本这里都没有。geml 插件目前没有 Antigravity
+要你定的事在对话里回答；「改成规定」和从纠正里学的纠正账本这里都没有，规定也拦不了调用：Antigravity 没有调用前的钩子。geml 插件目前没有 Antigravity
 版，看这页看板要用 VS Code 一类编辑器（Antigravity IDE 也行）的 GEML 扩展，或者 Chrome 的 GEML Viewer。
 
 ### Cursor
@@ -221,7 +221,7 @@ Cursor 拿到的和 Codex 一样：会话开始时交代工作循环的工具和
 
 hooks 在 `~/.cursor` 下运行，所以项目是工作区里带 `.geml/` 的那个文件夹，没有就取第一个。MCP 服务和 Antigravity
 一样，从 hooks 那里得知当前对话和项目：同时开着两个 Cursor 窗口时，它写给最后跑过 hook 的那个。和 Codex 一样，没有
-状态带和看板按钮；「改成规定」和纠正账本这里都没有。看板页用 GEML 扩展看，Cursor 能跑 VS Code 扩展。
+状态带和看板按钮；「改成规定」和纠正账本这里都没有，但在 Claude Code 里定的规定，这里照样拦。看板页用 GEML 扩展看，Cursor 能跑 VS Code 扩展。
 
 ### Qwen Code
 
@@ -244,7 +244,7 @@ Qwen Code 的 hooks 就是 Claude Code 那一套，所以它拿到的和 Codex �
 Qwen Code 的工具叫 `run_shell_command`、`write_file`、`edit`、`notebook_edit`、`read_file`、`grep_search`、`glob`
 和 `mcp__<服务>__<工具>`。闸门按 Claude Code 的名字读（`Bash`、`Write`、`Edit`、`NotebookEdit`、`Read`、`Grep`、
 `Glob`，MCP 工具按它自己的名字），所以自带的词典不用改。项目是 `QWEN_PROJECT_DIR`，也就是启动 Qwen Code 的那个
-文件夹；MCP 服务也在那里启动。和 Codex 一样，没有状态带和看板按钮；「改成规定」和纠正账本这里都没有。
+文件夹；MCP 服务也在那里启动。和 Codex 一样，没有状态带和看板按钮；「改成规定」和纠正账本这里都没有，但在 Claude Code 里定的规定，这里照样拦。
 
 ### OpenCode
 
@@ -269,7 +269,7 @@ shell 命令会包一层，最后打印 `[gemworks exit N]`（Windows 上不包�
 OpenCode 的工具叫 `shell`、`write`、`edit`、`patch`、`read`、`grep`、`glob`、`webfetch`、`websearch`、`todowrite`、
 `subagent` 和 `<服务>.<工具>`。闸门按 Claude Code 的名字读（`Bash`、`Write`、`Edit`——patch 按它的第一个文件——、
 `Read`、`Grep`、`Glob`、`WebFetch`、`WebSearch`、`TodoWrite`、`Task`，MCP 工具按它自己的名字），所以自带的词典不用改。
-项目是打开 OpenCode 的那个文件夹。和 Codex 一样，没有状态带和看板按钮；「改成规定」和纠正账本这里都没有。
+项目是打开 OpenCode 的那个文件夹。和 Codex 一样，没有状态带和看板按钮；「改成规定」和纠正账本这里都没有，但在 Claude Code 里定的规定，这里照样拦。
 
 ### Devin（原 Windsurf）
 
@@ -294,8 +294,7 @@ Devin 的工具叫 `exec`、`write`、`edit`、`apply_patch`、`notebook_edit`�
 `todo_write`、`run_subagent` 和 `mcp__<服务>__<工具>`。闸门按 Claude Code 的名字读（`Bash`、`Write`、`Edit`——
 patch 按它的第一个文件——、`NotebookEdit`、`Read`、`Grep`、`Glob`、`WebFetch`、`TodoWrite`、`Task`，MCP 工具按它自己的
 名字），所以自带的词典不用改。项目是 `DEVIN_PROJECT_DIR`。Devin 的文档没说 MCP 服务在哪个文件夹启动，所以服务自己的
-文件夹里没有 `.geml/` 时，它就用 hooks 最后看到的那个项目和会话。和 Codex 一样，没有状态带和看板按钮；「改成规定」和
-纠正账本这里都没有。
+文件夹里没有 `.geml/` 时，它就用 hooks 最后看到的那个项目和会话。和 Codex 一样，没有状态带和看板按钮；「改成规定」和纠正账本这里都没有，但在 Claude Code 里定的规定，这里照样拦。
 
 ### TRAE
 
@@ -317,7 +316,7 @@ TRAE 的 hooks 就是 Claude Code 那一套，所以它拿到的和 Qwen Code �
 TRAE 的工具本来就用 Claude Code 的名字（`Read`、`Write`、`Edit`、`Glob`、`Grep`、`LS`、`WebSearch`、`WebFetch`、`Skill`、
 `mcp__<服务>__<工具>`），只有 shell 叫 `RunCommand`，闸门按 `Bash` 读它；自带的词典不用改。项目是含 `.geml/` 的那个工作区根目录，
 没有的话就是 TRAE 打开的文件夹。TRAE 的文档没说 MCP 服务在哪个文件夹启动，所以服务自己的文件夹里没有 `.geml/` 时，它用 hooks
-最后看到的那个项目和会话。和 Codex 一样，没有状态带和看板按钮；「改成规定」和纠正账本这里都没有。
+最后看到的那个项目和会话。和 Codex 一样，没有状态带和看板按钮；「改成规定」和纠正账本这里都没有，但在 Claude Code 里定的规定，这里照样拦。
 
 ### Kiro
 
@@ -342,7 +341,7 @@ Kiro 在不同界面里给工具起的名字不一样——`shell`、`execute_ba
 `read`、`fs_read`、`readFile`；`grep`、`glob`、`web_fetch`、`web_search`、`subagent`，以及 `mcp_<服务>_<工具>`——闸门把每种写法
 都按 Claude Code 的名字读，所以自带的词典不用改。项目是 Kiro 运行 hook 的那个文件夹，也就是项目根目录。Kiro 的文档没说 MCP 服务在
 哪个文件夹启动，所以服务自己的文件夹里没有 `.geml/` 时，它用 hooks 最后看到的那个项目和会话。和 Codex 一样，没有状态带和看板按钮；
-「改成规定」和纠正账本这里都没有。
+「改成规定」和纠正账本这里都没有，但在 Claude Code 里定的规定，这里照样拦。
 
 ### DeepSeek Harness
 
@@ -367,7 +366,7 @@ bundle 贡献三行：**适配器**（模块 `dist/hosts/dsh/plugin.js`，按路
 
 每个会话都有工作循环，有没有流程都一样：会话记进项目共用的记录（提示词、回答、写过的
 文件、做的提交），模型拿到工作循环的工具和 `note` 工具，名字是 `gemworks_<名字>`，每一步的
-上下文都带上进行中的工作项、当前这一步的做法和别的会话定下的事。**监督器**——固化流程的
+上下文都带上进行中的工作项、当前这一步的做法和别的会话定下的事；被项目的规定拦住的调用在执行前就被拒。**监督器**——固化流程的
 闸和动词——只在会话的工作目录里找得到流程时才挂上。这一行不设 `statechart`，于是流程按
 `gemworks` 的方式找；要钉死一个文件，就在这一行里设 `statechart: <路径>`。没有流程的项目
 不挂监督器，也不出声（`onMissing: skip`）。有好几个流程却没选、名字找不到、或者流程有
@@ -406,7 +405,7 @@ pi install npm:@geml/gemworks
 带上进行中的工作项、当前这一步的做法和别的会话定下的事。编辑框上方有一到三行：本会话的
 工作项走到哪、等你的第一件事和还有几件、这一步的第一条做法。`/gemworks` 以浮层打开看板
 （Esc 或 q 关掉）。模型登记的问题在这次运行结束时带着选项问你；改了东西却没报工作项的
-运行会被打回一次；你打的每条提示词由本会话自己的模型归类，记进你的纠正账本。
+运行会被打回一次；你打的每条提示词由本会话自己的模型归类，记进你的纠正账本（`GEMWORKS_LEARN=0` 关掉）。被项目的规定拦住的调用在执行前就被挡下。
 
 固化流程在**扩展加载时**读一次，因为三个动词必须在第一个会话开始之前注册好，而它们
 的 schema 来自流程。它按 `gemworks` 的方式从 pi 启动时所在的目录找；要换别的，用环境
@@ -417,7 +416,7 @@ GEMWORKS_STATECHART=path/to/workflow.geml pi   # 用这个流程，而不是项�
 GEMWORKS_JOURNAL_DIR=/var/journals pi      # 默认 <会话目录>/gemworks
 ```
 
-没有流程时：没有动词也没有闸，不出声；工作循环照上面那样跑。有好几个流程却没选、
+没有流程时：没有动词，也没有固化流程的闸，不出声；工作循环和规定照上面那样起作用。有好几个流程却没选、
 名字找不到、或者流程有 error 时：每个会话都会说明，并且不受监督。
 
 pi agent 这边有一件事只读过它发布的类型与随包文档、没有实测，接真模型跑的时候正是要看
@@ -433,3 +432,5 @@ gemworks check .geml/workflows/coding.geml
 ```
 
 git 变量询问 pull request 与 CI 时用的 `gh` 若不是 PATH 上那个，用 `GEMWORKS_GH` 指定。
+
+`GEMWORKS_GIT_TIMEOUT_MS` 是一次 `git` 或 `gh` 调用最多等多少毫秒（默认 10000），机器慢或仓库大时可以调大；没在时限内问到的事实，从不当作答案。

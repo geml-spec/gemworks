@@ -44,7 +44,7 @@ A gate that finds nothing to check (no type declarations, no prerequisite) has f
 ## Versions
 
 Until 1.0, every change to the plugin bumps the patch version: the board shows it, and that is how anyone can tell
-which build they run. `node scripts/bump.mjs <version>` changes all five places (package.json, the lockfile twice, both
+which build they run. `node scripts/bump.mjs <version>` changes all six places (package.json, the lockfile twice, the three
 plugin manifests); the smoke test fails when they disagree. Release notes and the CHANGELOG are prose for people:
 they are not written as a side effect of a bump.
 

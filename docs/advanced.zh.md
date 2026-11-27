@@ -72,13 +72,13 @@ flowchart TB
 
 | | |
 |---|---|
-| 现在可用 | 流程格式，建在 `geml-statechart/v1` 上（没有自己的词汇表）；核心库（流程载入与静态检查、工具词典、按来源分的证据、哈希链修订、journal 渲染/读取/校验、监督器、Stagehand、工作项、backlog 表）；workspace——对一个项目一次只做一个加锁的操作；`gemworks` CLI；四份内置的固化流程（`coding`、`dev`、`matter`、`video`），各带自己的词典；Claude Code 插件（输入框上方的状态带、看板、`/gemworks`，以及模型可调的工具：固化流程的 `status`、`move`、`set`，工作循环的 `work`、`note`、`practice`、`propose`、`ask`、`artifact`、`rule`）；给只接 MCP 的宿主用的 `gemworks mcp`；Codex 与 Antigravity 的 hooks，配一页 GEML 看板 `.geml/board.geml`；两个宿主适配器——DeepSeek Harness `0.2.0-rc.2` 的 Cordis 插件（看板是其 web GUI 右侧栏的一个标签页）与 pi agent `1.x` 的扩展。 |
+| 现在可用 | 流程格式，建在 `geml-statechart/v1` 上（没有自己的词汇表）；核心库（流程载入与静态检查、工具词典、按来源分的证据、哈希链修订、journal 渲染/读取/校验、监督器、Stagehand、工作项、backlog 表）；workspace——对一个项目一次只做一个加锁的操作；`gemworks` CLI；四份内置的固化流程（`coding`、`dev`、`matter`、`video`），各带自己的词典；Claude Code 插件（输入框上方的状态带、看板、`/gemworks`，以及模型可调的工具：固化流程的 `status`、`move`、`set`，工作循环的 `work`、`note`、`practice`、`propose`、`ask`、`artifact`、`rule`）；给只接 MCP 的宿主用的 `gemworks mcp`；Codex、Cursor、Qwen Code、OpenCode、Devin、TRAE、Kiro 与 Antigravity 的 hooks，配一页 GEML 看板 `.geml/board.geml`；两个宿主适配器——DeepSeek Harness `0.2.0-rc.2` 的 Cordis 插件（看板是其 web GUI 右侧栏的一个标签页）与 pi agent `1.x` 的扩展。 |
 | 不接模型也测过 | 每一道闸在两个适配器宿主上各测一遍：DSH 侧用 `dsh-agent-loop-testkit` 起真 agent，pi agent 侧用一个按它自己的管线顺序、并且用它自己的参数校验器跑的替身。Claude Code 插件：hooks 模块在 `claude plugin test` 下按真实事件顺序跑，桥接由脚本应答；桥接本身经打包后的 CLI 在临时 git 仓库里测，`gh` 用替身；快路径被钉在 workspace 会拒绝、会记录、会询问的范围上。接真模型跑一遍是手工步骤，见下。 |
-| 还不是每个宿主都有 | 来自文件、git 与人的证据，以及当前阶段的上下文文档（`.geml/context.geml`），都经由 workspace 运行。Claude Code 插件把每一次工具调用都交给它，Codex 的 hooks 信任之后也一样，所以四种来源在那里都读得到。只接 MCP 的宿主（`gemworks mcp`：Gemini CLI、Grok、没信任 hooks 的 Codex……）上看不到任何工具调用：`tool` 证据永远写不了，什么都不拒，模型调用 `status` 时它才重新读一遍 git 和文件变量。两个宿主适配器是每个会话一本 journal，只写 `tool` 证据；pi agent 上标了 `approval` 的转换还没人能走。 |
+| 还不是每个宿主都有 | 来自文件、git 与人的证据，以及当前阶段的上下文文档（`.geml/context.geml`），都经由 workspace 运行。Claude Code 插件把每一次工具调用都交给它，各钩子宿主也一样（Codex 要先信任它的 hooks；Antigravity 只记录，不在其列），所以四种来源在那里都读得到。只接 MCP 的宿主（`gemworks mcp`：Gemini CLI、Grok、没信任 hooks 的 Codex……）上看不到任何工具调用：`tool` 证据永远写不了，什么都不拒，模型调用 `status` 时它才重新读一遍 git 和文件变量。两个宿主适配器是每个会话一本 journal，只写 `tool` 证据；pi agent 上标了 `approval` 的转换还没人能走。 |
 | 还没实测 | 在 DeepSeek Harness 上按状态重注册 `move` 与 `set` 对提示词缓存的代价。 |
-| bundle 里还带着 | GEML MCP server，以及 `host-skills/` 下的四个技能——`geml`、`geml-code-graph`、`gemworks-mcp` 与 `split-session`（见[安装](hosts.zh.md#安装)）。 |
+| bundle 里还带着 | `host-skills/` 下的四个技能——`geml`、`geml-code-graph`、`gemworks-mcp` 与 `split-session`（见[安装](hosts.zh.md#安装)）。 |
 
-设计：[`docs/design/specs/2026-10-11-gemworks-design.md`](../docs/design/specs/2026-10-11-gemworks-design.md)。
+设计：[`spec/design.md`](../spec/design.md)。
 流程格式与运行时规则：[`spec/workflow_CN.md`](../spec/workflow_CN.md)；
 状态机格式：GEML 仓库里的 [`spec/profiles/geml-statechart/`](https://github.com/geml-spec/geml/blob/main/spec/profiles/geml-statechart/geml-statechart-profile_CN.md)。
 

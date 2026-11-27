@@ -159,6 +159,7 @@
 ## 命令行 · 开发 · 许可证
 
 - **命令行**：`gemworks`（简写 `gwx`）在终端里看状态、推进阶段、导出记录，见 [docs/cli.zh.md](docs/cli.zh.md)。
-- **开发**：项目布局、怎么构建和测试，见 [docs/development.zh.md](docs/development.zh.md)。
+- **开发**：项目布局、怎么构建和测试，见 [docs/development.zh.md](docs/development.zh.md)；
+  现在有哪些功能、各在哪实现、为什么这样做，见 [spec/design.md](spec/design.md)。
 - **许可证**：AGPL-3.0-only。只是使用，不用做任何事；改了代码再分发，
   或者让别人通过网络使用你改过的版本，就要按 AGPL 公开改过的源码。

@@ -2,6 +2,8 @@
 
 [← Back to README](../README.md)
 
+This page covers the layout and how to build and test. What each part does, where it is built and why: [spec/design.md](../spec/design.md) (in Chinese).
+
 ## Project layout
 
 ```
@@ -13,11 +15,15 @@
   artifacts/                    copies of the files git does not keep, named by their content's hash
   journals/<item>.geml          one journal per work item: a branch, or one file of a set
   sessions/                     the project's session record, every host's sessions
-  coach/<name>.geml             the project's own light flows: a starter flow it changed, a flow it added
+  coach/<name>.geml             the project's own starter flows: a bundled one it changed, one it added
   practices.geml                the project's practices, each on the step of a flow it belongs to
+  rules.geml                    the project's rules: practices made rules, each holding calls until its step is met
   proposals.geml                the steps and kinds of work proposed, waiting for a yes or no
   board.geml                    the GEML board page, for the hosts with no panel of their own
   exports/                      what the board exports
+  signoffs/<id>.geml            each work item's sign-off sheet: who judged each step, on what, when
+  references/                   flows imported as references
+  trace.log                     the Claude Code plugin's diagnosis trace, while it is on
   .gitignore                    gemworks's own files, written by gemworks init: none of them goes into git
 .geml/                          in each checkout
   context.geml                  the current stage's text and the variables, written again on each change of stage
@@ -64,8 +70,8 @@ records with the `artifact` tool.
 
 The default workflow is the file `GEMWORKS_STATECHART` names (a path relative
 to the project root), else the one `flow-workflow` names, else the project's
-only workflow. The CLI, the Claude Code plugin, `gemworks mcp`, the DeepSeek
-Harness adapter and the pi agent adapter resolve it the same way. Commit the
+only workflow. The CLI, the Claude Code plugin, `gemworks mcp`, the hook adapters, the
+DeepSeek Harness adapter and the pi agent adapter resolve it the same way. Commit the
 backlog; gemworks's own files stay out of git.
 
 ## Development
@@ -82,8 +88,9 @@ starts: `dist/gemworks.mjs` and the `dist/gemworks-*.mjs` files it loads, with
 `@geml/geml` copied unchanged into `dist/vendor/geml/`, so an installed plugin
 needs no dependency install. No file the package ships reaches 256 KiB, the
 size at which Anthropic's plugin directory holds a version for a reviewer
-(`test/claude-code/hooks-split.test.mjs`). `hooks/register.tsx` and `hooks/act.tsx` (what a
-press does, split from it) run with no Node: they import only Node-free modules
+(`test/claude-code/hooks-split.test.mjs`). `hooks/register.tsx` and what is split from it — `hooks/act.tsx` (what a
+press does), `hooks/manual.tsx` (the flow tab's practice and step blocks) and
+`hooks/outward.tsx` (asking before an outward action) — run with no Node: they import only Node-free modules
 from `dist/hosts/claude-code/` and `dist/core/`, and `test/claude-code/hooks-purity.test.mjs`
 walks that closure. The hooks tests are `test/claude-code/hooks.test.ts`, which
 `claude plugin test` runs (it does not descend into `node_modules`); the
@@ -123,6 +130,8 @@ acts in. `src/hosts/claude-code/` is the Node-free side the hooks module
 imports: the request and answer types, the fast path, the readers of Claude
 Code's tool results, and the words of the band, the board and `/gemworks` as
 pure functions. `src/mcp.ts` serves the same verbs (`src/verbs.ts`) and the
-work loop's tools (`src/loop.ts`) over stdio MCP; `src/hosts/codex/adapter.ts` and
-`src/hosts/antigravity/adapter.ts` are those hosts' hooks, and `src/store/board.ts` writes the
-GEML board page they and `gemworks mcp` open.
+work loop's tools (`src/loop.ts`) over stdio MCP; `src/hosts/codex/adapter.ts`,
+`src/hosts/cursor/adapter.ts` and `src/hosts/antigravity/adapter.ts` are the hooks of those
+hosts; Qwen Code, OpenCode, Devin, TRAE and Kiro decide in `src/hosts/hooked.ts`, each
+reading its host's events in its own folder; and `src/store/board.ts` writes the GEML board
+page they and `gemworks mcp` open.

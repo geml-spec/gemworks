@@ -3,10 +3,10 @@
 *English | [中文](workflow_CN.md)*
 
 - Status: **draft**: this may still change. Design rationale:
-  [`docs/design/specs/2026-10-11-gemworks-design.md`](../docs/design/specs/2026-10-11-gemworks-design.md).
+  [`spec/design.md`](design.md).
 - Nature: **Gemworks's own format, not a GEML profile.** It adds no block type,
   no attribute key and no diagram format to GEML, so it needs no vocabulary:
-  a workflow declares [`geml-statechart/v1`](../../../spec/profiles/geml-statechart/geml-statechart-profile.md)
+  a workflow declares [`geml-statechart/v1`](https://github.com/geml-spec/geml/blob/main/spec/profiles/geml-statechart/geml-statechart-profile.md)
   and nothing else. That format — the body's shape, the three ways to write a
   guard, the `reset` action, the drawing, the `statechart-*` checks — is
   GEML's; what this document adds are the keys that hang Gemworks on that
@@ -18,12 +18,13 @@
   blocks it references, and beside it a tool dictionary that is one `table`.
   The journal and the context document are ordinary `data` and `text` blocks.
   GEML never reads a new syntax in any of them. The runtime that interprets
-  them is `gemworks` (`integrations/gemworks/`): the Claude Code plugin,
-  the `gemworks` CLI and its MCP server (`gemworks mcp`), and adapters for
-  DeepSeek Harness and pi agent.
+  them is `gemworks` (this repository): the Claude Code plugin, the hook
+  adapters of Codex, Cursor, Qwen Code, OpenCode, Devin, TRAE, Kiro and
+  Antigravity, the `gemworks` CLI and its MCP server (`gemworks mcp`), and the
+  in-process adapters for DeepSeek Harness and Pi.
 - Runtime coverage: the DeepSeek Harness and pi agent adapters keep one journal
-  per session (`item` is `session:<id>`), evaluate no signals and write no
-  context document. A host that only speaks MCP hands Gemworks none of its tool
+  per session (`item` is `session:<id>`), record the evidence of commands and
+  tools but read no git or file source, and write no context document. A host that only speaks MCP hands Gemworks none of its tool
   calls, so on it the tool dictionary, the fenced uses and the person-only
   refusals do nothing (§3.11).
 
@@ -33,8 +34,9 @@ A workflow is a GEML document that declares `profile = "geml-statechart/v1"`
 and holds one `diagram` block of format `geml-statechart`: a state machine whose
 states are the stages, whose transitions are the edges between them, and whose
 variables are what the guards read. On each state Gemworks hangs what the
-model gets there — a `prompt` to load, `skills` to enable, and the `tools` it
-may use, named by **use** (`edit`, `test`, `pr`, …); on each variable, where
+model gets there — a `prompt` to load, `skills` to enable, the `tools` it
+needs, named by **use** (`edit`, `test`, `pr`, …), and in `rules` the uses
+fenced to it; on each variable, where
 its value comes from (`source`: a tool call bound to a use, a file, git and
 CI, or a person's check — or nothing, and the model writes it); on each
 transition, whether a person must say yes at that moment (`approval`). A
@@ -84,7 +86,7 @@ the backlog (§3.12) and the project configuration (§3.1) declare no profile.
 
 ### 2.1 A whole workflow
 
-The bundled dev workflow, in full:
+The bundled dev workflow, its transitions' notes left out:
 
 ```geml
 === meta
@@ -101,7 +103,6 @@ profile = "geml-statechart/v1"
       "title": "Build",
       "description": "Write the code and its tests, until the tests pass and a pull request is open.",
       "prompt": "#build",
-      "skills": ["test-driven-development"],
       "tools": ["edit", "test", "pr"]
     },
     "review": {
@@ -113,12 +114,14 @@ profile = "geml-statechart/v1"
     "deploy": {
       "title": "Deploy",
       "description": "Deploy to staging and verify.",
-      "tools": ["deploy-staging"]
+      "prompt": "#deploy",
+      "rules": ["deploy-staging"]
     },
     "release": {
       "title": "Release",
       "description": "Deploy to production.",
-      "tools": ["deploy-prod"]
+      "prompt": "#release",
+      "rules": ["deploy-prod"]
     },
     "done": { "title": "Done", "final": true }
   },
@@ -172,7 +175,9 @@ it open, or the tests run only in CI and no test evidence ever appears locally,
 the guard's other two branches — merged, or a person checked
 `review-ready` — let the workflow on. The stages' prompts are sections of the
 same file, after the statechart; `prompt` names them, and Stagehand expands the
-one of the state entered (§3.10).
+one of the state entered (§3.10). Writing code, testing and opening a pull
+request work in any stage; the two rules fence the deploys: staging only in
+`deploy`, production only in `release`.
 
 The starter dictionary, whose rows `gemworks init` adds to the project's
 `.geml/tools.geml`, binds the workflow's uses to this project's tools (§2.3):
@@ -194,7 +199,7 @@ The starter dictionary, whose rows `gemworks init` adds to the project's
 `--env production` and one with no `--env` at all, which counts as production,
 and not `wrangler deployments list`;
 `wrangler deploy --env staging` goes to the key with the longer literal part.
-The bundled dictionary (`integrations/gemworks/workflows/dev/tools.geml`)
+The bundled dictionary (`workflows/dev/tools.geml` in this repository)
 carries one row more per spelling: `npx`, `pnpm` and `bunx` in front of
 `wrangler`, and `pnpm test`, `yarn test`, `cargo test`, `pytest` and `go test`
 for `test`.
@@ -203,10 +208,10 @@ for `test`.
 
 | construct | written as | meaning |
 |---|---|---|
-| statechart | `diagram {format=geml-statechart}`, its body JSON | the states, the transitions and the variables. The format's rules — the reserved keys, the three ways to write a guard, `reset`, the drawing, `data=` — are in [its own vocabulary](../../../spec/profiles/geml-statechart/geml-statechart-profile.md) |
-| state | an entry of `states` | `title` and `description` are for people and for the model alike. Gemworks's keys: `prompt`, the prompt: a section (`#id` in this document, or `doc.geml#id`) or a whole document (`./guide.geml`; a Markdown file works too) — a path that starts with `./` resolves against the workflow's directory, any other against the project root — loaded when the state is entered; `skills`, a list of skill names, handed to the host; `tools`, a list of uses. The format's `final: true` marks a final state: a work item that enters one is closed (§3.5) |
+| statechart | `diagram {format=geml-statechart}`, its body JSON | the states, the transitions and the variables. The format's rules — the reserved keys, the three ways to write a guard, `reset`, the drawing, `data=` — are in [its own vocabulary](https://github.com/geml-spec/geml/blob/main/spec/profiles/geml-statechart/geml-statechart-profile.md) |
+| state | an entry of `states` | `title` and `description` are for people and for the model alike. Gemworks's keys: `prompt`, the prompt: a section (`#id` in this document, or `doc.geml#id`) or a whole document (`./guide.geml`; a Markdown file works too) — a path that starts with `./` resolves against the workflow's directory, any other against the project root — loaded when the state is entered; `skills`, a list of skill names, handed to the host; `tools`, the uses the stage needs; `rules`, uses fenced to the states that list them (uses of the stage as well). The format's `final: true` marks a final state: a work item that enters one is closed (§3.5) |
 | variable | an entry of `vars` | `default` fixes the type. Gemworks's keys: `source`, where the value comes from (below); `note` |
-| transition | an entry of `transitions` | `guard`, and `reset` in `actions`: when the edge is taken, the variables listed return to their default in the same revision, and the guard reads the values as they were before — an edge that sends the work back for rework uses it to clear the last pass's evidence. Gemworks's keys: `approval: true`, a person must say yes at that moment; `note`, what the model is told about the edge |
+| transition | an entry of `transitions` | `guard`, and `reset` in `actions`: when the edge is taken, the variables listed return to their default in the same revision, and the guard reads the values as they were before — an edge that sends the work back for rework uses it to clear the last pass's evidence. Gemworks's keys: `approval: true`, a person must say yes at that moment; `note`, what the model is told about the edge; `label`, the words on the button a person presses to take it (the target state's `title` when there is none) |
 | guard block | a `data` block, `format=json`, that a `guard` names by `#id` | a long guard, or one several transitions share |
 | prompt | an ordinary section or document that a `prompt` names | expanded into the context when the state is entered |
 | work-item unit | meta `flow-unit` | `branch` (the default: one work item per branch) or `file:<glob>` (one per matching file, e.g. `file:episodes/*.geml`) |
@@ -244,11 +249,14 @@ A transition with no guard and no approval is taken by the model with
 `move`, or by a person.
 
 **Uses.** A state's `tools` lists the uses the stage needs — `edit`, `test`,
-`pr`, `deploy-prod`, `image` — words the author picks. The tool dictionary
-binds a use to this project's concrete tools (§2.3). A use is usable only in
-the states that declare it: that is how the author fences a path, and why a
-production deploy runs only in `release`. A tool bound to no use is decided by
-what the dictionary has learned (§3.7).
+`pr`, `image` — words the author picks. The tool dictionary binds a use to this
+project's concrete tools (§2.3). The `tool` evidence of a call bound to a use
+counts only in the states that declare the use. A use in a state's `rules` is
+fenced as well: it is usable only in the states that list it, and refused
+elsewhere — that is how the author fences a path, and why a production deploy
+runs only in `release`. A tool bound to no use is decided by the dictionary's
+row for it, and runs under the host's own permissions when there is none
+(§3.7).
 
 ### 2.3 The tool dictionary
 
@@ -272,7 +280,7 @@ the choices a person makes while working (§3.7):
 ```
 
 - `tool` — a tool name, which may hold a `*` wildcard (`mcp__geml__*`). One row a tool, its name case-sensitive; a second row for the same name does not count, and a warning says so. A tool that runs commands is recorded by command: `Bash(npm test)` matches a command that starts with it and ends the match at a word boundary (`npm test -- --watch`, not `npm tests`); `*` matches any run of text (`Bash(geml media todo * --check)`); the key with the longest literal part wins (§3.6); `Bash()` stands for every command.
-- `for` — the use: a word the workflow declares in a state's `tools` (`edit`, `test`, `image`, …). Tools of the same use stand in for each other. A tool bound to a use is usable only in the states that declare the use (§2.2).
+- `for` — the use: a word the workflow declares in a state's `tools` or `rules` (`edit`, `test`, `image`, …). Tools of the same use stand in for each other. A tool bound to a use some state's `rules` list is usable only in the states that list it (§2.2).
 - `allow`, `deny` — lists of state ids; `*` stands for every state.
 - `default` — `yes` makes the tool the first choice of its use. A use has at most one; the first tool registered for a use becomes its first choice on its own.
 - `params` — a JSON object: when the tool is called, the arguments the model did not give are filled from it.
@@ -661,8 +669,8 @@ recorded too — in the work item of the checkout it runs in (§3.3).
 **A fenced use**, by contrast, is looked for anywhere in the command line, and
 again in a copy of the line with its quotes and backslashes removed and each
 run of blanks made one space, so a deploy inside a compound command line or a
-wrapper (`npx …`, `bash -c "…"`) is still refused outside the states that
-declare its use, and so is `wran"gler"  deploy`.
+wrapper (`npx …`, `bash -c "…"`) is still refused outside the states whose
+`rules` list its use, and so is `wran"gler"  deploy`.
 
 A tool whose command line is PowerShell — DeepSeek Harness's `pwsh` — is never
 read by these sh rules. It writes no `tool` evidence, and its fence check looks
@@ -708,9 +716,9 @@ line says why. A fact nobody could establish never reads as false.
 **How a call is decided**, in the current state S of the work item the call
 belongs to (§3.3):
 
-1. First the rules that hold in every state: a command only a person may run is refused (§3.8); a command line that only switches the work item is admitted (§3.3); Gemworks's own three tools (§3.11) are admitted.
+1. First the rules that hold in every state: a command only a person may run is refused (§3.8); a command line that only switches the work item is admitted (§3.3); Gemworks's own tools (§3.11) are admitted.
 2. The call's keys: the tool's name; for a tool that writes files, `<tool>(<path>)` — a row naming the tool alone takes it with any path, a row `<tool>(<glob>)` the calls on a path that ends in a match of the glob, starting at a segment; for a tool that runs commands, a `Bash(…)` key for each simple command of the command line, the key with the longest literal part first (§3.6).
-3. Each key is judged on its own: a key bound to a use (`for`) is admitted when S declares the use and refused when it does not (the reason says "`deploy-prod` is used only in #release"); a key bound to no use is refused when it was denied in S or in `*` (the reason says "you denied it in #S"), admitted when it was allowed, and unknown when no row takes it.
+3. Each key is judged on its own: a key bound to a use (`for`) is admitted when S declares the use, refused when the use is in another state's `rules` (the reason says "`deploy-prod` is used only in #release"), and admitted otherwise, its evidence not counting in S; a key bound to no use is refused when it was denied in S or in `*` (the reason says "you denied it in #S"), admitted when it was allowed, and unknown when no row takes it.
 4. Any key refused: the call is refused, its reason naming every refused key, and a `refused` is recorded.
 5. Otherwise — every key admitted or unknown — the call runs, and the host's own permission rules apply as usual: whether a command no row takes may run, and whether it is safe, is theirs to judge from its actual arguments, not Gemworks's. When it ends, evidence is written for the keys bound to a use, as the variables' `source` says.
 6. Gemworks asks nobody whether an unknown key may run. Binding it to a use, or denying it, is a row a person writes, on the board or in `.geml/tools.geml`.
@@ -744,9 +752,9 @@ call that runs one of them is refused, in every state, and recorded as
 
 - **Where a command starts.** The line is split at `;`, `&`, `|`, a newline, parentheses and a backtick, and the commands inside a `$(…)` within double quotes are read too. A command's command word is its first word past assignments, redirections and prefixes that run the next word — `builtin`, `command`, `time`, `env`, `sudo` and their kin — with its quotes and escapes removed.
 - **What runs gemworks.** A command word that is `gemworks` (the last segment of a path, in any case: `./node_modules/.bin/gemworks`); or a launcher — `npx`, `bunx`, `npm exec`, `pnpm dlx`, `pnpm exec`, `yarn dlx`, `node` and their kin — one of whose arguments is `gemworks` (with an optional `@version`) or the package's `cli` script.
-- **The verb.** The first argument after it that is not an option is `mark`, `unmark` or `advance`, in any case — or is built by expansion, so could be any of them.
+- **The verb.** The first argument after it that is not an option is `mark`, `unmark`, `advance`, `pause` or `resume`, in any case — or is built by expansion, so could be any of them.
 - **Strings handed to a shell.** The argument of `bash -c "…"`, `pwsh -c "…"` and `eval`, and the strings launchers hand to a shell (`sudo sh -c "…"`, `timeout 5 bash -c "…"`, `npx -c "…"`, `npm exec --call=…`, `env -S "…"`), are read again by these rules. A PowerShell string is read by the same rules, and searched once more word by word as a fallback.
-- **A line the scan cannot read.** When the command word is built by expansion (it holds `$`) or a quote does not close, the line is refused when, its quotes removed, it holds `gemworks` and one of the three verbs.
+- **A line the scan cannot read.** When the command word is built by expansion (it holds `$`) or a quote does not close, the line is refused when, its quotes removed, it holds `gemworks` and one of the five verbs.
 
 So `npx gemworks mark x` and `bash -c 'gemworks mark x'` are refused;
 `echo gemworks mark` and a commit message that mentions `gemworks` and `advance`
@@ -825,13 +833,14 @@ the document, and with `geml-statechart/v1` declared that includes the statechar
 own checks, `statechart-body`, `statechart-initial`, `statechart-state`,
 `statechart-transition`, `statechart-guard`, `statechart-actions`,
 `statechart-vars`, `statechart-current` and `statechart-unreachable`, defined
-in [geml-statechart §3](../../../spec/profiles/geml-statechart/geml-statechart-profile.md) — then
+in [geml-statechart §3](https://github.com/geml-spec/geml/blob/main/spec/profiles/geml-statechart/geml-statechart-profile.md) — then
 reads the workflow's tool dictionary — the project's, against all its
 workflows — and reports Gemworks's own:
 
 | code | severity | when |
 |---|---|---|
-| `flow-attr` | error | a `prompt` does not resolve; a `skills` or `tools` is not an array of strings; an `approval` is not `true`; a `source` is none of the forms of §2.2; a variable with a `source` has a default other than `false`; a `note` is not a string |
+| `flow-statechart` | error | the document holds no `geml-statechart` diagram block, or more than one |
+| `flow-attr` | error | a `prompt` does not resolve; a `skills`, `tools` or `rules` is not an array of names; an `approval` is not `true`; a `source` is none of the forms of §2.2; a variable with a `source` has a default other than `false`; a `note` is not a string; a `label` is not a non-empty string |
 | `flow-source` | warning | a variable's `source.tool` names a use no state declares, so the variable can never be established; the dictionary's `for` names a use no state declares |
 | `flow-dup-edge` | error | two transitions between the same two states (the journal records a transition as `from→to`) |
 | `flow-auto-ambiguous` | error | a state has more than one machine-judged outgoing edge that needs no approval |

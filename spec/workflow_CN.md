@@ -2,13 +2,13 @@
 
 *[English](workflow.md) | 中文*
 
-- 状态：**draft**：仍可能改动。设计依据：[`docs/design/specs/2026-10-11-gemworks-design.md`](../docs/design/specs/2026-10-11-gemworks-design.md)。
-- 性质：**Gemworks 自己的格式，不是 GEML 的 profile。** 它不给 GEML 加块类型、属性键或 diagram 格式，所以不需要词汇表：流程只声明 [`geml-statechart/v1`](../../../spec/profiles/geml-statechart/geml-statechart-profile_CN.md)。那个格式——正文的形状、通行要求的三种写法、`reset` 动作、画法、`statechart-*` 检查——属于 GEML；本文加的是挂在那台状态机的状态、变量、转换上、把它接到 Gemworks 的几个键（格式本来就把它们当属性放行），外加一个 `=== meta` 键 `flow-unit`，在 GEML 看来那只是作者的元数据。GEML 的解析器对 Gemworks 一无所知。一份流程就是一份普通的 GEML 文档：一个装着状态机的 `diagram` 块，它引用的提示词文档和通行要求 `data` 块，旁边一份只是一张 `table` 的工具词典。journal 与上下文文档也是普通的 `data`、`text` 块。GEML 不需要读其中任何新语法。解释它们的运行时是 `gemworks`（`integrations/gemworks/`）：Claude Code 插件、`gemworks` CLI 及其 MCP 服务（`gemworks mcp`），以及 DeepSeek Harness 与 pi agent 的适配器。
-- 运行时覆盖：DeepSeek Harness 与 pi agent 适配器按会话记 journal（`item` 是 `session:<id>`），不求值信号，不写上下文文档。只接 MCP 的宿主不把自己的工具调用交给 Gemworks，所以在它上面工具词典、用途封路与只许人做的命令都不起作用（§3.11）。
+- 状态：**draft**：仍可能改动。设计依据：[`spec/design.md`](design.md)。
+- 性质：**Gemworks 自己的格式，不是 GEML 的 profile。** 它不给 GEML 加块类型、属性键或 diagram 格式，所以不需要词汇表：流程只声明 [`geml-statechart/v1`](https://github.com/geml-spec/geml/blob/main/spec/profiles/geml-statechart/geml-statechart-profile_CN.md)。那个格式——正文的形状、通行要求的三种写法、`reset` 动作、画法、`statechart-*` 检查——属于 GEML；本文加的是挂在那台状态机的状态、变量、转换上、把它接到 Gemworks 的几个键（格式本来就把它们当属性放行），外加一个 `=== meta` 键 `flow-unit`，在 GEML 看来那只是作者的元数据。GEML 的解析器对 Gemworks 一无所知。一份流程就是一份普通的 GEML 文档：一个装着状态机的 `diagram` 块，它引用的提示词文档和通行要求 `data` 块，旁边一份只是一张 `table` 的工具词典。journal 与上下文文档也是普通的 `data`、`text` 块。GEML 不需要读其中任何新语法。解释它们的运行时是 `gemworks`（本仓库）：Claude Code 插件，Codex、Cursor、Qwen Code、OpenCode、Devin、TRAE、Kiro、Antigravity 的钩子适配器，`gemworks` CLI 及其 MCP 服务（`gemworks mcp`），以及 DeepSeek Harness 与 Pi 的进程内适配器。
+- 运行时覆盖：DeepSeek Harness 与 pi agent 适配器按会话记 journal（`item` 是 `session:<id>`），命令和工具的证据照记，但不读 git 与文件来源，也不写上下文文档。只接 MCP 的宿主不把自己的工具调用交给 Gemworks，所以在它上面工具词典、用途封路与只许人做的命令都不起作用（§3.11）。
 
 ## 0. 一段话说清楚
 
-流程是一份声明了 `profile = "geml-statechart/v1"` 的 GEML 文档，里面有一个 `format=geml-statechart` 的 `diagram` 块：一台状态机，状态是阶段，转换是阶段之间的边，条件变量是通行要求读的东西。Gemworks 在每个状态上挂模型在这里拿到什么——要载入的 `prompt`、要启用的 `skills`、能用的 `tools`，后者按**用途**写（`edit`、`test`、`pr`……）；在每个变量上挂它的值从哪来（`source`：绑到某个用途的一次工具调用、文件、git 与 CI、人的勾选；或者什么都不写，由模型自己写）；在每条转换上挂此刻要不要人点头（`approval`）。通行要求（`guard`）是对条件变量的一个对象时由机器判，成立就自动走，所以流程凭观测到的事实推进，不凭模型自己说；通行要求是一句话时由模型判；批准由人判。一个用途在这个项目里指哪个具体工具、同类工具里首选哪个、参数默认取什么，都不写进流程，而是记在项目的**工具词典** `.geml/tools.geml` 里——项目的所有流程共用一份——在使用中由人的选择长出来。每个工作项——一个分支，或者一个文件，比如一集——有一本 **journal**：一串哈希链起来的 `data` 块，记下每条修订和每次拒绝。这些文档都是普通 GEML：`geml check` 验它们，`geml get journal.geml '#rev-7'` 读一条修订，`geml --to md` 把状态机画成 Mermaid 图。
+流程是一份声明了 `profile = "geml-statechart/v1"` 的 GEML 文档，里面有一个 `format=geml-statechart` 的 `diagram` 块：一台状态机，状态是阶段，转换是阶段之间的边，条件变量是通行要求读的东西。Gemworks 在每个状态上挂模型在这里拿到什么——要载入的 `prompt`、要启用的 `skills`、要用的 `tools`，按**用途**写（`edit`、`test`、`pr`……），以及 `rules` 里只许在这里用的用途；在每个变量上挂它的值从哪来（`source`：绑到某个用途的一次工具调用、文件、git 与 CI、人的勾选；或者什么都不写，由模型自己写）；在每条转换上挂此刻要不要人点头（`approval`）。通行要求（`guard`）是对条件变量的一个对象时由机器判，成立就自动走，所以流程凭观测到的事实推进，不凭模型自己说；通行要求是一句话时由模型判；批准由人判。一个用途在这个项目里指哪个具体工具、同类工具里首选哪个、参数默认取什么，都不写进流程，而是记在项目的**工具词典** `.geml/tools.geml` 里——项目的所有流程共用一份——在使用中由人的选择长出来。每个工作项——一个分支，或者一个文件，比如一集——有一本 **journal**：一串哈希链起来的 `data` 块，记下每条修订和每次拒绝。这些文档都是普通 GEML：`geml check` 验它们，`geml get journal.geml '#rev-7'` 读一条修订，`geml --to md` 把状态机画成 Mermaid 图。
 
 ## 1. meta 块
 
@@ -35,7 +35,7 @@ journal（§2.4）、上下文文档（§2.5）、工具词典（§2.3）、back
 
 ### 2.1 一份完整的流程
 
-内置的开发流程全文：
+内置的开发流程（转换上的 `note` 略去）：
 
 ```geml
 === meta
@@ -52,7 +52,6 @@ profile = "geml-statechart/v1"
       "title": "构建",
       "description": "写代码和测试，直到测试通过、PR 开出来。",
       "prompt": "#build",
-      "skills": ["test-driven-development"],
       "tools": ["edit", "test", "pr"]
     },
     "review": {
@@ -64,12 +63,14 @@ profile = "geml-statechart/v1"
     "deploy": {
       "title": "部署",
       "description": "部署到 staging 并验证。",
-      "tools": ["deploy-staging"]
+      "prompt": "#deploy",
+      "rules": ["deploy-staging"]
     },
     "release": {
       "title": "上线",
       "description": "部署到 production。",
-      "tools": ["deploy-prod"]
+      "prompt": "#release",
+      "rules": ["deploy-prod"]
     },
     "done": { "title": "完成", "final": true }
   },
@@ -111,7 +112,7 @@ profile = "geml-statechart/v1"
 
 链条是 **状态 → 工具 → 变量 → 转换 → 状态**：`build` 声明了用途 `test`，词典把它绑到本项目的 `npm test`；那条命令以 0 退出，`tests-pass` 变成 true；`build→review` 的通行要求读它，成立就自动走；进入 `review`，模型换一套提示词和用途。流程里只写用途不写命令，所以同一份流程搬到 Rust 项目一字不改：那里的词典把 `test` 绑到 `cargo test`。
 
-`build` 不会卡住：PR 在 Gemworks 看到它开着之前就合并了，或者测试只在 CI 里跑、本地从不出现测试证据，通行要求的另外两个分支（PR 已合并、人勾选了 `review-ready`）都能放行。各阶段给模型的提示词是同一个文件里、状态机之后的章节，`prompt` 指向它们，进入状态时由 Stagehand 展开（§3.10）。
+`build` 不会卡住：PR 在 Gemworks 看到它开着之前就合并了，或者测试只在 CI 里跑、本地从不出现测试证据，通行要求的另外两个分支（PR 已合并、人勾选了 `review-ready`）都能放行。各阶段给模型的提示词是同一个文件里、状态机之后的章节，`prompt` 指向它们，进入状态时由 Stagehand 展开（§3.10）。写代码、测试、开 PR 在哪个阶段都能做；两条规定封住部署：staging 只在 `deploy`，production 只在 `release`。
 
 起步词典的行由 `gemworks init` 并进项目的 `.geml/tools.geml`，把流程的用途绑到本项目的工具上（§2.3）：
 
@@ -128,16 +129,16 @@ profile = "geml-statechart/v1"
 ===
 ```
 
-`Bash(wrangler deploy)` 是前缀，所以带 `--env production` 的部署和根本不带 `--env` 的部署都匹配它，后者按 production 算；`wrangler deploy --env staging` 归字面部分更长的那个键。内置的词典（`integrations/gemworks/workflows/dev/tools.geml`）每种写法多一行：`wrangler` 前面加 `npx`、`pnpm`、`bunx`，`test` 另有 `pnpm test`、`yarn test`、`cargo test`、`pytest`、`go test`。
+`Bash(wrangler deploy)` 是前缀，所以带 `--env production` 的部署和根本不带 `--env` 的部署都匹配它，后者按 production 算；`wrangler deploy --env staging` 归字面部分更长的那个键。内置的词典（本仓库的 `workflows/dev/tools.geml`）每种写法多一行：`wrangler` 前面加 `npx`、`pnpm`、`bunx`，`test` 另有 `pnpm test`、`yarn test`、`cargo test`、`pytest`、`go test`。
 
 ### 2.2 构件
 
 | 构件 | 写法 | 含义 |
 |---|---|---|
-| 状态机 | `diagram {format=geml-statechart}`，正文 JSON | 状态、转换、变量。格式的规则——保留键、通行要求的三种写法、`reset`、画法、`data=`——在[它自己的词汇表](../../../spec/profiles/geml-statechart/geml-statechart-profile_CN.md)里 |
-| 状态 | `states` 里的一项 | `title`、`description` 给人看也给模型看。Gemworks 的键：`prompt`，提示词：一个章节（本文档的 `#id`，或 `doc.geml#id`）或整份文档（`./guide.geml`，Markdown 也行；`./` 开头的路径相对流程目录，其余相对项目根），进入状态时载入；`skills`，skill 名的列表，交给宿主；`tools`，用途的列表。格式的 `final: true` 标终态：进了它，工作项就关闭（§3.5） |
+| 状态机 | `diagram {format=geml-statechart}`，正文 JSON | 状态、转换、变量。格式的规则——保留键、通行要求的三种写法、`reset`、画法、`data=`——在[它自己的词汇表](https://github.com/geml-spec/geml/blob/main/spec/profiles/geml-statechart/geml-statechart-profile_CN.md)里 |
+| 状态 | `states` 里的一项 | `title`、`description` 给人看也给模型看。Gemworks 的键：`prompt`，提示词：一个章节（本文档的 `#id`，或 `doc.geml#id`）或整份文档（`./guide.geml`，Markdown 也行；`./` 开头的路径相对流程目录，其余相对项目根），进入状态时载入；`skills`，skill 名的列表，交给宿主；`tools`，这个阶段要用的用途；`rules`，只许在列出它的状态里用的用途（也算这个阶段要用的）。格式的 `final: true` 标终态：进了它，工作项就关闭（§3.5） |
 | 条件变量 | `vars` 里的一项 | `default` 定类型。Gemworks 的键：`source`，值从哪来（见下）；`note` |
-| 转换 | `transitions` 里的一项 | `guard`，和 `actions` 里的 `reset`：走这条边时，列出的变量在同一个修订里回到默认值，通行要求读的是走之前的值——返工的边用它清掉上一轮的证据。Gemworks 的键：`approval: true`，要人此刻点头；`note`，交给模型的这条边的说明 |
+| 转换 | `transitions` 里的一项 | `guard`，和 `actions` 里的 `reset`：走这条边时，列出的变量在同一个修订里回到默认值，通行要求读的是走之前的值——返工的边用它清掉上一轮的证据。Gemworks 的键：`approval: true`，要人此刻点头；`note`，交给模型的这条边的说明；`label`，人按来走这条边的按钮上的字（不写时用目标状态的 `title`） |
 | 通行要求块 | `format=json` 的 `data` 块，`guard` 用 `#id` 引用 | 长的、几条转换共用的通行要求 |
 | 提示词 | 普通的章节或文档，`prompt` 引用 | 进入状态时展开进上下文 |
 | 工作项单位 | meta `flow-unit` | `branch`（默认，每个分支一个工作项）或 `file:<glob>`（每个匹配的文件一个，如 `file:episodes/*.geml`） |
@@ -167,7 +168,7 @@ profile = "geml-statechart/v1"
 
 没有通行要求、不要批准的转换，模型 `move` 或人走。
 
-**用途。** 状态的 `tools` 列出这个阶段要用的用途——`edit`、`test`、`pr`、`deploy-prod`、`image`——自己起的词。工具词典把用途绑到本项目的具体工具（§2.3）。一个用途只能在声明了它的状态里用：这是流程作者封路的办法，production 部署只在 `release` 里跑得了。没有绑到任何用途的工具，按词典里学到的决定（§3.7）。
+**用途。** 状态的 `tools` 列出这个阶段要用的用途——`edit`、`test`、`pr`、`image`——自己起的词。工具词典把用途绑到本项目的具体工具（§2.3）。绑到用途的调用留下的 `tool` 证据，只在声明了这个用途的状态里算数。写在状态 `rules` 里的用途还封路：只有列出它的状态能用，别的状态里拒绝——这是流程作者封路的办法，production 部署只在 `release` 里跑得了。没有绑到任何用途的工具，按词典里管它的那一行判，没有那一行就交给宿主自己的权限（§3.7）。
 
 ### 2.3 工具词典
 
@@ -187,7 +188,7 @@ profile = "geml-statechart/v1"
 ```
 
 - `tool` —— 工具名，可带 `*` 通配（`mcp__geml__*`）。一个工具一行，名字区分大小写；同名的第二行不算数，报警告。运行命令的工具按命令记：`Bash(npm test)` 匹配以它开头、且在词边界结束的命令（`npm test -- --watch` 算，`npm tests` 不算）；`*` 匹配任意一段（`Bash(geml media todo * --check)`）；字面部分最长的键优先（§3.6）；`Bash()` 表示所有命令。
-- `for` —— 用途：流程在状态的 `tools` 里声明的词（`edit`、`test`、`image`……）。同一用途的工具互为替代。绑了用途的工具只在声明了这个用途的状态里能用（§2.2）。
+- `for` —— 用途：流程在状态的 `tools` 或 `rules` 里声明的词（`edit`、`test`、`image`……）。同一用途的工具互为替代。用途写在某个状态的 `rules` 里时，绑到它的工具只在列出它的状态里能用（§2.2）。
 - `allow`、`deny` —— 状态 id 的列表，`*` 表示所有状态。
 - `default` —— `yes` 表示同一用途里的首选，每个用途至多一个；一个用途登记的第一个工具自动成为首选。
 - `params` —— 一个 JSON 对象：调用这个工具时，模型没给的参数用它补上。
@@ -404,7 +405,7 @@ flow-workflow = "dev"
 
 后台运行的命令（结果里带后台任务 id）在调用结束时还没有退出码，不写 `tool` 证据。子 agent 的工具调用同样经过主会话的钩子，由子 agent 跑的测试照样记入信号——记进它所在检出的工作项（§3.3）。
 
-**用途封路**则在整条命令行的任意位置查找，并在去掉引号和反斜杠、把每段空白并成一个空格的副本里再查一遍，所以复合命令行里或包装器（`npx …`、`bash -c "…"`）里的部署，在没有声明这个用途的状态里照样被拒绝，`wran"gler"  deploy` 也一样。
+**用途封路**则在整条命令行的任意位置查找，并在去掉引号和反斜杠、把每段空白并成一个空格的副本里再查一遍，所以复合命令行里或包装器（`npx …`、`bash -c "…"`）里的部署，在 `rules` 没有列出这个用途的状态里照样被拒绝，`wran"gler"  deploy` 也一样。
 
 命令行是 PowerShell 的工具——DeepSeek Harness 的 `pwsh`——从不按这些 sh 规则读。它不写 `tool` 证据；它的封路检查在原样的命令行里查找键，并在去掉 PowerShell 反引号转义的副本里再查一遍（反引号加换行把两行接起来）。
 
@@ -424,9 +425,9 @@ flow-workflow = "dev"
 
 **一次调用怎么判**（在调用所属工作项的当前状态 S 里，§3.3）：
 
-1. 先判任何状态都生效的规则：只许人做的命令拒绝（§3.8）；只切换工作项的命令行放行（§3.3）；Gemworks 自己的三个工具（§3.11）放行。
+1. 先判任何状态都生效的规则：只许人做的命令拒绝（§3.8）；只切换工作项的命令行放行（§3.3）；Gemworks 自己的工具（§3.11）放行。
 2. 取这次调用的键：工具名；写文件的工具取 `<工具>(<路径>)`——只写工具名的一行管这个工具的所有路径，`<工具>(<glob>)` 这样的一行只管路径结尾匹配 glob 的调用（从某一段开头算起）；运行命令的工具再按命令行里每条简单命令取 `Bash(…)` 的键，字面部分最长的优先（§3.6）。
-3. 每个键各判一次：绑着用途（`for`）的键，S 声明了这个用途就放行，S 没声明就拒绝（理由写明"`deploy-prod` 只在 #release 里用"）；没绑用途的键，在 S 或 `*` 上被拒过就拒绝（理由写明"你在 #S 拒绝过它"），允许过就放行，没有哪一行管它就是未归类。
+3. 每个键各判一次：绑着用途（`for`）的键，S 声明了这个用途就放行；这个用途写在别的状态的 `rules` 里就拒绝（理由写明"`deploy-prod` 只在 #release 里用"）；其余照样放行，只是证据不在 S 里算数；没绑用途的键，在 S 或 `*` 上被拒过就拒绝（理由写明"你在 #S 拒绝过它"），允许过就放行，没有哪一行管它就是未归类。
 4. 有一个键被拒绝：整次调用拒绝，理由列出每个被拒的键，记一条 `refused`。
 5. 其余（每个键都放行或未归类）：放行，宿主自己的权限规则照常生效——一条没归类的命令能不能跑、安不安全，由它按命令的实际参数判断，不归 Gemworks 管；调用结束时，绑着用途的键按变量的 `source` 写证据。
 6. Gemworks 不问人"没归类的键能不能用"。把它绑到某个用途、或者拒绝它，是人在看板上或在 `.geml/tools.geml` 里写的一行。
@@ -446,9 +447,9 @@ flow-workflow = "dev"
 
 - **命令从哪里开始。** 命令行按 `;`、`&`、`|`、换行、括号与反引号拆开，双引号里的 `$(…)` 也拆。每条命令的命令字是跳过赋值、重定向和接着执行下一个词的前缀——`builtin`、`command`、`time`、`env`、`sudo` 这类——之后的第一个词，去掉引号与转义。
 - **什么算运行 gemworks。** 命令字是 `gemworks`（取路径末段，不分大小写，`./node_modules/.bin/gemworks` 也算）；或者命令字是启动器——`npx`、`bunx`、`npm exec`、`pnpm dlx`、`pnpm exec`、`yarn dlx`、`node` 之类——而参数里有 `gemworks`（可带 `@版本`）或它的 `cli` 脚本。
-- **动词。** 其后第一个非选项参数是 `mark`、`unmark` 或 `advance`（不分大小写）——或者由展开拼成，因而可能是其中任何一个。
+- **动词。** 其后第一个非选项参数是 `mark`、`unmark`、`advance`、`pause` 或 `resume`（不分大小写）——或者由展开拼成，因而可能是其中任何一个。
 - **交给 shell 的字符串。** `bash -c "…"`、`pwsh -c "…"`、`eval` 的参数，以及启动器交给 shell 的字符串（`sudo sh -c "…"`、`timeout 5 bash -c "…"`、`npx -c "…"`、`npm exec --call=…`、`env -S "…"`）照此再查一遍。PowerShell 的字符串按同样的规则读，另外再按词查找一遍，作为兜底。
-- **扫描读不懂的命令行。** 命令字由展开拼成（含 `$`）或引号不闭合时，退而求其次：去掉引号后的命令行里同时有 `gemworks` 和这三个词之一就拒绝。
+- **扫描读不懂的命令行。** 命令字由展开拼成（含 `$`）或引号不闭合时，退而求其次：去掉引号后的命令行里同时有 `gemworks` 和这五个词之一就拒绝。
 
 所以 `npx gemworks mark x`、`bash -c 'gemworks mark x'` 都被拒绝；`echo gemworks mark`、提交信息里写到 `gemworks` 与 `advance` 都不会。和用途封路一样，这条规则只看得见命令行的文字。
 
@@ -496,11 +497,12 @@ Claude Code 里列为 `mcp__gemworks__status`、`mcp__gemworks__move`、`mcp__ge
 
 ## 4. 静态检查
 
-`gemworks check <workflow.geml>` 先跑 `geml check`——那里有 error 就拒绝这份文档；声明了 `geml-statechart/v1` 时它包括状态机自己的检查 `statechart-body`、`statechart-initial`、`statechart-state`、`statechart-transition`、`statechart-guard`、`statechart-actions`、`statechart-vars`、`statechart-current` 与 `statechart-unreachable`，定义在 [geml-statechart §3](../../../spec/profiles/geml-statechart/geml-statechart-profile_CN.md)——再读流程的工具词典（项目的那份对照它的所有流程读），然后报 Gemworks 自己的：
+`gemworks check <workflow.geml>` 先跑 `geml check`——那里有 error 就拒绝这份文档；声明了 `geml-statechart/v1` 时它包括状态机自己的检查 `statechart-body`、`statechart-initial`、`statechart-state`、`statechart-transition`、`statechart-guard`、`statechart-actions`、`statechart-vars`、`statechart-current` 与 `statechart-unreachable`，定义在 [geml-statechart §3](https://github.com/geml-spec/geml/blob/main/spec/profiles/geml-statechart/geml-statechart-profile_CN.md)——再读流程的工具词典（项目的那份对照它的所有流程读），然后报 Gemworks 自己的：
 
 | 码 | 级别 | 何时 |
 |---|---|---|
-| `flow-attr` | error | `prompt` 解析不到；`skills`、`tools` 不是字符串数组；`approval` 不是 `true`；`source` 不是 §2.2 表里的写法；有 `source` 的变量默认值不是 `false`；`note` 不是字符串 |
+| `flow-statechart` | error | 文档里没有 `geml-statechart` 图块，或者不止一个 |
+| `flow-attr` | error | `prompt` 解析不到；`skills`、`tools`、`rules` 不是名字的数组；`approval` 不是 `true`；`source` 不是 §2.2 表里的写法；有 `source` 的变量默认值不是 `false`；`note` 不是字符串；`label` 不是非空字符串 |
 | `flow-source` | warning | 变量 `source.tool` 的用途没有任何状态声明，这个变量永远立不起来；词典里 `for` 的用途没有任何状态声明 |
 | `flow-dup-edge` | error | 同一对状态之间有两条转换（journal 按 `from→to` 记转换） |
 | `flow-auto-ambiguous` | error | 一个状态有多于一条机器判的、不要批准的出边 |

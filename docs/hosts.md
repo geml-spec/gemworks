@@ -15,7 +15,7 @@ Type them at the prompt of a session (Claude Code 2.1.275 or later), one at a
 time, and pick a scope when asked. The first adds the marketplace of GEML's own
 plugin: gemworks depends on `geml`, and with that marketplace added, installing
 gemworks installs geml too; without it gemworks installs but does not load. The
-second adds the gemworks marketplace, which installs the published `gemworks`
+second adds the gemworks marketplace, which installs the published `@geml/gemworks`
 package from npm, and installs it. From a shell, the same is
 `claude plugin marketplace add geml-spec/geml`,
 `claude plugin marketplace add geml-spec/gemworks` and
@@ -233,7 +233,7 @@ practices and the other sessions' decisions not read yet; a turn that changed
 things and reported no work item is sent back once at its end; the stage text
 reaches the model at the start of the session, at the next prompt after it
 changed, and in the result of the call that changed it; a command a fenced use
-or a person owns is
+or a person owns, and a call one of the project's rules holds, are
 refused with the reason; a tool the dictionary has no row for runs as usual;
 a tool's default parameters are filled in; the files a patch writes, and at
 the turn's end its answer and the commits it made, go into the project's
@@ -271,8 +271,7 @@ Once installed, the model records work items, practices, proposals, artifacts an
 tools; the session's start tells it those tools and the flows' steps, and each prompt carries the work items on
 the way, the current step's practices and what other sessions decided since. The workbench is the GEML board
 page above (`.geml/board.geml`), written again at each prompt and each turn's end. As on Codex there is no band
-and no board button: answer what waits for you in the chat; "Make it a rule" and the corrections ledger are not
-here. The geml plugin has no Antigravity version yet, so view the page with the GEML extension in a VS Code–style
+and no board button: answer what waits for you in the chat; "Make it a rule" and the corrections ledger are not here, and no rule holds a call here: Antigravity has no hook before a call. The geml plugin has no Antigravity version yet, so view the page with the GEML extension in a VS Code–style
 editor (Antigravity IDE included) or with Chrome's GEML Viewer.
 
 ### Cursor
@@ -304,8 +303,7 @@ Two things differ from Codex because of what Cursor's hooks allow:
 
 The hooks run in `~/.cursor`, so the project is the workspace folder holding a `.geml/`, else the first one. The MCP
 server learns the conversation and its project from the hooks, as on Antigravity: with two Cursor windows open, it
-writes for the one that ran a hook last. As on Codex there is no band and no board button; "Make it a rule" and the
-corrections ledger are not here. View the board page with the GEML extension, which Cursor runs as a VS Code
+writes for the one that ran a hook last. As on Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here, but a rule made in Claude Code holds calls here too. View the board page with the GEML extension, which Cursor runs as a VS Code
 extension.
 
 ### Qwen Code
@@ -333,7 +331,7 @@ Qwen Code names its tools `run_shell_command`, `write_file`, `edit`, `notebook_e
 `glob` and `mcp__<server>__<tool>`. The gate reads them by Claude Code's names (`Bash`, `Write`, `Edit`,
 `NotebookEdit`, `Read`, `Grep`, `Glob`, and an MCP tool by its own name), so the bundled dictionaries need nothing
 more. The project is `QWEN_PROJECT_DIR`, the folder Qwen Code was started in; the MCP server starts there too. As on
-Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here.
+Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here, but a rule made in Claude Code holds calls here too.
 
 ### OpenCode
 
@@ -364,7 +362,7 @@ OpenCode names its tools `shell`, `write`, `edit`, `patch`, `read`, `grep`, `glo
 `todowrite`, `subagent` and `<server>.<tool>`. The gate reads them by Claude Code's names (`Bash`, `Write`, `Edit` —
 a patch by its first file —, `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, `TodoWrite`, `Task`, and an MCP tool by
 its own name), so the bundled dictionaries need nothing more. The project is the folder OpenCode was opened in. As on
-Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here.
+Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here, but a rule made in Claude Code holds calls here too.
 
 ### Devin (formerly Windsurf)
 
@@ -393,8 +391,7 @@ Devin names its tools `exec`, `write`, `edit`, `apply_patch`, `notebook_edit`, `
 `Edit` — a patch by its first file —, `NotebookEdit`, `Read`, `Grep`, `Glob`, `WebFetch`, `TodoWrite`, `Task`, and an
 MCP tool by its own name), so the bundled dictionaries need nothing more. The project is `DEVIN_PROJECT_DIR`. Devin's
 docs do not say where an MCP server starts, so when the server's own folder has no `.geml/` it works in the project
-and session the hooks last saw. As on Codex there is no band and no board button; "Make it a rule" and the
-corrections ledger are not here.
+and session the hooks last saw. As on Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here, but a rule made in Claude Code holds calls here too.
 
 ### TRAE
 
@@ -421,8 +418,7 @@ TRAE names its tools by Claude Code's names already (`Read`, `Write`, `Edit`, `G
 `WebFetch`, `Skill`, `mcp__<server>__<tool>`), but for the shell, `RunCommand`, which the gate reads as `Bash`; the
 bundled dictionaries need nothing more. The project is the workspace root holding a `.geml/`, else the folder TRAE
 opened. TRAE's docs do not say where an MCP server starts, so when the server's own folder has no `.geml/` it works in
-the project and session the hooks last saw. As on Codex there is no band and no board button; "Make it a rule" and the
-corrections ledger are not here.
+the project and session the hooks last saw. As on Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here, but a rule made in Claude Code holds calls here too.
 
 ### Kiro
 
@@ -453,7 +449,7 @@ Kiro names its tools differently in its surfaces — `shell`, `execute_bash`, `e
 `mcp_<server>_<tool>` — and the gate reads every spelling by Claude Code's name, so the bundled dictionaries need
 nothing more. The project is the folder Kiro runs the hook in, the project root. Kiro's docs do not say where an MCP
 server starts, so when the server's own folder has no `.geml/` it works in the project and session the hooks last
-saw. As on Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here.
+saw. As on Codex there is no band and no board button; "Make it a rule" and the corrections ledger are not here, but a rule made in Claude Code holds calls here too.
 
 ### DeepSeek Harness
 
@@ -482,7 +478,8 @@ Every session gets the work loop, workflow or none: the session goes into the
 project's shared record (its prompts, its answers, the files it wrote, the
 commits it made), the model gets the loop's tools and the `note` tool as
 `gemworks_<name>`, and each step's context carries the work items on the way,
-the current step's practices and the other sessions' decisions. The
+the current step's practices and the other sessions' decisions, and a call
+one of the project's rules holds is denied before it runs. The
 **supervisor** — the gate and the verbs of a strict flow — attaches only when a
 workflow resolves for the session's working directory. The row leaves
 `statechart` unset, so the workflow is resolved the way `gemworks` resolves it;
@@ -543,7 +540,8 @@ how many more, the step's first practice. `/gemworks` opens the board as an
 overlay (Esc or q closes it). A question the model registered is asked at the
 run's end with its answers to pick; a run that changed things and reported no
 work item is sent back once; and each prompt you type is labelled into your
-corrections ledger by the session's own model.
+corrections ledger by the session's own model (`GEMWORKS_LEARN=0` turns that
+off). A call one of the project's rules holds is blocked before it runs.
 
 A strict flow is read when the extension loads, because the three verbs have to
 be registered before the first session starts and their schemas come from it.
@@ -556,7 +554,8 @@ GEMWORKS_STATECHART=path/to/workflow.geml pi   # this workflow, not the project'
 GEMWORKS_JOURNAL_DIR=/var/journals pi      # default: <session dir>/gemworks
 ```
 
-No workflow: no verbs and no gate, quietly; the work loop runs as above.
+No workflow: no verbs and no workflow gate, quietly; the work loop and the
+rules run as above.
 Several workflows with none chosen, a name that finds nothing, or a workflow
 with errors: each session says so and is not supervised.
 
@@ -576,3 +575,8 @@ gemworks check .geml/workflows/coding.geml
 
 `GEMWORKS_GH` names the `gh` program the git variables ask about pull requests
 and CI, when it is not the one on PATH.
+
+`GEMWORKS_GIT_TIMEOUT_MS` is how long, in milliseconds, a `git` or `gh` call may
+take before Gemworks stops waiting for it (default 10000); a slow machine or a
+large repository may want more. A fact not learned in time is never taken as
+an answer.

@@ -2,6 +2,8 @@
 
 [← 回到 README](../README.zh.md)
 
+这里讲目录和怎么构建、测试；现在有哪些功能、各在哪实现、为什么这样做，见 [spec/design.md](../spec/design.md)。
+
 ## 项目布局
 
 ```
@@ -13,11 +15,15 @@
   artifacts/                    git 不留的文件的副本，按内容哈希命名
   journals/<item>.geml          每个工作项一本 journal：一个分支，或一组文件中的一个
   sessions/                     项目的会话记录，各家宿主的会话都在这里
-  coach/<name>.geml             项目自己的轻流程：改过的起步流程、加的流程
+  coach/<name>.geml             项目自己的起步流程：改过的内置流程、加的流程
   practices.geml                项目的做法，各挂在它所属流程的那一步上
+  rules.geml                    项目的规定：做法改成的规定，那一步没满足时拦调用
   proposals.geml                提议加的步骤和新的一类活，等你说行或不行
   board.geml                    一页 GEML 看板，给没有自己面板的宿主
   exports/                      看板导出的文件
+  signoffs/<id>.geml            每个工作项的验收单：每一步谁判、凭什么、什么时候
+  references/                   导入当参考的流程
+  trace.log                     Claude Code 插件的诊断记录（打开时才写）
   .gitignore                    gemworks 自己的文件，由 gemworks init 写出：它们都不进 git
 .geml/                          在每个检出里
   context.geml                  当前阶段的文字与变量，每次换阶段重写
@@ -55,7 +61,7 @@ worktree 还在，是 `merged`；那些也删了是 `closed`；分支没合并�
 
 默认流程是 `GEMWORKS_STATECHART` 指定的文件（相对项目根的路径），否则是
 `flow-workflow` 指定的那个，否则是项目唯一的那个流程。CLI、Claude Code 插件、
-`gemworks mcp`、DeepSeek Harness 适配器与 pi agent 适配器都这样找。backlog 提交进仓库；
+`gemworks mcp`、各钩子宿主的适配器、DeepSeek Harness 适配器与 pi agent 适配器都这样找。backlog 提交进仓库；
 gemworks 自己的文件不进 git。
 
 ## 开发
@@ -71,7 +77,7 @@ npm run test:claude   # 构建，再 claude plugin validate 与 claude plugin te
 `dist/gemworks-*.mjs`，`@geml/geml` 原样拷进 `dist/vendor/geml/`，装上的插件不需要再装依赖。
 包里每个文件都不到 256 KiB——到了这个大小，Anthropic 插件目录会把那一版扣下等人工审——由
 `test/claude-code/hooks-split.test.mjs` 守着。`hooks/register.tsx` 和从它拆出来的 `hooks/act.tsx`（按钮按下后
-做什么）在没有 Node 的环境里运行：它们只 import `dist/hosts/claude-code/` 与 `dist/core/` 下不依赖
+做什么）、`hooks/manual.tsx`（流程页的做法与步骤块）、`hooks/outward.tsx`（外发操作前先问）在没有 Node 的环境里运行：它们只 import `dist/hosts/claude-code/` 与 `dist/core/` 下不依赖
 Node 的模块，`test/claude-code/hooks-purity.test.mjs` 沿着这条 import 链逐个检查。hooks 的测试是 `test/claude-code/hooks.test.ts`，
 由 `claude plugin test` 跑（它不进 `node_modules`）；其余由 `test/` 下各个 `*.test.mjs` 的 node:test 测，其中
 `test/claude-code/fastpath-parity.test.mjs` 把插件的快路径钉在 workspace 会拒绝、会记录、会询问的
@@ -99,6 +105,7 @@ Claude Code 外壳也按这条规矩分在桥的两侧。`src/bridge.ts` 是 `ge
 一次调用作用在哪个检出、哪个工作项。`src/hosts/claude-code/` 是 hooks 模块 import 的、
 不依赖 Node 的一侧：请求与应答的类型、快路径、读 Claude Code 工具结果的函数，以及
 状态带、看板与 `/gemworks` 的文字——都是纯函数。`src/mcp.ts` 用 stdio MCP 提供同样的
-动词（`src/verbs.ts`）和工作循环的工具（`src/loop.ts`）；`src/hosts/codex/adapter.ts` 与
-`src/hosts/antigravity/adapter.ts` 是这两家的 hooks，`src/store/board.ts` 写出它们和 `gemworks mcp` 打开的
+动词（`src/verbs.ts`）和工作循环的工具（`src/loop.ts`）；`src/hosts/codex/adapter.ts`、
+`src/hosts/cursor/adapter.ts` 与 `src/hosts/antigravity/adapter.ts` 是这三家的 hooks；Qwen Code、OpenCode、Devin、TRAE、Kiro 在
+`src/hosts/hooked.ts` 里判定，各自的文件夹只读写自家的事件；`src/store/board.ts` 写出它们和 `gemworks mcp` 打开的
 那一页 GEML 看板。
