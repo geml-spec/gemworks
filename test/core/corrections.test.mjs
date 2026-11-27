@@ -38,6 +38,17 @@ test("a prompt is one prompt: by id, or the same words in the same session withi
   assert.equal(addPrompts(EMPTY_LEDGER, [{ ...a, text: "x".repeat(900) }]).ledger.prompts[0].text.length, 300);
 });
 
+test("two prompts of one session in the same second, in other words, are two: the second labelled takes #2; the same prompt again stays out", () => {
+  // A host labels each prompt as it is typed, its id from the session and the second (promptId with nothing taken).
+  const first = row("s1aaaaaa@2026-10-28T02:00:00", "2026-10-28T02:00:00.100Z", "task", { text: "加个页签" });
+  const second = row("s1aaaaaa@2026-10-28T02:00:00", "2026-10-28T02:00:00.600Z", "task", { text: "再加个按钮" });
+  const one = addPrompts(EMPTY_LEDGER, [first]).ledger;
+  const both = addPrompts(one, [second]);
+  assert.deepEqual([both.added, both.ledger.prompts.map((p) => [p.id, p.text])], [1, [["s1aaaaaa@2026-10-28T02:00:00", "加个页签"], ["s1aaaaaa@2026-10-28T02:00:00#2", "再加个按钮"]]]);
+  assert.deepEqual(addPrompts(EMPTY_LEDGER, [first, second]).ledger.prompts.map((p) => p.id), ["s1aaaaaa@2026-10-28T02:00:00", "s1aaaaaa@2026-10-28T02:00:00#2"], "in one batch as well");
+  assert.equal(addPrompts(both.ledger, [first]).added, 0, "the first again: the same prompt");
+});
+
 test("only typed words are labelled: the host's reminders stripped, another session's report (one reminder) and a notice are nothing typed", () => {
   assert.equal(typedWords("<system-reminder>\nLinked sessions now: top is idle\n</system-reminder>\n\n\n示例六"), "示例六");
   assert.equal(typedWords("<system-reminder>\nThe session \"x\" you started finished a turn. It reported: done\n</system-reminder>\n"), undefined);

@@ -38,6 +38,15 @@ test("a typed prompt labelled by the borrowed model into the ledger; a correctio
   assert.equal(readLedger().prompts.some((p) => p.session === "s2"), false);
 });
 
+test("two prompts typed in the same second of one session are both labelled into the ledger", async () => {
+  const root = gitRepo();
+  const label = '[{"n": 1, "kind": "task", "sub": null, "work": "ui"}]';
+  const m = model(label, label);
+  assert.equal(await labelPrompt(root, { text: "加个页签", before: "", at: "2026-11-27T09:00:00.100Z", session: "s-same" }, m.complete), true);
+  assert.equal(await labelPrompt(root, { text: "再加个按钮", before: "", at: "2026-11-27T09:00:00.600Z", session: "s-same" }, m.complete), true);
+  assert.deepEqual(readLedger().prompts.filter((p) => p.session === "s-same").map((p) => p.text), ["加个页签", "再加个按钮"]);
+});
+
 test("the corrections a 失效 card would count are read against the practice by the borrowed model: each pair keeps its answer", async () => {
   const root = gitRepo();
   const req = (op) => handleRequest({ v: 1, root, ...op });

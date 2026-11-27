@@ -159,7 +159,11 @@ export function hasPrompt(l: { prompts: readonly Pick<LabelledPrompt, "id" | "se
 export function addPrompts(l: Ledger, given: readonly LabelledPrompt[]): { ledger: Ledger; added: number } {
   const prompts = [...l.prompts];
   let added = 0;
-  for (const p of given) {
+  for (const g of given) {
+    // A host labels each prompt as it comes, its id from the session and the second (promptId with nothing taken): one
+    // typed in the same second as another, at another moment and in other words, takes the next free id.
+    const clash = prompts.find((x) => x.id === g.id);
+    const p = clash !== undefined && clash.at !== g.at && norm(clash.text) !== norm(g.text) ? { ...g, id: promptId(g.session, g.at, new Set(prompts.map((x) => x.id))) } : g;
     if (hasPrompt({ prompts }, p)) continue;
     prompts.push({ ...p, text: p.text.slice(0, TEXT_KEPT) });
     added++;
