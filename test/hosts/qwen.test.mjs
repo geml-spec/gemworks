@@ -187,3 +187,14 @@ test("the project's record and the work loop through Qwen Code's hooks: what is 
     ["session", null, "qwen"], ["prompt", 1, "接 Qwen"], ["file", 1, "src/qwen-made.ts"], ["answer", 1, "报好了。"], ["prompt", 2, "问一句"], ["answer", 2, "答了。"],
   ]);
 });
+
+test("a rule of the light flows refuses a call before it runs, with no workflow; a call it does not hold says nothing", async () => {
+  const { HELD, ruledProject } = await import("../helpers/rules.mjs");
+  const root = gitRepo();
+  ruledProject(root, "s-1");
+  const env = homeEnv();
+  const held = qwen(root, { hook_event_name: "PreToolUse", tool_name: "run_shell_command", tool_use_id: "c1", tool_input: { command: "npm publish" } }, env);
+  assert.equal(held.hookSpecificOutput.permissionDecision, "deny");
+  assert.match(held.hookSpecificOutput.permissionDecisionReason, HELD);
+  assert.equal(qwen(root, { hook_event_name: "PreToolUse", tool_name: "run_shell_command", tool_use_id: "c2", tool_input: { command: "npm test" } }, env), null);
+});

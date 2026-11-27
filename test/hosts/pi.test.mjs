@@ -77,12 +77,12 @@ const LOOP = ["gemworks_work", "gemworks_practice", "gemworks_propose", "gemwork
 /** What a workflow registers: the tools beyond the loop's. */
 const verbs = (w) => w.registered().filter((n) => !LOOP.includes(n));
 
-test("no workflow: the work loop only — none of a workflow's verbs, and no gate", async () => {
+test("no workflow: the work loop only — none of a workflow's verbs, and no gate but the light flows' rules", async () => {
   const dir = mkdtempSync(join(tmpdir(), "gemworks-pi-bare-"));
   dirs.push(dir);
   const w = await loaded({ dir, start: false });
   assert.deepEqual(w.registered(), LOOP, "the loop's tools; the verbs are the Pi equivalent of onMissing: skip");
-  assert.equal(w.has("tool_call"), false, "nothing is refused");
+  assert.equal((await w.callGlobal("pay_refund")).isError, false, "no rule: nothing is refused");
   assert.ok(w.commands.has("gemworks"), "the board's command");
 });
 
@@ -274,7 +274,7 @@ test("several workflows: .geml/project.geml names the one in force", async () =>
   putWorkflow(dir, "other");
   const unchosen = await loaded({ dir });
   assert.deepEqual(verbs(unchosen), [], "two workflows and no choice: unsupervised, as the CLI would ask for `gemworks use`");
-  assert.equal(unchosen.has("tool_call"), false);
+  assert.equal((await unchosen.callGlobal("pay_refund")).isError, false, "no workflow's gate");
   assert.deepEqual(unchosen.notices(), [{ message: "gemworks: several workflows (other, refund): choose one with `gemworks use <name>`; this session is not supervised", type: "warning" }], "a choice left unmade is said, once per session");
 
   writeFileSync(join(dir, ".geml", "project.geml"), '=== meta\nflow-workflow = "refund"\n===\n');
@@ -293,7 +293,7 @@ test("GEMWORKS_STATECHART beats the project layout, and a missing file supervise
 
   const missing = await loaded({ dir, env: { GEMWORKS_STATECHART: join(dir, "nope.geml") } });
   assert.deepEqual(verbs(missing), []);
-  assert.equal(missing.has("tool_call"), false);
+  assert.equal((await missing.callGlobal("pay_refund")).isError, false, "no workflow's gate");
   assert.deepEqual(missing.notices().map((n) => [n.type, n.message.replace(/names .*nope\.geml/, "names nope.geml")]),
     [["warning", "gemworks: GEMWORKS_STATECHART names nope.geml, which does not exist; this session is not supervised"]], "a workflow named wrongly is not silent");
 });

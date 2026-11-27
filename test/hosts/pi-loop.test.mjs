@@ -253,3 +253,14 @@ test("/gemworks: a UI that is not the terminal's gets the board as a notice; in 
   assert.ok(opened[0].lines.every((l) => cells(l) <= 18), "cut to the overlay's width");
   assert.deepEqual(opened[0].closes, [false, true, true, true]);
 });
+
+test("a rule of the light flows blocks a call before it runs, with no workflow; a call it does not hold goes on", async () => {
+  const { HELD, ruledProject } = await import("../helpers/rules.mjs");
+  const dir = gitRepo();
+  ruledProject(dir, "s-1");
+  const w = await loopIn(dir, { tools: ["bash", "read"] });
+  const held = await w.callGlobal("bash", { input: { command: "npm publish" } });
+  assert.equal(held.isError, true);
+  assert.match(held.text, HELD);
+  assert.equal((await w.callGlobal("bash", { input: { command: "npm test" } })).isError, false);
+});

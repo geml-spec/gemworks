@@ -230,3 +230,21 @@ test("a workflow changed under a run is a warning and the run goes on; one that 
     await w.dispose();
   }
 });
+
+test("a rule of the light flows denies a call before it runs, with no workflow; a call it does not hold runs", async () => {
+  const { gitRepo } = await import("../helpers/repo.mjs");
+  const { HELD, ruledProject } = await import("../helpers/rules.mjs");
+  const repo = gitRepo();
+  const w = await agentIn(repo, "rule-1");
+  try {
+    ruledProject(repo, String(w.agent.id));
+    hostTool(w, "bash");
+    recordSession(w.agent);
+    const held = await w.call("bash", { command: "npm publish" });
+    assert.equal(held.isError, true);
+    assert.match(JSON.stringify(held), HELD);
+    assert.equal((await w.call("bash", { command: "npm test" })).isError, false);
+  } finally {
+    await w.dispose();
+  }
+});

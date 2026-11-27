@@ -29,7 +29,7 @@ import { decisionsContext, NOTE_TOOL, noteReply, SESSIONS_PROMPT } from "../../c
 import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordNote, recordPrompt } from "../../store/sessions.js";
 import { readJournal } from "../../core/journal.js";
 import { actOnSession, boardReply, coachBoardReply, readQuery, type CoachData, type DshAction, type Supervision } from "./board.js";
-import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, workItemsAt } from "../../loop.js";
+import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, ruleHold, workItemsAt } from "../../loop.js";
 import { readPractices } from "../../store/practices.js";
 import { readSessions } from "../../store/sessions.js";
 import { hasErrors, loadStatechart, type Statechart } from "../../core/statechart.js";
@@ -170,6 +170,11 @@ export function recordSession(agent: Agent, recorded?: Map<string, string>): voi
     answer = "";
     committed = false;
     if (said !== "" || made) safe(() => recordAnswer(cwd, host, id, said, made));
+  });
+  // A rule of the light flows holds the call, workflow or none (loop.ts ruleHold).
+  agent.ctx.on("tools/pre-execute", async (exec, next) => {
+    const held = ruleHold(cwd, id, exec.name, isRecord(exec.arguments) ? exec.arguments : {}, DSH_TOOLS);
+    return held !== undefined ? { kind: "deny", reason: held } : next();
   });
   agent.ctx.on("tools/result", (exec, result) => {
     const input = isRecord(exec.arguments) ? exec.arguments : undefined;

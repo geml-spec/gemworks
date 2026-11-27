@@ -16,7 +16,7 @@ import { PI_TOOLS } from "../../core/host-tools.js";
 import { practicesAt, type Practice } from "../../core/practices.js";
 import { currentTurn, decisionsContext, NOTE_TOOL, noteReply, SESSIONS_PROMPT, type SharedDecision } from "../../core/session-log.js";
 import { itemProgress, turnItem, WORK_REMINDER, type CoachFlow, type WorkItem } from "../../core/work.js";
-import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, workItemsAt } from "../../loop.js";
+import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, ruleHold, workItemsAt } from "../../loop.js";
 import { readPractices } from "../../store/practices.js";
 import { labelPrompt, type Complete } from "./ledger-run.js";
 import { typedWords } from "../../core/corrections.js";
@@ -198,6 +198,13 @@ export function attachLoop(pi: ExtensionAPI, cwd: string): void {
     const id = session;
     safe(() => { appendSession(cwd, PI_HOST, id, () => []); });
     band(ctx);
+  });
+
+  // A rule of the light flows holds a call, workflow or none (loop.ts ruleHold); a workflow's gate is the extension's.
+  pi.on("tool_call", (event) => {
+    if (session === undefined) return undefined;
+    const held = ruleHold(cwd, session, event.toolName, event.input as Record<string, unknown>, PI_TOOLS);
+    return held !== undefined ? { block: true, reason: held } : undefined;
   });
 
   // Each run: the person's prompt into the record, and the loop in the system prompt.

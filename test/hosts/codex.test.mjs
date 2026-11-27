@@ -203,3 +203,16 @@ test("the work loop through Codex's hooks: told at the start, the items beside a
   codex(root, { hook_event_name: "UserPromptSubmit", prompt: "问一句" }, env);
   assert.equal(codex(root, { hook_event_name: "Stop", last_assistant_message: "答了。", stop_hook_active: false }, env).out, undefined);
 });
+
+test("a rule of the light flows refuses a call before it runs, with no workflow: a command, or a patch that writes a file it holds", async () => {
+  const { HELD, ruledProject } = await import("../helpers/rules.mjs");
+  const root = gitRepo();
+  ruledProject(root, "sess-1", "Edit(dist/*)");
+  const home = mkdtempSync(join(tmpdir(), "gemworks-codex-home-"));
+  const env = { HOME: home, USERPROFILE: home };
+  const patch = ["*** Begin Patch", "*** Update File: dist/a.js", "@@", "-a", "+b", "*** End Patch"].join("\n");
+  const held = codex(root, { hook_event_name: "PreToolUse", tool_name: "apply_patch", tool_use_id: "c1", tool_input: { command: patch } }, env).out;
+  assert.equal(held.hookSpecificOutput.permissionDecision, "deny");
+  assert.match(held.hookSpecificOutput.permissionDecisionReason, HELD);
+  assert.equal(codex(root, { hook_event_name: "PreToolUse", tool_name: "Bash", tool_use_id: "c2", tool_input: { command: "npm test" } }, env).out, undefined);
+});

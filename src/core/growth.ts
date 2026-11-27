@@ -181,6 +181,9 @@ export function isRulesFile(path: string): boolean {
   return /(^|[\\/])\.(geml|gemworks)[\\/]rules\.geml$/.test(path);
 }
 
+/** What a write to a file that keeps rules is refused with: rules are the person's to change. */
+export const RULES_FILE_HELD = "规定只有定它的人能改：rules.geml 请你自己改。";
+
 /**
  * Why a tool call is refused, if a rule holds it: one of its keys matches a rule of the flow this session's work item
  * is on (or of every flow), and the step the rule requires is unmet on that item.

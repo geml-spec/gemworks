@@ -247,3 +247,50 @@ test("the loop's tools called by name answer as the functions do; a record that 
   assert.equal(r.ok, false);
   assert.match(r.text, /^gemworks: E[A-Z]+: /);
 });
+
+test("a rule of the light flows holds a call on a Node host, workflow or none: its key matched while the step it requires is unmet on the session's work item; a project rule counts what it held", async () => {
+  const { ruleHold } = await import("../dist/loop.js");
+  const { CLAUDE_CODE_TOOLS, CODEX_TOOLS, PI_TOOLS } = await import("../dist/core/host-tools.js");
+  const { parseRules, RULES_FILE_HELD } = await import("../dist/core/growth.js");
+  const { HELD, ruledProject } = await import("./helpers/rules.mjs");
+  const root = gitRepo();
+  assert.equal(ruleHold(root, "s1", "Bash", { command: "npm publish" }), undefined, "no rules: nothing holds");
+  const file = ruledProject(root, "s1");
+  assert.match(ruleHold(root, "s1", "Bash", { command: "npm test && npm publish --dry-run" }) ?? "", HELD);
+  assert.match(ruleHold(root, "s1", "bash", { command: "npm publish" }, PI_TOOLS) ?? "", HELD, "a host's shell is read as Bash");
+  assert.equal(parseRules(readFileSync(file, "utf8"), "project")[0].held, 2, "each hold counted in the project's rules");
+  assert.equal(ruleHold(root, "s1", "Bash", { command: "npm test" }), undefined, "a call the rule's key does not match");
+  assert.equal(ruleHold(root, "s2", "Bash", { command: "npm publish" }), undefined, "a session with no work item of its own");
+  assert.equal(ruleHold(root, "s1", "Bash", { command: "npm publish" }, CLAUDE_CODE_TOOLS), ruleHold(root, "s1", "Bash", { command: "npm publish" }));
+  // The rules files are the person's: a write to one is refused whoever writes, item or none.
+  assert.equal(ruleHold(root, "s2", "Write", { file_path: join(root, ".geml", "rules.geml") }), RULES_FILE_HELD);
+  assert.equal(ruleHold(root, "s2", "apply_patch", { files: ["src/a.ts", ".gemworks/rules.geml"] }, CODEX_TOOLS), RULES_FILE_HELD);
+  assert.equal(ruleHold(root, "s2", "edit", { path: ".gemworks/rules.geml" }, PI_TOOLS), RULES_FILE_HELD);
+  assert.equal(ruleHold(root, "s1", "Read", { file_path: join(root, ".geml", "rules.geml") }), undefined, "reading one is no write");
+  // A write's key is the host's write tool under Claude Code's name, with each path it writes.
+  const other = gitRepo();
+  ruledProject(other, "s1", "Write(dist/*)");
+  assert.match(ruleHold(other, "s1", "write", { path: "dist/a.js" }, PI_TOOLS) ?? "", HELD);
+  assert.equal(ruleHold(other, "s1", "edit", { path: "dist/a.js" }, PI_TOOLS), undefined, "an edit is Edit, not Write");
+  const patched = gitRepo();
+  ruledProject(patched, "s1", "Edit(dist/*)");
+  assert.match(ruleHold(patched, "s1", "apply_patch", { files: ["src/a.ts", "dist/a.js"] }, CODEX_TOOLS) ?? "", HELD, "a patch: one key for each file");
+  assert.equal(ruleHold(patched, "s1", "apply_patch", { files: ["src/a.ts"] }, CODEX_TOOLS), undefined);
+});
+
+test("a team rule holds as well and is not rewritten; once the step it requires is met, the call goes through", async () => {
+  const { ruleHold } = await import("../dist/loop.js");
+  const { rulesText } = await import("../dist/core/growth.js");
+  const { HELD, RULE_TEXT } = await import("./helpers/rules.mjs");
+  const root = gitRepo();
+  assert.equal(recordWork(root, "test", "s1", { items: [{ title: "发布", flow: "feature" }] }).ok, true);
+  const team = join(root, ".gemworks", "rules.geml");
+  mkdirSync(dirname(team), { recursive: true });
+  const text = rulesText([{ id: "t1", flow: "*", requires: "verify", key: "Bash(npm publish*)", text: RULE_TEXT, why: "", at: AT, layer: "team" }]);
+  writeFileSync(team, text, "utf8");
+  assert.match(ruleHold(root, "s1", "Bash", { command: "npm publish" }) ?? "", HELD);
+  assert.equal(readFileSync(team, "utf8"), text, "the team's file is the repository's: not counted in");
+  const items = workItemsAt(root, coachFlowsAt(root));
+  assert.equal(recordWork(root, "test", "s1", { items: [{ id: items[0].id, title: "发布", flow: "feature", met: ["mockup", "build", "verify"], said: "好了", evidence: "`npm test` exit 0" }] }).ok, true);
+  assert.equal(ruleHold(root, "s1", "Bash", { command: "npm publish" }), undefined);
+});

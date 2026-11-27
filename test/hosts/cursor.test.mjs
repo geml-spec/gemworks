@@ -186,3 +186,14 @@ test("the project's record and the work loop through Cursor's hooks: what Codex 
     ["session", null, "cursor"], ["prompt", 1, "接 Cursor"], ["file", 1, "src/cursor-made.ts"], ["answer", 1, "报好了。"], ["prompt", 2, "问一句"], ["answer", 2, "答了。"],
   ]);
 });
+
+test("a rule of the light flows refuses a call before it runs, with no workflow; a call it does not hold is let through", async () => {
+  const { HELD, ruledProject } = await import("../helpers/rules.mjs");
+  const root = gitRepo();
+  ruledProject(root, "conv-1");
+  const env = homeEnv();
+  const held = cursor(root, { hook_event_name: "preToolUse", tool_name: "Shell", tool_use_id: "c1", tool_input: { command: "npm publish" } }, env);
+  assert.equal(held.permission, "deny");
+  assert.match(held.agent_message, HELD);
+  assert.notEqual(cursor(root, { hook_event_name: "preToolUse", tool_name: "Shell", tool_use_id: "c2", tool_input: { command: "npm test" } }, env).permission, "deny");
+});

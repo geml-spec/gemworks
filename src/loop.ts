@@ -15,7 +15,9 @@ import { ARTIFACT_TOOL } from "./core/artifact-tool.js";
 import { ASK_PROMPT_ON_BOARD, ASK_TOOL_ON_BOARD, askedOf } from "./core/ask-tool.js";
 import { practiceCounts, type PracticeCount } from "./core/corrections.js";
 import { readLedger } from "./store/corrections.js";
-import { ANSWER_TOOL, applyToFlow, flowText, GROWTH_PROMPT_ON_BOARD, newFlow, newProposals, parseProposals, PROPOSE_TOOL_ON_BOARD, proposalsText, type Proposal } from "./core/growth.js";
+import { keysOf } from "./core/dictionary.js";
+import { ANSWER_TOOL, applyToFlow, flowText, GROWTH_PROMPT_ON_BOARD, isRulesFile, newFlow, newProposals, parseProposals, parseRules, PROPOSE_TOOL_ON_BOARD, proposalsText, ruleRefusal, RULES_FILE_HELD, rulesText, type Proposal } from "./core/growth.js";
+import { CLAUDE_CODE_TOOLS, type HostTools } from "./core/host-tools.js";
 import { GEML_DIR } from "./core/layout.js";
 import { PRACTICE_PROMPT, PRACTICE_TOOL, practiceAnswer, practiceContext } from "./core/practice-tool.js";
 import { newPractices } from "./core/practices.js";
@@ -77,6 +79,46 @@ export function coachFlowsAt(root: string, shipped: string = SHIPPED_COACH): Coa
 /** The work items the project's sessions reported, as they stand now, newest first. */
 export function workItemsAt(root: string, flows: readonly CoachFlow[]): WorkItem[] {
   return workItemsOf(readSessions(root), flows);
+}
+
+/** The paths a write names: the one under file_path, notebook_path or path, or a patch's `files`. */
+function writtenPaths(input: Readonly<Record<string, unknown>>): string[] {
+  const files = input["files"];
+  if (Array.isArray(files)) return files.filter((f): f is string => typeof f === "string" && f !== "");
+  const one = ["file_path", "notebook_path", "path"].map((f) => input[f]).find((v): v is string => typeof v === "string" && v !== "");
+  return one !== undefined ? [one] : [];
+}
+
+/**
+ * What holds a tool call, as the Claude Code module's ruleHold has it: a write to a file that keeps rules (they are the
+ * person's to change), or a rule of the project (`.geml/rules.geml`) or the team (`.gemworks/rules.geml`) whose key the
+ * call matches while the step it requires is unmet on this session's work item; a project rule that held counts it.
+ * The call's keys are read under Claude Code's tool names, as rules are written: the host's shell is `Bash`, its tool
+ * named write `Write`, its other write tools `Edit`. Undefined lets the call through, and so does anything that fails.
+ */
+export function ruleHold(root: string, session: string, tool: string, input: Readonly<Record<string, unknown>>, tools: HostTools = CLAUDE_CODE_TOOLS): string | undefined {
+  try {
+    const writes = tools.write.includes(tool);
+    const paths = writes ? writtenPaths(input) : [];
+    if (paths.some(isRulesFile)) return RULES_FILE_HELD;
+    const file = join(gemlHome(root), "rules.geml");
+    const project = parseRules(readAt(file) ?? "", "project");
+    const rules = [...project, ...parseRules(readAt(join(root, ".gemworks", "rules.geml")) ?? "", "team")];
+    if (rules.length === 0) return undefined;
+    const flows = coachFlowsAt(root);
+    const item = turnItem(workItemsAt(root, flows), session);
+    if (item === undefined) return undefined;
+    const name = tools.run.includes(tool) ? "Bash" : writes ? (tool.toLowerCase() === "write" ? "Write" : "Edit") : tool;
+    const keys = paths.length > 0 ? paths.map((p) => `${name}(${p.replace(/\\/g, "/")})`) : keysOf(name, input, CLAUDE_CODE_TOOLS.run, CLAUDE_CODE_TOOLS.write);
+    const held = ruleRefusal(rules, item, flows, keys);
+    if (held === undefined) return undefined;
+    if (held.rule.layer === "project") {
+      try { writeFileSync(file, rulesText(project.map((r) => (r.id === held.rule.id ? { ...r, held: (r.held ?? 0) + 1 } : r))), "utf8"); } catch { /* counted another time */ }
+    }
+    return held.reason;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The work tool: the turn's work items, checked against the flows, into this session's log. */

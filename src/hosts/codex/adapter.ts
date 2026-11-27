@@ -39,7 +39,7 @@ import type { Status } from "../../workspace.js";
 import { currentTurn, decisionsContext, SESSIONS_PROMPT } from "../../core/session-log.js";
 import { WORK_REMINDER } from "../../core/work.js";
 import { boardHasWork, openBoardOnce, writeBoard } from "../../store/board.js";
-import { coachFlowsAt, loopContext, loopPrompt } from "../../loop.js";
+import { coachFlowsAt, loopContext, loopPrompt, ruleHold } from "../../loop.js";
 import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../../store/sessions.js";
 
 export interface CodexRun { stdout: string; code: number }
@@ -159,6 +159,9 @@ export async function runCodex(text: string, env: NodeJS.ProcessEnv, platform: s
       if (tool === undefined || isOwnTool(tool)) return NOTHING;
       const input = ev.tool_input ?? {};
       const call = callOf(tool, input);
+      // A rule of the light flows holds the call, workflow or none (loop.ts ruleHold); apply_patch is read as Edit.
+      const held = ruleHold(root, sid, call.tool, call.input, CODEX_TOOLS);
+      if (held !== undefined) return out(denyCall(held));
       const res = await ask({ op: "status" });
       if (!res.ok || res.shell.policy === null) return NOTHING;
       const { policy, status } = res.shell;

@@ -33,7 +33,7 @@ import { isWrapped, unwrapCommand, wrapCommand } from "./codex/hook.js";
 import type { Status } from "../workspace.js";
 import { boardHasWork, openBoardOnce, writeBoard } from "../store/board.js";
 import { projectPath } from "./cursor/adapter.js";
-import { coachFlowsAt, loopContext, loopPrompt } from "../loop.js";
+import { coachFlowsAt, loopContext, loopPrompt, ruleHold } from "../loop.js";
 import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../store/sessions.js";
 
 /** How a host names its tools, and where its calls say what they did. */
@@ -189,6 +189,9 @@ export async function runHooked(host: string, tools: HostTools, sid: string, roo
       const { tool, input } = ev;
       if (own(tool)) return undefined;
       const call = tools.callOf(tool, input);
+      // A rule of the light flows holds the call, workflow or none (loop.ts ruleHold).
+      const held = ruleHold(root, sid, call.tool, call.input);
+      if (held !== undefined) return { kind: "deny", reason: held };
       const res = await ask({ op: "status" });
       if (!res.ok || res.shell.policy === null) return undefined;
       const { policy } = res.shell;

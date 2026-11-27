@@ -49,7 +49,7 @@ import { COACH_FLOWS, coachBand, goneOnAfterTurn, itemProgress, readCoachFlow, s
 import type { CoachFlow, CoachFocus, Doing, GoneOn, WorkGroup, WorkItem } from '../dist/hosts/claude-code/coach.js'
 import { memoryMoveContext, PRACTICE_PROMPT, PRACTICE_TOOL, practiceAnswer, practiceContext } from '../dist/hosts/claude-code/practice.js'
 import { isNew, newPractices, type Practice } from '../dist/core/practices.js'
-import { expireEvent, expiring, exportText as flowExport, flowText, GROWTH_PROMPT, isRulesFile, newProposals, parseProposals, parseRules, PROPOSE_TOOL, proposalsText, RULE_TOOL, ruleRefusal, rulesText, skippedSteps, type Proposal, type Rule } from '../dist/hosts/claude-code/growth.js'
+import { expireEvent, expiring, exportText as flowExport, flowText, GROWTH_PROMPT, isRulesFile, newProposals, parseProposals, parseRules, PROPOSE_TOOL, proposalsText, RULE_TOOL, RULES_FILE_HELD, ruleRefusal, rulesText, skippedSteps, type Proposal, type Rule } from '../dist/hosts/claude-code/growth.js'
 import { keysOf } from '../dist/core/dictionary.js'
 import { isVisualTool, visualFileName, visualPage } from '../dist/hosts/claude-code/visual.js'
 import { promptShown, transcriptEvents, type Transcript } from '../dist/core/transcript.js'
@@ -1026,7 +1026,7 @@ async function recordRule($: EngineInterface, event: unknown): Promise<ToolCallR
 async function ruleHold($: EngineInterface, tool: string, input: Record<string, unknown>): Promise<string | undefined> {
   const writes = CLAUDE_CODE_TOOLS.write.includes(tool)
   const target = typeof input['file_path'] === 'string' ? input['file_path'] : typeof input['notebook_path'] === 'string' ? input['notebook_path'] : ''
-  if (writes && isRulesFile(target)) return '规定只有定它的人能改：rules.geml 请你自己改。'
+  if (writes && isRulesFile(target)) return RULES_FILE_HELD
   const session = await $.session.id().catch(() => '')
   const item = turnItem(await workItems($), session)
   if (item === undefined) return undefined
