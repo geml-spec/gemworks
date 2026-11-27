@@ -97,6 +97,12 @@ test("the work tool's items: steps met by id or title, where it stands follows f
   assert.deepEqual([kept.met.map((x) => x.step), kept.state, kept.needs], [["reproduce", "rootcause", "failtest", "fix", "verify"], "confirm", "再看一眼"], "met left out: kept");
   const back = workEvents({ items: [{ id: "a1", title: "", flow: "bugfix", met: ["reproduce"] }] }, flows, on, "2026-10-23T12:00:00Z", 5, () => "x").events[0];
   assert.equal(back.state, "rootcause", "a way back is fewer steps met");
+  // The project's flow changed since the item met its steps: one it no longer has is kept as it was, and the item can still be closed.
+  const changed = { ...flow("bugfix"), states: flow("bugfix").states.filter((s) => s.id !== "verify") };
+  const old = [item({ status: "held" })];
+  const closed = workEvents({ items: [{ id: "a1", title: "", flow: "bugfix", status: "done", said: "照这样" }] }, [changed], old, "2026-10-23T12:00:00Z", 5, () => "x");
+  assert.deepEqual(closed.errors, []);
+  assert.deepEqual([closed.events[0].status, closed.events[0].met.map((x) => x.step)], ["done", ["reproduce", "rootcause", "failtest", "fix", "verify"]]);
 });
 
 test("a press on a step the person judges: yes meets it; no goes the step's first way back, every step from there unmet; holding keeps the steps", () => {
