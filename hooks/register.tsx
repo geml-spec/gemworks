@@ -34,7 +34,7 @@ import { commitMessageFiles } from '../dist/core/commit-message.js'
 import { FLOW_TOOLS } from '../dist/core/verb-specs.js'
 import type { VerbName } from '../dist/core/verb-specs.js'
 import type { BoardAction, BoardTab, Dialog, JournalFilter, Pressable, ShareHow, ShareWhat } from '../dist/shell/actions.js'
-import { answered, asksAfterTurn, bandLine, heldSteps, leadOf, newsOf, NO_FACTS, NO_MEMORY, nowRows, openAfter, pendingNote, pressablesFor, pressedOf, remember, standingOf, stepPressables } from '../dist/shell/attention.js'
+import { asksAfterTurn, bandLine, heldSteps, leadOf, newsOf, NO_FACTS, NO_MEMORY, nowRows, openAfter, pendingNote, pressablesFor, pressedOf, remember, standingOf, stepPressables } from '../dist/shell/attention.js'
 import type { Queued } from '../dist/shell/attention.js'
 import type { AttentionFacts, AttentionMemory } from '../dist/shell/attention.js'
 import { envParts, remoteInPlay } from '../dist/shell/env.js'
@@ -614,8 +614,8 @@ async function attentionNow($: EngineInterface, t: T) {
 }
 
 /**
- * The person's prompt ends the band's moment: its memory moves on (what led, how long each step has waited, the asks
- * the prompt answers), and what changed in the repository since the reply is news for the model, so the person need
+ * The person's prompt ends the band's moment: its memory moves on (what led, how long each step has waited), the
+ * questions the prompt answers are settled, and what changed in the repository since the reply is news for the model, so the person need
  * not say it. Answers the context lines to add.
  */
 async function attentionOnPrompt($: EngineInterface, said: string, typed = true): Promise<string[]> {
@@ -625,7 +625,7 @@ async function attentionOnPrompt($: EngineInterface, said: string, typed = true)
     const a = now.attention
     if (a === null) return []
     if (!a.consumed) {
-      const memory = answered(remember(a.memory, { reply: a.reply, standing: now.standing, lead: now.lead }), said)
+      const memory = remember(a.memory, { standing: now.standing, lead: now.lead })
       await update($, attentionAtom, () => ({ ...a, memory, consumed: true }) as unknown as GemworksJson)
       // What it did not answer stays for the next reply's band. When the person typed, a small model reads which of the
       // open questions the prompt settles, answered or left behind (judgeOpenAsks); a pressed step settles only what it names.

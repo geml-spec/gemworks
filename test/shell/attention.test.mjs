@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { answered, asksAfterTurn, asksOf, bandLine, heldSteps, leadOf, newsOf, NO_FACTS, NO_MEMORY, nowRows, openAfter, optionsFor, outcomeOf, picksText, pressablesFor, remember, spokenOf, standingOf, stepPressables, WIDTH } from "../../dist/shell/attention.js";
+import { asksAfterTurn, asksOf, bandLine, heldSteps, leadOf, newsOf, NO_FACTS, NO_MEMORY, nowRows, openAfter, optionsFor, outcomeOf, picksText, pressablesFor, remember, spokenOf, standingOf, stepPressables, WIDTH } from "../../dist/shell/attention.js";
 
 const NOW = Date.parse("2026-10-18T10:00:00Z");
 const cells = (s) => [...s].reduce((w, c) => w + (/[ᄀ-￿]/.test(c) ? 2 : 1), 0);
@@ -97,28 +97,27 @@ test("lead: this reply's asks first; then a failure new to the person, then a ne
   assert.match(again.text, /^可能待决定：要不要重写历史去掉 e44c70ba/);
 });
 
-test("memory: what led is shown, each condition ages, reminders wait; a short answer ends the oldest", () => {
-  const standing = standingOf("做完了。", { ahead: [{ branch: "main", ahead: 1, newestAt: "2026-10-18T08:00:00Z" }], prs: [] }, NOW);
+test("memory: what led is shown, each condition ages; a question the reply only reminds of is not kept, nor counted, nor a card", () => {
+  const reply = "做完了。上一条里的事还等你定：文档稿批不批。";
+  const standing = standingOf(reply, { ahead: [{ branch: "main", ahead: 1, newestAt: "2026-10-18T08:00:00Z" }], prs: [] }, NOW);
   const lead = leadOf({ reply: "做完了。", standing, memory: NO_MEMORY });
-  let m = remember(NO_MEMORY, { reply: "做完了。上一条里的事还等你定：文档稿批不批。", standing, lead });
-  assert.deepEqual(m.shown, ["unpushed:main"]);
-  assert.deepEqual(m.age, { "unpushed:main": 1 });
-  assert.equal(m.backlog.length, 1);
-  m = answered(m, "批");
-  assert.equal(m.backlog.length, 0);
-  assert.equal(answered({ ...m, backlog: ["x"] }, "这是一段很长的新任务说明，跟上一个问题没有关系，需要你把整个模块重写一遍再跑完整测试，然后整理提交并写清楚说明").backlog.length, 1);
+  const m = remember(NO_MEMORY, { standing, lead });
+  assert.deepEqual(m, { shown: ["unpushed:main"], age: { "unpushed:main": 1 }, lastLead: lead.text });
+  // A memory kept by an earlier version, with the reminders it gathered: they are read no more.
+  const old = { ...m, backlog: ["上一条里的事还等你定：文档稿批不批。"] };
+  assert.doesNotMatch(bandLine({ lead: null, standing: [], memory: old, reply, awayMs: null })?.text ?? "", /待决定/);
+  assert.deepEqual(nowRows({ reply, standing: [], memory: old }), [], "no card on the work items tab, with nothing to press");
 });
 
-test("the line: lead, steps still owed, asks still waiting, in one row; how long the person was away and a recap of the reply are never said", () => {
+test("the line: lead and steps still owed, in one row; how long the person was away and a recap of the reply are never said", () => {
   const facts = { ahead: [{ branch: "feat/gemworks", ahead: 2, newestAt: "2026-10-18T08:00:00Z" }], prs: [{ number: 32, branch: "x", green: true, failing: [] }] };
   const reply = "定了，图标那批已提交 2f501ff5，还没推送。\n\n要推到 origin 吗？";
   const standing = standingOf(reply, facts, NOW);
   const lead = leadOf({ reply, standing, memory: NO_MEMORY, asked: [{ question: "要推到 origin 吗？", options: ["推", "暂不"] }] });
   const roomy = bandLine({ lead, standing: [], memory: NO_MEMORY, reply, awayMs: 3 * 3_600_000 });
   assert.match(roomy.text, /^待决定：.*要推到 origin 吗/, "back after hours: the question, nothing about the time away");
-  const line = bandLine({ lead, standing, memory: { ...NO_MEMORY, backlog: ["a"] }, reply, awayMs: 3 * 3_600_000 });
+  const line = bandLine({ lead, standing, memory: NO_MEMORY, reply, awayMs: 3 * 3_600_000 });
   assert.match(line.text, /^待决定：.*要推到 origin 吗/);
-  assert.match(line.text, /待决定 1 项$/);
   assert.deepEqual(line.options, ["推", "暂不"]);
   assert.deepEqual(line.steps.map((x) => x.short), ["合并 #32", "推送 feat/gemworks"], "the other steps only the person takes: buttons of their own beside the answers");
   assert.doesNotMatch(line.text, /还差你/, "a step with a button is not named twice");
@@ -167,12 +166,12 @@ test("presses: an answer or a step goes as the person's own words, whole; 看看
   assert.deepEqual(p({ key: "ask:q", kind: "ask", text: "", options: [], question: "用 A 方案还是 B 方案？" }, ["A 方案", "B 方案"])[1][1], { op: "say", text: "用 A 方案还是 B 方案？：B 方案", decisions: ["用 A 方案还是 B 方案？：B 方案"] }, "the answer says what it answers, and is the decision it records");
 });
 
-test("此刻 on the board: every ask with its answers, every step, every older ask", () => {
+test("此刻 on the board: every registered ask with its answers, and every step", () => {
   const facts = { ahead: [{ branch: "main", ahead: 1, newestAt: "2026-10-18T08:00:00Z" }], prs: [] };
   const reply = "还要你定两件事：\n1. 新分支要不要开 PR？\n2. #32 关不关？";
   const asked = [{ question: "新分支要不要开 PR？", options: ["要", "不要"] }, { question: "#32 关不关？", options: ["关", "不关"] }];
-  const rows = nowRows({ reply, standing: standingOf(reply, facts, NOW), memory: { ...NO_MEMORY, backlog: ["上一条里的事还等你定：文档稿批不批"] }, asked });
-  assert.deepEqual(rows.map((r) => r.kind === "section" ? `§${r.text}` : `${r.verb} ${r.title}`), ["§此刻", "决定 新分支要不要开 PR？", "决定 #32 关不关？", " 待推送：main · 1 个提交", "待决定 文档稿批不批"]);
+  const rows = nowRows({ reply, standing: standingOf(reply, facts, NOW), memory: NO_MEMORY, asked });
+  assert.deepEqual(rows.map((r) => r.kind === "section" ? `§${r.text}` : `${r.verb} ${r.title}`), ["§此刻", "决定 新分支要不要开 PR？", "决定 #32 关不关？", " 待推送：main · 1 个提交"]);
   assert.deepEqual(nowRows({ reply: "", standing: [], memory: NO_MEMORY }), []);
 });
 

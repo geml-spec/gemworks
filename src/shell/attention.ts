@@ -49,10 +49,8 @@ export interface AttentionMemory {
   age: Record<string, number>;
   /** The line that led last turn. */
   lastLead: string;
-  /** Older asks the replies still remind of. */
-  backlog: string[];
 }
-export const NO_MEMORY: AttentionMemory = { shown: [], age: {}, lastLead: "", backlog: [] };
+export const NO_MEMORY: AttentionMemory = { shown: [], age: {}, lastLead: "" };
 
 /** `maybe`: a question guessed from the reply, not registered — a grey hint with no answers. */
 export type LeadKind = "ask" | "broken" | "you" | "maybe";
@@ -158,9 +156,6 @@ function withItems(reply: string, pick: (s: string) => boolean): string | undefi
   const items = raw.slice(i + 1).filter(isItem).slice(0, 2).map(bare);
   return items.length > 0 ? items.join("；") : undefined;
 }
-
-/** The older asks a reply says still wait. */
-export const remindersOf = (reply: string): string[] => sentences(reply.slice(-600)).filter((s) => REMINDER.test(s));
 
 /** What became of a request: the reply's first whole sentence. A reply cut from the front starts at its first whole line. */
 export function outcomeOf(reply: string, cutFromFront = false): string | undefined {
@@ -275,21 +270,17 @@ export function leadOf(o: { reply: string; standing: readonly Standing[]; memory
   return lead !== null && lead.text === o.memory.lastLead ? null : lead;
 }
 
-/** The memory after a turn whose lead was `lead`: what led, how long each condition has held, the asks still reminded of. */
-export function remember(memory: AttentionMemory, o: { reply: string; standing: readonly Standing[]; lead: Lead | null }): AttentionMemory {
+/**
+ * The memory after a turn whose lead was `lead`: what led, how long each condition has held. A question the reply
+ * only reminds of is not kept: what waits on the person is what the model registered, which carries its answers.
+ */
+export function remember(memory: AttentionMemory, o: { standing: readonly Standing[]; lead: Lead | null }): AttentionMemory {
   const keys = new Set(o.standing.map((s) => s.key));
   const shown = memory.shown.filter((k) => keys.has(k));
   if (o.lead !== null && o.lead.kind !== "ask" && o.lead.kind !== "maybe" && !shown.includes(o.lead.key)) shown.push(o.lead.key);
   const age: Record<string, number> = {};
   for (const k of keys) age[k] = (memory.age[k] ?? 0) + 1;
-  const backlog = [...memory.backlog];
-  for (const s of remindersOf(o.reply)) if (!backlog.includes(s)) backlog.push(s);
-  return { shown, age, lastLead: o.lead?.text ?? "", backlog: backlog.slice(-6) };
-}
-
-/** The person's own words end the oldest ask still reminded of, when they read as an answer (short). */
-export function answered(memory: AttentionMemory, said: string): AttentionMemory {
-  return memory.backlog.length > 0 && said.trim().length <= 40 ? { ...memory, backlog: memory.backlog.slice(1) } : memory;
+  return { shown, age, lastLead: o.lead?.text ?? "" };
 }
 
 // ---- the line
@@ -303,7 +294,7 @@ const cut = (s: string, w: number): string => {
 
 /**
  * The band's line: the lead (or, back after a while, what became of the last
- * request), the steps still owed, the asks still waiting; fitted to one row by
+ * request) and the steps still owed; fitted to one row by
  * dropping the away note, then counting the owed steps instead of naming them,
  * then shortening the lead. Nothing to say, no line.
  */
@@ -325,12 +316,8 @@ export function bandLine(o: {
   const riding = o.standing.filter((s) => s.key !== lead?.key && ((o.memory.age[s.key] ?? 0) <= FADE || /^uncommitted:v:/.test(s.key) || (back && workItself(s))));
   const steps = riding.filter(isStepButton).slice(0, 3);
   const owed = riding.filter((s) => !steps.includes(s)).map((s) => s.short);
-  const waiting = o.memory.backlog.length;
-  const options = lead !== null && lead.options.length > 0 ? lead.options : steps.length === 0 && owed.length + waiting > 0 ? [t("详情")] : [];
-  const tail = (named: boolean): string[] => [
-    owed.length === 0 ? "" : named ? t("待处理：{0}", owed.join("、")) : t("待处理 {0} 项", owed.length),
-    waiting > 0 ? t("待决定 {0} 项", waiting) : "",
-  ];
+  const options = lead !== null && lead.options.length > 0 ? lead.options : steps.length === 0 && owed.length > 0 ? [t("详情")] : [];
+  const tail = (named: boolean): string[] => [owed.length === 0 ? "" : named ? t("待处理：{0}", owed.join("、")) : t("待处理 {0} 项", owed.length)];
   // Nothing leads and nothing else is named: one step says itself (what a reload brings, how many commits a push
   // sends); several, what their buttons are.
   const build = (named: boolean, l: string): string => {
@@ -482,8 +469,8 @@ export function pendingNote(q: Queued, t: T = ZH): string {
 
 /**
  * The board's 此刻 rows, at the top of the work items: everything the band has
- * room for one of — the reply's asks with their answers, every step only the
- * person can take, the older asks still waiting.
+ * room for one of — the questions the model registered, with their answers,
+ * and every step only the person can take.
  */
 export function nowRows(o: { reply: string; standing: readonly Standing[]; memory: AttentionMemory; queued?: readonly Queued[]; picks?: readonly (string | null)[]; asked?: readonly Asked[]; t?: T }): BoardRow[] {
   const t = o.t ?? ZH;
@@ -505,6 +492,5 @@ export function nowRows(o: { reply: string; standing: readonly Standing[]; memor
     const lead: Lead = { key: s.key, kind: s.kind, text: s.text, options: s.options };
     rows.push({ kind: "card", key: `now-${s.key}`, icon: s.kind === "broken" ? "warn" : s.key.startsWith("green:") ? "done" : "ask", verb: s.kind === "broken" ? t("出错") : "", title: s.text.replace(/^✗\s*/, ""), ...settle(pressablesFor(lead, s.options, t)) });
   }
-  o.memory.backlog.forEach((b, i) => rows.push({ kind: "card", key: `now-backlog-${i}`, icon: "ask", verb: t("待决定"), title: clip(b.replace(/^(上一个问题|上一条里的事)?(还|仍|都)?(在)?等你(定|批)?[：:，,]?/, ""), 80), detail: [], actions: [] }));
   return rows.length === 0 ? [] : [{ kind: "section", key: "now", text: t("此刻") }, ...rows];
 }
