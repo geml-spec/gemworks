@@ -171,7 +171,7 @@ export type BoardAction =
     id: string | null;
 } | {
     op: "made-kind";
-    kind: "all" | "link" | "doc" | "file" | "image";
+    kind: "all" | "online" | "link" | "doc" | "file" | "image";
 } | {
     op: "made-more";
 }

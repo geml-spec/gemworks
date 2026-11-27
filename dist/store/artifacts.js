@@ -138,13 +138,19 @@ export function syncDocs(home, item, docs) {
  * row of that version under that name — a resumed or forked session's
  * transcript holds the publishes before it again. Without a name it keeps the
  * one it had, else goes by `fallback` (its published file's name), else its
- * address.
+ * address. A `numbered` one (an online document a turn wrote) is the next
+ * version by count, once for each `at` (the turn's).
  */
 export function recordLink(home, item, link) {
     return changeRows(home, (rows) => {
         const versions = rows.filter((r) => r.item === item && r.kind === "link" && r.where === link.url);
         const prev = versions.at(-1);
         const name = link.name !== undefined && link.name !== "" ? link.name : prev?.name ?? (link.fallback !== undefined && link.fallback !== "" ? link.fallback : link.url);
+        if (link.numbered === true) {
+            if (!versions.some((r) => r.at === link.at))
+                rows.push({ item, kind: "link", name, where: link.url, version: String(versions.length + 1), size: null, at: link.at, sha256: "" });
+            return rows;
+        }
         if (versions.some((r) => r.version === (link.version ?? "") && r.name === name))
             return rows;
         rows.push({ item, kind: "link", name, where: link.url, version: link.version ?? "", size: null, at: link.at, sha256: "" });

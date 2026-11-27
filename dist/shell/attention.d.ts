@@ -46,8 +46,6 @@ export interface AttentionMemory {
     age: Record<string, number>;
     /** The line that led last turn. */
     lastLead: string;
-    /** Older asks the replies still remind of. */
-    backlog: string[];
 }
 export declare const NO_MEMORY: AttentionMemory;
 /** `maybe`: a question guessed from the reply, not registered — a grey hint with no answers. */
@@ -101,8 +99,6 @@ export declare const sentences: (text: string) => string[];
 export declare function asksOf(reply: string): string[];
 /** The answers an ask likely takes, as buttons: the first is the one it leans to. */
 export declare function optionsFor(ask: string, t?: T): string[];
-/** The older asks a reply says still wait. */
-export declare const remindersOf: (reply: string) => string[];
 /** What became of a request: the reply's first whole sentence. A reply cut from the front starts at its first whole line. */
 export declare function outcomeOf(reply: string, cutFromFront?: boolean): string | undefined;
 /** A local branch ahead of its upstream, and an open pull request, as the repository facts carry them. */
@@ -136,17 +132,17 @@ export declare function leadOf(o: {
     asked?: readonly Asked[];
     t?: T;
 }): Lead | null;
-/** The memory after a turn whose lead was `lead`: what led, how long each condition has held, the asks still reminded of. */
+/**
+ * The memory after a turn whose lead was `lead`: what led, how long each condition has held. A question the reply
+ * only reminds of is not kept: what waits on the person is what the model registered, which carries its answers.
+ */
 export declare function remember(memory: AttentionMemory, o: {
-    reply: string;
     standing: readonly Standing[];
     lead: Lead | null;
 }): AttentionMemory;
-/** The person's own words end the oldest ask still reminded of, when they read as an answer (short). */
-export declare function answered(memory: AttentionMemory, said: string): AttentionMemory;
 /**
  * The band's line: the lead (or, back after a while, what became of the last
- * request), the steps still owed, the asks still waiting; fitted to one row by
+ * request) and the steps still owed; fitted to one row by
  * dropping the away note, then counting the owed steps instead of naming them,
  * then shortening the lead. Nothing to say, no line.
  */
@@ -199,8 +195,8 @@ export declare function pressedOf(actions: readonly Pressable[], queued: readonl
 export declare function pendingNote(q: Queued, t?: T): string;
 /**
  * The board's 此刻 rows, at the top of the work items: everything the band has
- * room for one of — the reply's asks with their answers, every step only the
- * person can take, the older asks still waiting.
+ * room for one of — the questions the model registered, with their answers,
+ * and every step only the person can take.
  */
 export declare function nowRows(o: {
     reply: string;

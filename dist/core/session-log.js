@@ -106,6 +106,23 @@ export function currentTurn(events) {
     }
     return 0;
 }
+/**
+ * A prompt the person pressed (an option the plugin said into the conversation as theirs), as it entered: the next turn,
+ * and the decisions the press made, theirs, under it. Words already the last prompt, seconds before (the same prompt
+ * recorded by its hook as well), add only the decisions.
+ */
+export function pressedPrompt(events, text, at, decisions = [], uuid) {
+    let last;
+    for (let i = events.length - 1; i >= 0 && last === undefined; i--) {
+        const e = events[i];
+        if (e.t === "prompt")
+            last = e;
+    }
+    const again = last !== undefined && last.text === text && Math.abs(Date.parse(last.at) - Date.parse(at)) < SAME_PROMPT_MS;
+    const turn = again && last !== undefined ? last.turn : nextTurn(events);
+    const prompt = again ? [] : [{ t: "prompt", turn, at, text, ...(uuid !== undefined ? { uuid } : {}) }];
+    return [...prompt, ...decisions.map((d) => ({ t: "decision", turn, at, text: d, by: "person", pressed: true }))];
+}
 /** A log read as one session; undefined for a log with no session line. */
 export function summarize(events) {
     const head = events.find((e) => e.t === "session");

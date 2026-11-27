@@ -5,7 +5,7 @@ import {
   fill,
   langOf,
   wordsFor
-} from "./gemworks-chunk-DRIQ4DSM.mjs";
+} from "./gemworks-chunk-GDN3LU4X.mjs";
 export {
   LANGS,
   WORDS,

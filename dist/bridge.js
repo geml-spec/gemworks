@@ -49,6 +49,7 @@ import { exists, readText, withLock, writeAtomic } from "./host-fs.js";
 import { beginGitRequest, endGitRequest, branchesAhead, commitsOf, ghOncePerBranch, journalBaseOf, openPullRequests, pullRequestsByBranch, repoFacts, uncommittedBump, unkeptOf, worktreesOf } from "./host-git.js";
 import { formatLog, logName, nextTurn, parseLog, SESSIONS_DIR, SESSIONS_GITIGNORE, withEarlierTurns } from "./core/session-log.js";
 import { newTurns, queuedMessages, readTranscript, slugOf, transcriptEvents } from "./core/transcript.js";
+import { onlineDocOf } from "./core/online-docs.js";
 import { branchesElsewhere, markOpen } from "./store/sessions.js";
 import { statSync } from "node:fs";
 import { mediaTodoCount } from "./media-todo.js";
@@ -423,9 +424,9 @@ function madeAllOf(root) {
         return { entries: [] };
     }
     const by = new Map();
-    // The table is in the order its rows were written: a later row is the newer version.
+    // The table is in the order its rows were written: a later row is the newer version. A link is one by its address.
     for (const r of rows) {
-        const key = `${r.item}\u0000${r.kind}\u0000${r.name}`;
+        const key = `${r.item}\u0000${r.kind}\u0000${r.kind === "link" ? r.where : r.name}`;
         const was = by.get(key);
         const copy = r.where.startsWith("artifacts/") ? copyPath(home, r.where) : was?.copy;
         by.set(key, { row: r, versions: (was?.versions ?? 0) + 1, ...(copy !== undefined ? { copy } : {}) });
@@ -600,12 +601,14 @@ function recordArtifact(ws, root, req) {
     if (at === undefined)
         return { ok: false, reason: "there is no current work item to record it under" };
     const { home, item } = at;
-    const where = req.where.trim();
+    let where = req.where.trim();
     if (where === "")
         return { ok: false, reason: "where is empty: give the link's address or the file's path" };
     if (req.kind === "link") {
         if (!/^https?:\/\//i.test(where))
             return { ok: false, reason: "a link's where is its http(s) address" };
+        // An online document's address as it is listed, whoever names it: one entry, not one per way of writing it.
+        where = onlineDocOf(where)?.url ?? where;
         // Its name: the one given; else the published page's title (a page's <title>, a data file's "title"); else the one the table has; else its file's name.
         let name = req.name?.trim() ?? "";
         if (name === "" && req.page !== undefined) {
@@ -615,7 +618,7 @@ function recordArtifact(ws, root, req) {
             catch { /* named otherwise */ }
         }
         const fallback = req.page !== undefined ? basename(req.page).replace(/\.[^.]*$/, "") : undefined;
-        recordLink(home, item, { name, ...(fallback !== undefined ? { fallback } : {}), url: where, ...(req.version !== undefined && req.version !== "" ? { version: req.version } : {}), at: new Date().toISOString() });
+        recordLink(home, item, { name, ...(fallback !== undefined ? { fallback } : {}), url: where, ...(req.version !== undefined && req.version !== "" ? { version: req.version } : {}), at: new Date().toISOString(), ...(req.online === true ? { numbered: true } : {}) });
         return { ok: true, text: `Recorded the link under ${item}'s artifacts.` };
     }
     // An upload: its bytes, named by its file's name under upload/.
@@ -719,7 +722,7 @@ function backfillOne(ws, root, req) {
                 continue;
             for (const l of turn.links) {
                 try {
-                    recordLink(home, item, { ...(l.title !== undefined ? { name: l.title } : {}), url: l.url, ...(l.version !== undefined ? { version: l.version } : {}), at: turn.answerAt ?? turn.at });
+                    recordLink(home, item, { ...(l.title !== undefined ? { name: l.title } : {}), url: l.url, ...(l.version !== undefined ? { version: l.version } : {}), at: turn.answerAt ?? turn.at, ...(l.online === true ? { numbered: true } : {}) });
                     links += 1;
                 }
                 catch { /* the next */ }

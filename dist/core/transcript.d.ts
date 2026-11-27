@@ -15,11 +15,12 @@ export interface TranscriptTurn {
     answerAt?: string;
     /** The files Write, Edit and NotebookEdit wrote, in order, once each. */
     files: string[];
-    /** The pages the Artifact tool published. */
+    /** The pages the Artifact tool published, and the online documents the turn wrote (`online`, once each). */
     links: {
         url: string;
         version?: string;
         title?: string;
+        online?: true;
     }[];
     /** Pictures and documents the person gave with the prompt: their bytes as the transcript holds them. */
     uploads: {

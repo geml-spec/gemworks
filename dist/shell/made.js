@@ -1,29 +1,42 @@
+// The board's 产物 tab (protocol.ts, MadeAll): every artifact the project's work made, whichever work item made it
+// and whether that item has ended — newest first, by day, a page at a time, by kind, or one work item's alone.
+// Pure: rows only.
+import { onlineDocOf, onlineDocShort } from "../core/online-docs.js";
 import { dayText, hhmm } from "./time.js";
+/** The kind of online document a link is (its word), or undefined for any other link. */
+const onlineWord = (e) => (e.kind === "link" ? onlineDocOf(e.open)?.word : undefined);
 /** Whether an entry is listed under a kind: under all, anything but a document in git, which git keeps already. */
-const isOf = (e, k) => (k === "all" ? e.kind !== "doc" : e.kind === k);
+const isOf = (e, k) => k === "all" ? e.kind !== "doc" : k === "online" ? onlineWord(e) !== undefined : k === "link" ? e.kind === "link" && onlineWord(e) === undefined : e.kind === k;
 /** The kinds the list can be narrowed to, in the order their presses stand. */
-export const MADE_KINDS = ["all", "file", "link", "image", "doc"];
+export const MADE_KINDS = ["all", "file", "online", "link", "image", "doc"];
 /** How many entries one more press lists, and the most listed at once: a pane fails past about 1,100 elements. */
 export const MADE_PAGE = 20;
 export const MADE_MOST = 60;
 export const MADE_VIEW = { kind: "all", shown: 0, item: null };
 const kindWord = (k, t) => (k === "link" ? t("链接") : k === "doc" ? t("文档") : k === "image" ? t("图片") : t("文件"));
 /** A filter's words with its count: one artifact is a File, the filter over them Files 50. */
-const kindCount = (k, n, t) => (k === "all" ? t("全部 {0}", n) : k === "link" ? t("链接 {0}", n) : k === "doc" ? t("文档 {0}", n) : k === "image" ? t("图片 {0}", n) : t("文件 {0}", n));
-/** An entry's name as shown: a link's title; a file's last segment (what opens it says where it is). */
-const shownName = (e) => (e.kind === "link" ? e.name : e.name.split(/[\\/]/).filter((x) => x !== "").at(-1) ?? e.name);
+const kindCount = (k, n, t) => k === "all" ? t("全部 {0}", n) : k === "online" ? t("在线文档 {0}", n) : k === "link" ? t("链接 {0}", n) : k === "doc" ? t("文档 {0}", n) : k === "image" ? t("图片 {0}", n) : t("文件 {0}", n);
+/** An entry's name as shown: a link's title (an online document known only by its address: its kind and a short id); a file's last segment (what opens it says where it is). */
+const shownName = (e, t) => {
+    if (e.kind !== "link")
+        return e.name.split(/[\\/]/).filter((x) => x !== "").at(-1) ?? e.name;
+    const word = onlineWord(e);
+    return word !== undefined && e.name === e.open ? `${t(word)} ${onlineDocShort(e.open)}` : e.name;
+};
 /**
- * One artifact: its name and its kind — a link's kind is its press (链接 ↗), a file opens on a press on the row — and
- * under it the work item it came from (left out when the list shows one item's alone), how many versions, and when.
+ * One artifact: its name and its kind — a link's kind is its press (链接 ↗, an online document's kind ↗), a file opens
+ * on a press on the row — and under it the work item it came from (left out when the list shows one item's alone), how
+ * many versions, and when.
  */
 export function madeEntry(e, t, o) {
     const versions = e.versions > 1 ? (e.kind === "doc" ? t("{0} 次提交", e.versions) : t("{0} 版", e.versions)) : "";
     const detail = [o.item ?? "", versions, o.when].filter((x) => x !== "").join(" · ");
-    const key = `made-${e.item}-${e.kind}-${e.name}`;
+    const key = `made-${e.item}-${e.kind}-${e.kind === "link" ? e.open : e.name}`;
     const under = detail !== "" ? { detail } : {};
+    const word = onlineWord(e);
     return e.kind === "link"
-        ? { kind: "entry", key, title: shownName(e), tag: "", tone: "normal", ...under, link: { href: e.open, label: t("链接 ↗") } }
-        : { kind: "entry", key, title: shownName(e), tag: kindWord(e.kind, t), tone: "normal", ...under, action: { op: "open-file", path: e.open } };
+        ? { kind: "entry", key, title: shownName(e, t), tag: "", tone: "normal", ...under, link: { href: e.open, label: word !== undefined ? `${t(word)} ↗` : t("链接 ↗") } }
+        : { kind: "entry", key, title: shownName(e, t), tag: kindWord(e.kind, t), tone: "normal", ...under, action: { op: "open-file", path: e.open } };
 }
 /**
  * A work item's press to its artifacts (产物 n ›, beside its arrow): the 产物 tab with its own alone, counted as that

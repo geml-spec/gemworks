@@ -34,17 +34,17 @@ import { commitMessageFiles } from '../dist/core/commit-message.js'
 import { FLOW_TOOLS } from '../dist/core/verb-specs.js'
 import type { VerbName } from '../dist/core/verb-specs.js'
 import type { BoardAction, BoardTab, Dialog, JournalFilter, Pressable, ShareHow, ShareWhat } from '../dist/shell/actions.js'
-import { answered, asksAfterTurn, bandLine, heldSteps, leadOf, newsOf, NO_FACTS, NO_MEMORY, nowRows, openAfter, pendingNote, pressablesFor, pressedOf, remember, standingOf, stepPressables } from '../dist/shell/attention.js'
+import { asksAfterTurn, bandLine, heldSteps, leadOf, newsOf, NO_FACTS, NO_MEMORY, nowRows, openAfter, pendingNote, pressablesFor, pressedOf, remember, standingOf, stepPressables } from '../dist/shell/attention.js'
 import type { Queued } from '../dist/shell/attention.js'
 import type { AttentionFacts, AttentionMemory } from '../dist/shell/attention.js'
 import { envParts, remoteInPlay } from '../dist/shell/env.js'
 import { engineGapText, engineVersionOf, failureText, goneCallOf, isNeeded } from '../dist/hosts/claude-code/engine.js'
 import { captureHint, offersCapture } from '../dist/hosts/claude-code/screenshot.js'
-import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, legacyLogName, logName, nextTurn, NOTE_TOOL, noteReply, parseLog, personPrompts, readNote, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
+import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, legacyLogName, logName, nextTurn, NOTE_TOOL, noteReply, parseLog, personPrompts, pressedPrompt, readNote, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
 import type { NoteRead, SeenRun, SessionEvent, SessionSummary } from '../dist/core/session-log.js'
 import { checkRequest, flowRequest, labelRequest, linkKey, promptId, readChecks, readFlowDraft, readLabels, readThemes, themeRequest, typedWords } from '../dist/core/corrections.js'
 import type { LabelledPrompt } from '../dist/core/corrections.js'
-import { ARTIFACT_TOOL, isMadeForPeople, publishedLink } from '../dist/core/artifact-tool.js'
+import { ARTIFACT_TOOL, isMadeForPeople } from '../dist/core/artifact-tool.js'
 import { ASK_PROMPT, ASK_TOOL, askedOf } from '../dist/core/ask-tool.js'
 import { COACH_FLOWS, coachBand, goneOnAfterTurn, itemProgress, readCoachFlow, stripText, turnItem, turnWords, WORK_REMINDER, WORK_TOOL, workContext, workEvents, workItemsOf, workPrompt } from '../dist/shell/coach.js'
 import type { CoachFlow, CoachFocus, Doing, GoneOn, WorkGroup, WorkItem } from '../dist/shell/coach.js'
@@ -92,6 +92,7 @@ import type { T } from '../dist/shell/text.js'
 import { act } from './act.tsx'
 import { drawHeading, drawJudges, drawPractice, drawPracticeBlock, drawPresses, drawStep } from './manual.tsx'
 import { loadOutward, outwardHold, outwardKept } from './outward.tsx'
+import { artifactsOnTurn, noteOnlineDocs, publishedArtifact, recordArtifact, uploadsOnPrompt } from './artifacts.tsx'
 
 const shellAtom = atom({ plugin: 'gemworks', key: 'shell' } as const, null as GemworksJson)
 const problemAtom = atom({ plugin: 'gemworks', key: 'problem' } as const, null as string | null)
@@ -235,6 +236,8 @@ const coachFocusAtom = atom({ plugin: 'gemworks', key: 'coachFocus' } as const, 
 const workOpenAtom = atom({ plugin: 'gemworks', key: 'workOpen' } as const, [] as string[])
 /** Every layer's practices (core/practices.ts) and whether the project's memory was moved in; null until read. */
 const practicesAtom = atom({ plugin: 'gemworks', key: 'practices' } as const, null as GemworksJson)
+/** Presses said into the conversation as the person's, waiting to enter it (pressedEntered). */
+const pressedAtom = atom({ plugin: 'gemworks', key: 'pressed' } as const, [] as { text: string; decisions: string[] }[])
 /** The person's ledger of corrections as the flow tab shows it (protocol.ts CorrectionsView); null until read. */
 const correctionsAtom = atom({ plugin: 'gemworks', key: 'corrections' } as const, null as GemworksJson)
 /** Whether this session was asked to move the project's memory onto the steps. */
@@ -612,8 +615,8 @@ async function attentionNow($: EngineInterface, t: T) {
 }
 
 /**
- * The person's prompt ends the band's moment: its memory moves on (what led, how long each step has waited, the asks
- * the prompt answers), and what changed in the repository since the reply is news for the model, so the person need
+ * The person's prompt ends the band's moment: its memory moves on (what led, how long each step has waited), the
+ * questions the prompt answers are settled, and what changed in the repository since the reply is news for the model, so the person need
  * not say it. Answers the context lines to add.
  */
 async function attentionOnPrompt($: EngineInterface, said: string, typed = true): Promise<string[]> {
@@ -623,7 +626,7 @@ async function attentionOnPrompt($: EngineInterface, said: string, typed = true)
     const a = now.attention
     if (a === null) return []
     if (!a.consumed) {
-      const memory = answered(remember(a.memory, { reply: a.reply, standing: now.standing, lead: now.lead }), said)
+      const memory = remember(a.memory, { standing: now.standing, lead: now.lead })
       await update($, attentionAtom, () => ({ ...a, memory, consumed: true }) as unknown as GemworksJson)
       // What it did not answer stays for the next reply's band. When the person typed, a small model reads which of the
       // open questions the prompt settles, answered or left behind (judgeOpenAsks); a pressed step settles only what it names.
@@ -778,6 +781,15 @@ async function sessionsOnPrompt($: EngineInterface, text: string): Promise<strin
   await update($, decisionsSeenAtom, () => at)
   if (fresh.length === 0) return []
   return [decisionsContext(fresh, (d) => `${hostName(d.host)}${d.branch !== undefined ? ` · ${d.branch}` : ''}，${hhmm(d.at)}`)]
+}
+
+/** A press said as the person's entered the conversation, past this module's own prompt hook: its words into this session's log as theirs, with what it decided (act's `say`). */
+async function pressedEntered($: EngineInterface, text: string, uuid: string): Promise<void> {
+  const mine = ((await read($, pressedAtom)) ?? []).find((p) => p.text.trim() === text)
+  if (mine !== undefined) await update($, pressedAtom, (was) => (was ?? []).filter((p) => p.text !== mine.text))
+  const at = await nowIso($)
+  const events = await appendOwn($, (so) => pressedPrompt(so, text, at, mine?.decisions ?? [], uuid))
+  if (events.length > 0) await loadProjectSessions($)
 }
 
 /**
@@ -1237,10 +1249,16 @@ async function recordWork($: EngineInterface, event: unknown): Promise<ToolCallR
   let made: SessionEvent[] = []
   const runs = ((await read($, runsAtom)) as unknown as SeenRun[] | null) ?? []
   await appendOwn($, (so) => {
-    const r = workEvents(toolArgs(event as Record<string, unknown>), flows, items, at, currentTurn(so), (n) => `${stamp}${n}`, runs)
-    errors = r.errors
-    made = r.events
-    return r.events
+    // A failure says what failed: the log not written is no reason to blame the model's list.
+    try {
+      const r = workEvents(toolArgs(event as Record<string, unknown>), flows, items, at, currentTurn(so), (n) => `${stamp}${n}`, runs)
+      errors = r.errors
+      made = r.events
+      return r.events
+    } catch (err) {
+      errors = [`gemworks failed reading them (${err instanceof Error ? err.message : String(err)})`]
+      return []
+    }
   })
   if (made.length === 0) return { result: `Nothing recorded: ${errors.join('; ') || 'items is a list of work items'}.` }
   turnReported = true
@@ -1286,43 +1304,6 @@ async function artifactItem($: EngineInterface): Promise<{ item?: string } | und
   return item !== undefined ? { item: item.id } : undefined
 }
 
-/** A turn's end, on a work item: the files it wrote that git does not keep get a version where their content changed. */
-async function artifactsOnTurn($: EngineInterface): Promise<void> {
-  const [on, made, drafts, here] = await Promise.all([artifactItem($), read($, madeElsewhereAtom), read($, notMadeAtom), read($, madeHereAtom)])
-  const elsewhere = ((made as unknown) as string[] | null) ?? []
-  const notMade = ((drafts as unknown) as string[] | null) ?? []
-  const written = ((here as unknown) as string[] | null) ?? []
-  if (elsewhere.length > 0) await update($, madeElsewhereAtom, () => [] as unknown as GemworksJson)
-  if (notMade.length > 0) await update($, notMadeAtom, () => [] as string[])
-  if (written.length > 0) await update($, madeHereAtom, () => [] as string[])
-  // A turn on no work item made nothing that is one's.
-  if (on === undefined) return
-  // The workflow item's journal names what it wrote; with the coach's item, the turn's own list does.
-  const own = on.item !== undefined && written.length > 0 ? { written } : {}
-  await bridge($, { op: 'artifacts', ...on, ...own, ...(elsewhere.length > 0 ? { elsewhere } : {}), ...(notMade.length > 0 ? { notMade } : {}) }, SLOW_TIMEOUT_MS).catch(() => undefined)
-  // What the turn recorded shows on an open board now: nothing else reads the board again while the stage stays put.
-  try { if ((await $.ui.panes()).some((p) => p.id === BOARD_ID)) await reloadBoardLater($) } catch { /* read when next opened */ }
-}
-
-/** What the person gave with a prompt (images, documents): their bytes, as the conversation holds them, among the work item's artifacts. */
-async function uploadsOnPrompt($: EngineInterface, named: readonly { type: string; mediaType?: string; filename?: string }[]): Promise<void> {
-  const on = await artifactItem($)
-  if (on === undefined) return
-  const messages = await $.session.messages({ as: 'api' })
-  if (!Array.isArray(messages)) return
-  const last = [...messages].reverse().find((m) => m.role === 'user' && m.content.some((b) => b.type === 'image' || b.type === 'document'))
-  if (last === undefined) return
-  const media = last.content.filter((b) => b.type === 'image' || b.type === 'document')
-  for (const [i, b] of media.entries()) {
-    const source = b['source'] as { type?: string; media_type?: string; data?: string } | undefined
-    if (source?.type !== 'base64' || typeof source.data !== 'string' || source.data === '') continue
-    const name = named[i]?.filename
-    const mediaType = source.media_type ?? named[i]?.mediaType
-    await bridge($, { op: 'artifact', ...on, kind: b.type === 'image' ? 'image' : 'file', where: 'upload', data: source.data, ...(name !== undefined ? { name } : {}), ...(mediaType !== undefined ? { mediaType } : {}) }, SLOW_TIMEOUT_MS)
-  }
-  await reloadBoardLater($)
-}
-
 /** A question the model registered (the ask tool): kept for the band, which asks it once the turn ends. A subagent's goes nowhere. */
 async function registerAsk($: EngineInterface, event: unknown): Promise<ToolCallResult> {
   if ((event as { agentId?: string }).agentId !== undefined) return { result: 'Not registered: only the main conversation asks the person.' }
@@ -1331,36 +1312,6 @@ async function registerAsk($: EngineInterface, event: unknown): Promise<ToolCall
   const stamped = { ...asked, at: await nowIso($) }
   await update($, askedAtom, (was) => [...(was ?? []).filter((q) => q.question !== asked.question), stamped])
   return { result: 'Registered: the status band asks it with these answers once this turn ends.' }
-}
-
-/** What the model says the work item made that gemworks did not see: a link, a picture, a file — under the current work item's artifacts. */
-async function recordArtifact($: EngineInterface, event: unknown): Promise<ToolCallResult> {
-  const args = toolArgs(event as Record<string, unknown>)
-  const kind = args['kind']
-  const where = typeof args['where'] === 'string' ? args['where'].trim() : ''
-  if ((kind !== 'link' && kind !== 'image' && kind !== 'file') || where === '') return { result: 'Nothing recorded: kind is link, image or file, and where is the address or the path.' }
-  const name = typeof args['name'] === 'string' ? args['name'] : undefined
-  const version = typeof args['version'] === 'string' ? args['version'] : undefined
-  const on = await artifactItem($)
-  if (on === undefined) return { result: 'Nothing recorded: no work item is on the way in this session; report the one this is for with the work tool first.' }
-  const res = await bridge($, { op: 'artifact', ...on, kind, where, ...(name !== undefined ? { name } : {}), ...(version !== undefined ? { version } : {}) })
-  if (res === undefined) return { result: 'Nothing recorded: gemworks did not answer.' }
-  if (!res.ok) return { result: `Nothing recorded: ${res.error.replace(/^gemworks: /, '')}` }
-  await reloadBoardLater($)
-  return { result: res.text ?? 'Recorded.' }
-}
-
-/** A page the Artifact tool published: its link among the current work item's artifacts, named by its title. */
-async function publishedArtifact($: EngineInterface, said: string | undefined, input: Record<string, unknown>): Promise<void> {
-  if ((input['action'] !== undefined && input['action'] !== 'publish') || input['asset'] === true) return
-  const link = publishedLink(said ?? '')
-  if (link === undefined) return
-  const title = typeof input['title'] === 'string' && input['title'] !== '' ? input['title'] : undefined
-  const page = typeof input['file_path'] === 'string' && input['file_path'] !== '' ? input['file_path'] : undefined
-  const on = await artifactItem($)
-  if (on === undefined) return
-  const res = await bridge($, { op: 'artifact', ...on, kind: 'link', where: link.url, ...(link.version !== undefined ? { version: link.version } : {}), ...(title !== undefined ? { name: title } : {}), ...(page !== undefined ? { page } : {}) })
-  if (res !== undefined && res.ok) await reloadBoardLater($)
 }
 
 /** A turn's end: its answer into this session's log, and the commits a command in it made. */
@@ -3141,6 +3092,8 @@ export const register: Register = (on) => {
     // A visual drawn inline is kept as a page: it has no file or link of its own.
     if (isVisualTool(tool) && ran.isError !== true) $.clock.after(0, () => { void keepVisual($, input).catch(() => undefined) })
     if (tool === 'Artifact' && ran.isError !== true) { const said = ran.text ?? (typeof ran.result === 'string' ? ran.result : undefined); $.clock.after(0, () => { void publishedArtifact($, said, input).catch(() => undefined) }) }
+    // An online document the call wrote (a Lark doc, a Google sheet): one of the work item's artifacts at the turn's end, one version a turn.
+    if (ran.isError !== true) noteOnlineDocs($, tool, input, ran.text ?? (typeof ran.result === 'string' ? ran.result : ''))
     const wrotePath = touchedPath(tool, input, root ?? '')
     // A file written in another checkout is that checkout's work item, never the session's current one.
     if (!elsewhere && wrotePath !== undefined && matchesUnit(policy, wrotePath, (await readShell($))?.units ?? [])) await update($, lastFileAtom, () => wrotePath)
@@ -3400,6 +3353,14 @@ export const register: Register = (on) => {
         }
         return was
       })
+    }
+    // A press this module said as the person's: its prompt hook never saw it, so its words go into the record now.
+    const own = e.origin as { kind: string; name?: string; asUser?: boolean }
+    if (e.agentId === undefined && e.message.role === 'user' && e.message.isMeta !== true && own.kind === 'plugin' && own.name === 'gemworks' && own.asUser === true) {
+      const first = e.message.content.find((b) => b.type === 'text') as { text?: unknown } | undefined
+      const text = typeof first?.text === 'string' ? promptShown(first.text) : ''
+      const uuid = e.uuid
+      if (text !== '') $.clock.after(0, () => { void pressedEntered($, text, uuid).catch(() => undefined) })
     }
     return next(e)
   }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
@@ -3755,12 +3716,12 @@ export const register: Register = (on) => {
   }).catch(() => ({ text: 'gemworks：命令没有完成，原因见输入框上方的状态带' }))
 }
 
-// What act.tsx and manual.tsx, split from this module, use of it.
+// What act.tsx, manual.tsx, outward.tsx and artifacts.tsx, split from this module, use of it.
 export {
-  QUEUED_MATCH_MS, STORE_SETTINGS, TURNS_SHOWN, answerOf, appendOwn, attentionOnPrompt, bridge, checkLatest,
+  QUEUED_MATCH_MS, STORE_SETTINGS, TURNS_SHOWN, answerOf, appendOwn, artifactItem, attentionOnPrompt, bridge, checkLatest,
   coachFlows, coachFlowsKept, correctionsKept, dismissedOf, exportText, gemlDir, iconButton, loadBoard, loadCorrections,
   loadGrowth, loadMade, loadMemory, loadPractices, loadProjectSessions, loadWorkflows, nowIso, openBoard,
   openDialog, openFile, otherSessionText, outwardChanged, practicesKept, press, proposalsKept, readAttention, readBoard, readPrompts,
-  readSettings, reasonOf, rulesKept, saveProposals, saveRules, sessionText, setQueued, share, startBridge,
+  readSettings, reasonOf, reloadBoardLater, rulesKept, saveProposals, saveRules, sessionText, setQueued, share, startBridge,
   storePrompts, takeOption, themeLedger, trace, turnBusy, within, words, workItems, writeOwnFlow,
 }

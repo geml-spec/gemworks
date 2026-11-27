@@ -213,13 +213,14 @@ export function workEvents(args, flows, items, at, turn, newId, runs = []) {
         const before = was?.met ?? [];
         const metIds = [...new Set(named !== undefined ? named.map((s) => s.id) : before.map((m) => m.step))];
         const said = str(x["said"]).trim();
-        const theirs = metIds.map((s) => stepNamed(s)).filter((s) => s.judge === "you" && !before.some((m) => m.step === s.id));
+        // A step met before that the flow no longer has (the flow changed since): kept as it was, never judged again.
+        const theirs = metIds.map(stepNamed).filter((s) => s !== undefined && s.judge === "you" && !before.some((m) => m.step === s.id));
         if (theirs.length > 0 && said === "") {
             errors.push(`item ${n + 1}: ${theirs.map((s) => s.title).join("、")} is the person's to meet: put what they said in \`said\`, or leave it for their press`);
             return;
         }
         const evidence = str(x["evidence"]).trim();
-        const facts = metIds.filter((s) => stepNamed(s).judge === "fact" && !before.some((m) => m.step === s));
+        const facts = metIds.filter((s) => stepNamed(s)?.judge === "fact" && !before.some((m) => m.step === s));
         const seen = evidence !== "" ? seenIn(evidence, runs) : undefined;
         const met = metIds.map((s) => before.find((m) => m.step === s) ?? {
             step: s, at, turn,

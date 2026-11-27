@@ -23,7 +23,8 @@ export declare function syncDocs(home: string, item: string, docs: readonly GitD
  * row of that version under that name — a resumed or forked session's
  * transcript holds the publishes before it again. Without a name it keeps the
  * one it had, else goes by `fallback` (its published file's name), else its
- * address.
+ * address. A `numbered` one (an online document a turn wrote) is the next
+ * version by count, once for each `at` (the turn's).
  */
 export declare function recordLink(home: string, item: string, link: {
     name?: string;
@@ -31,6 +32,7 @@ export declare function recordLink(home: string, item: string, link: {
     url: string;
     version?: string;
     at: string;
+    numbered?: boolean;
 }): ArtifactRow[];
 /**
  * A file the model says the work item made (a picture it generated): a

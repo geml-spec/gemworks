@@ -142,7 +142,8 @@ export type BridgeOp =
  * An artifact of the current work item gemworks did not see made: a link (a
  * publish tool's result; `page` the published file, whose title names it)
  * or a file's version (a generated picture). Answers `text`. With no
- * workflow work item, it goes under `item`, the one the turn is on.
+ * workflow work item, it goes under `item`, the one the turn is on. An
+ * `online` link is an online document the turn wrote: its next version.
  */
  | {
     op: "artifact";
@@ -154,6 +155,7 @@ export type BridgeOp =
     data?: string;
     mediaType?: string;
     item?: string;
+    online?: true;
 }
 /**
  * Write a file under `.geml/exports/`, or `to` where the person said (a

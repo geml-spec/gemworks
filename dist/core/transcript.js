@@ -4,6 +4,7 @@
 // written, the pages published, what they gave with a prompt. Pure: the bridge
 // reads the file and writes the log.
 import { publishedLink } from "./artifact-tool.js";
+import { mayWriteOnlineDoc, onlineDocWrites } from "./online-docs.js";
 /** The folder under ~/.claude/projects that holds a directory's transcripts: every character but letters, digits and `-` becomes `-`. */
 export function slugOf(path) {
     return path.replace(/[^A-Za-z0-9-]/g, "-");
@@ -110,6 +111,15 @@ export function readTranscript(text) {
                         if (link !== undefined && !call.turn.links.some((l) => l.url === link.url && l.version === link.version))
                             call.turn.links.push({ ...link, ...(title !== undefined ? { title } : {}) });
                     }
+                    else if (r.is_error !== true) {
+                        for (const d of onlineDocWrites(call.tool, call.input, resultText(r))) {
+                            const was = call.turn.links.find((l) => l.online === true && l.url === d.url);
+                            if (was === undefined)
+                                call.turn.links.push({ url: d.url, online: true, ...(d.name !== undefined ? { title: d.name } : {}) });
+                            else if (d.name !== undefined)
+                                was.title = d.name;
+                        }
+                    }
                 }
                 continue;
             }
@@ -152,7 +162,7 @@ export function readTranscript(text) {
                     if (path !== undefined && !current.files.includes(path))
                         current.files.push(path);
                 }
-                else if (tool === "Artifact" && str(b.id) !== undefined) {
+                else if ((tool === "Artifact" || mayWriteOnlineDoc(tool, input)) && str(b.id) !== undefined) {
                     pending.set(str(b.id), { turn: current, tool, input });
                 }
             }

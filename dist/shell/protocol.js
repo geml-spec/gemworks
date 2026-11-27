@@ -96,7 +96,7 @@ export function decodeRequest(text) {
             && (v["to"] === undefined || (str("to") && v["to"] !== "")) && (v["kind"] !== "text" || str("text")),
         artifact: () => (v["kind"] === "link" || v["kind"] === "image" || v["kind"] === "file") && str("where")
             && (v["name"] === undefined || str("name")) && (v["version"] === undefined || str("version")) && (v["page"] === undefined || str("page"))
-            && (v["data"] === undefined || str("data")) && (v["mediaType"] === undefined || str("mediaType")),
+            && (v["data"] === undefined || str("data")) && (v["mediaType"] === undefined || str("mediaType")) && (v["online"] === undefined || (v["online"] === true && v["kind"] === "link")),
         artifacts: () => (v["elsewhere"] === undefined || (Array.isArray(v["elsewhere"]) && v["elsewhere"].every((p) => typeof p === "string")))
             && (v["notMade"] === undefined || (Array.isArray(v["notMade"]) && v["notMade"].every((p) => typeof p === "string"))),
         attention: () => v["session"] === undefined || (str("session") && v["session"] !== ""),

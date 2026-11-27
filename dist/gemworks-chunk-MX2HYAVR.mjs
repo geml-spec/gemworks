@@ -1,7 +1,7 @@
 import {
   langOf,
   wordsFor
-} from "./gemworks-chunk-DRIQ4DSM.mjs";
+} from "./gemworks-chunk-GDN3LU4X.mjs";
 import {
   TOOLS_FILE,
   blockText,
@@ -722,9 +722,10 @@ function artifactsOfItem(rows, item) {
   const by = /* @__PURE__ */ new Map();
   for (const r of rows) {
     if (r.item !== item) continue;
-    const key = `${r.kind}\0${r.name}`;
+    const key = `${r.kind}\0${r.kind === "link" ? r.where : r.name}`;
     const p = by.get(key) ?? { kind: r.kind, name: r.name, versions: [] };
     p.versions.push(r);
+    p.name = r.name;
     by.set(key, p);
   }
   const last = (p) => p.versions.at(-1)?.at ?? "";
@@ -828,6 +829,10 @@ function recordLink(home, item, link) {
     const versions = rows.filter((r) => r.item === item && r.kind === "link" && r.where === link.url);
     const prev = versions.at(-1);
     const name = link.name !== void 0 && link.name !== "" ? link.name : prev?.name ?? (link.fallback !== void 0 && link.fallback !== "" ? link.fallback : link.url);
+    if (link.numbered === true) {
+      if (!versions.some((r) => r.at === link.at)) rows.push({ item, kind: "link", name, where: link.url, version: String(versions.length + 1), size: null, at: link.at, sha256: "" });
+      return rows;
+    }
     if (versions.some((r) => r.version === (link.version ?? "") && r.name === name)) return rows;
     rows.push({ item, kind: "link", name, where: link.url, version: link.version ?? "", size: null, at: link.at, sha256: "" });
     return rows;
@@ -2005,6 +2010,106 @@ function decisionsContext(decisions, label2) {
   ].join("\n");
 }
 
+// src/core/online-docs.ts
+var LARK = /(^|\.)(larksuite\.com|feishu\.cn|larkoffice\.com)$/i;
+var GOOGLE = /^docs\.google\.com$/i;
+var ONLINE_DOC_SITES = [
+  // A Lark token is some 27 letters and digits: a shorter one is an address cut short in what a tool printed.
+  { host: LARK, path: /^\/(docx|docs|wiki|mindnotes)\/[A-Za-z0-9]{20,}(\/|$)/, word: "\u98DE\u4E66\u6587\u6863" },
+  { host: LARK, path: /^\/sheets\/[A-Za-z0-9]{20,}(\/|$)/, word: "\u98DE\u4E66\u8868\u683C" },
+  { host: LARK, path: /^\/base\/[A-Za-z0-9]{20,}(\/|$)/, word: "\u591A\u7EF4\u8868\u683C" },
+  { host: LARK, path: /^\/slides\/[A-Za-z0-9]{20,}(\/|$)/, word: "\u98DE\u4E66\u5E7B\u706F\u7247" },
+  { host: GOOGLE, path: /^\/document\/d\/[\w-]{10,}/, word: "Google \u6587\u6863" },
+  { host: GOOGLE, path: /^\/spreadsheets\/d\/[\w-]{10,}/, word: "Google \u8868\u683C" },
+  { host: GOOGLE, path: /^\/presentation\/d\/[\w-]{10,}/, word: "Google \u5E7B\u706F\u7247" },
+  { host: /(^|\.)notion\.(so|site)$/i, path: /[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}/i, word: "Notion \u9875\u9762" },
+  { host: /\.atlassian\.net$/i, path: /^\/wiki\/spaces\/[^/]+\/pages\/\d+/, word: "Confluence \u9875\u9762" },
+  { host: /(\.sharepoint\.com|^onedrive\.live\.com|^1drv\.ms)$/i, path: /^\/./, word: "Office \u6587\u6863" },
+  { host: /^docs\.qq\.com$/i, path: /^\/(doc|sheet|slide|form|smartsheet|mind|flowchart|pdf)\/./, word: "\u817E\u8BAF\u6587\u6863" },
+  { host: /(^|\.)yuque\.com$/i, path: /^\/[^/]+\/[^/]+\/./, word: "\u8BED\u96C0\u6587\u6863" },
+  { host: /^alidocs\.dingtalk\.com$/i, path: /^\/i\/nodes\/./, word: "\u9489\u9489\u6587\u6863" },
+  { host: /(^|\.)kdocs\.cn$/i, path: /^\/l\/./, word: "\u91D1\u5C71\u6587\u6863" }
+];
+function onlineDocOf(address) {
+  let u;
+  try {
+    u = new URL(address.trim());
+  } catch {
+    return void 0;
+  }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return void 0;
+  const site = ONLINE_DOC_SITES.find((s) => s.host.test(u.hostname) && s.path.test(u.pathname));
+  if (site === void 0) return void 0;
+  if (GOOGLE.test(u.hostname)) {
+    const m = /^\/(document|spreadsheets|presentation)\/d\/([\w-]+)/.exec(u.pathname);
+    return { url: `https://docs.google.com/${m[1]}/d/${m[2]}/edit`, word: site.word };
+  }
+  const office = /sharepoint\.com$|onedrive\.live\.com$|^1drv\.ms$/i.test(u.hostname);
+  const path = u.pathname.replace(/\/+$/, "");
+  return { url: `https://${u.hostname.toLowerCase()}${path}${office ? u.search : ""}`, word: site.word };
+}
+var WRITES = /* @__PURE__ */ new Set(["create", "update", "import", "insert", "append", "write", "edit", "modify", "replace", "batch", "set", "patch", "copy", "move", "upload", "add", "overwrite", "upsert", "put", "save", "publish", "rename", "duplicate", "fill"]);
+var READS = /* @__PURE__ */ new Set(["get", "list", "search", "query", "fetch", "read", "export", "download", "history", "info", "meta", "view", "help", "revision", "changeset", "preview", "delete", "remove", "trash", "count", "find", "describe", "status", "auth", "login", "schema"]);
+var BESIDE = /* @__PURE__ */ new Set(["message", "messages", "chat", "im", "mail", "email", "comment", "comments", "reply", "send", "calendar", "event", "events", "task", "tasks", "permission", "permissions", "member", "members", "folder", "share"]);
+var wordsOf = (name) => name.split(/[-_.+\s]+|(?<=[a-z0-9])(?=[A-Z])/).map((w) => w.toLowerCase()).filter((w) => w !== "");
+var isWrite = (words) => words.some((w) => WRITES.has(w)) && !words.some((w) => READS.has(w) || BESIDE.has(w));
+var DOC_CLIS = ["lark-cli", "gws", "gog"];
+var CLI_AT = new RegExp(`(?:^|[\\s;&|(\`$])(${DOC_CLIS.map((c) => c.replace(/-/g, "\\-")).join("|")})((?:[ \\t]+[^\\s;&|)'"\`]+)*)`, "g");
+function writesByCommand(command) {
+  for (const m of command.matchAll(CLI_AT)) {
+    const args = (m[2] ?? "").trim().split(/[ \t]+/);
+    if (args.some((a) => /^(--help|-h|--dry-run|--print-schema)$/.test(a))) continue;
+    const lead = args.slice(0, args.findIndex((a) => a.startsWith("-")) === -1 ? args.length : args.findIndex((a) => a.startsWith("-")));
+    if (isWrite(lead.flatMap(wordsOf))) return true;
+  }
+  return false;
+}
+function writesByTool(tool) {
+  const m = /^mcp__(.+?)__(.+)$/.exec(tool);
+  if (m === null || /gemworks/i.test(m[1])) return false;
+  return isWrite(wordsOf(m[2]));
+}
+var RUNS = /* @__PURE__ */ new Set(["Bash", "PowerShell"]);
+function mayWriteOnlineDoc(tool, input) {
+  const command = input["command"];
+  if (RUNS.has(tool)) return typeof command === "string" && writesByCommand(command);
+  return writesByTool(tool);
+}
+var ADDRESS = /https?:\/\/[^\s"'<>()\\`,;]+/g;
+var GOOGLE_IDS = [
+  [/"documentId"\s*:\s*"([\w-]{20,})"/g, "document"],
+  [/"spreadsheetId"\s*:\s*"([\w-]{20,})"/g, "spreadsheets"],
+  [/"presentationId"\s*:\s*"([\w-]{20,})"/g, "presentation"]
+];
+var MOST = 5;
+var addressesIn = (text) => {
+  const found = [...text.matchAll(ADDRESS)].map((m) => onlineDocOf(m[0].replace(/[.:]+$/, ""))).filter((d) => d !== void 0);
+  for (const [re, kind] of GOOGLE_IDS) for (const m of text.matchAll(re)) found.push(onlineDocOf(`https://docs.google.com/${kind}/d/${m[1]}/edit`));
+  return found.filter((d, i) => found.findIndex((x) => x.url === d.url) === i);
+};
+var NAME_IN = [/"title"\s*:\s*"([^"\n]{1,120})"/, /--title[ =]+(?:"([^"\n]{1,120})"|'([^'\n]{1,120})')/, /--name[ =]+(?:"([^"\n]{1,120})"|'([^'\n]{1,120})')/];
+function nameIn(...texts) {
+  for (const text of texts) {
+    for (const re of NAME_IN) {
+      const m = re.exec(text);
+      const name = (m?.[1] ?? m?.[2])?.trim();
+      if (name !== void 0 && name !== "") return name;
+    }
+  }
+  return void 0;
+}
+function onlineDocWrites(tool, input, result) {
+  if (!mayWriteOnlineDoc(tool, input)) return [];
+  if (/"dry_run"\s*:\s*true/.test(result)) return [];
+  if (/"ok"\s*:\s*false/.test(result) && !/"ok"\s*:\s*true/.test(result)) return [];
+  const given = typeof input["command"] === "string" ? input["command"] : JSON.stringify(input);
+  const answered = addressesIn(result);
+  const docs = (answered.length > 0 ? answered : addressesIn(given)).slice(0, MOST + 1);
+  if (docs.length > MOST) return [];
+  const name = docs.length === 1 ? nameIn(given, result) : void 0;
+  return docs.map((d) => name !== void 0 ? { ...d, name } : d);
+}
+
 // src/core/transcript.ts
 function slugOf(path) {
   return path.replace(/[^A-Za-z0-9-]/g, "-");
@@ -2081,6 +2186,12 @@ function readTranscript(text) {
             const link = publishedLink(resultText(r));
             const title = str(call.input["title"]);
             if (link !== void 0 && !call.turn.links.some((l) => l.url === link.url && l.version === link.version)) call.turn.links.push({ ...link, ...title !== void 0 ? { title } : {} });
+          } else if (r.is_error !== true) {
+            for (const d of onlineDocWrites(call.tool, call.input, resultText(r))) {
+              const was = call.turn.links.find((l) => l.online === true && l.url === d.url);
+              if (was === void 0) call.turn.links.push({ url: d.url, online: true, ...d.name !== void 0 ? { title: d.name } : {} });
+              else if (d.name !== void 0) was.title = d.name;
+            }
           }
         }
         continue;
@@ -2126,7 +2237,7 @@ function readTranscript(text) {
         if (tool === "Write" || tool === "Edit" || tool === "NotebookEdit") {
           const path = str(input["file_path"]) ?? str(input["notebook_path"]);
           if (path !== void 0 && !current.files.includes(path)) current.files.push(path);
-        } else if (tool === "Artifact" && str(b.id) !== void 0) {
+        } else if ((tool === "Artifact" || mayWriteOnlineDoc(tool, input)) && str(b.id) !== void 0) {
           pending.set(str(b.id), { turn: current, tool, input });
         }
       }
@@ -2379,7 +2490,7 @@ function decodeRequest(text) {
     use: () => str4("workflow"),
     import: () => str4("path") && v["path"] !== "",
     export: () => EXPORT_KINDS.has(v["kind"]) && EXPORT_FORMATS.has(v["format"]) && (v["name"] === void 0 || str4("name")) && (v["text"] === void 0 || str4("text")) && (v["strip"] === void 0 || typeof v["strip"] === "boolean") && (v["to"] === void 0 || str4("to") && v["to"] !== "") && (v["kind"] !== "text" || str4("text")),
-    artifact: () => (v["kind"] === "link" || v["kind"] === "image" || v["kind"] === "file") && str4("where") && (v["name"] === void 0 || str4("name")) && (v["version"] === void 0 || str4("version")) && (v["page"] === void 0 || str4("page")) && (v["data"] === void 0 || str4("data")) && (v["mediaType"] === void 0 || str4("mediaType")),
+    artifact: () => (v["kind"] === "link" || v["kind"] === "image" || v["kind"] === "file") && str4("where") && (v["name"] === void 0 || str4("name")) && (v["version"] === void 0 || str4("version")) && (v["page"] === void 0 || str4("page")) && (v["data"] === void 0 || str4("data")) && (v["mediaType"] === void 0 || str4("mediaType")) && (v["online"] === void 0 || v["online"] === true && v["kind"] === "link"),
     artifacts: () => (v["elsewhere"] === void 0 || Array.isArray(v["elsewhere"]) && v["elsewhere"].every((p) => typeof p === "string")) && (v["notMade"] === void 0 || Array.isArray(v["notMade"]) && v["notMade"].every((p) => typeof p === "string")),
     attention: () => v["session"] === void 0 || str4("session") && v["session"] !== "",
     "backfill-list": () => v["transcripts"] === void 0 || str4("transcripts"),
@@ -2843,13 +2954,13 @@ function workEvents(args, flows, items, at, turn, newId, runs = []) {
     const before = was?.met ?? [];
     const metIds = [...new Set(named2 !== void 0 ? named2.map((s) => s.id) : before.map((m) => m.step))];
     const said = str2(x["said"]).trim();
-    const theirs = metIds.map((s) => stepNamed(s)).filter((s) => s.judge === "you" && !before.some((m) => m.step === s.id));
+    const theirs = metIds.map(stepNamed).filter((s) => s !== void 0 && s.judge === "you" && !before.some((m) => m.step === s.id));
     if (theirs.length > 0 && said === "") {
       errors.push(`item ${n + 1}: ${theirs.map((s) => s.title).join("\u3001")} is the person's to meet: put what they said in \`said\`, or leave it for their press`);
       return;
     }
     const evidence = str2(x["evidence"]).trim();
-    const facts = metIds.filter((s) => stepNamed(s).judge === "fact" && !before.some((m) => m.step === s));
+    const facts = metIds.filter((s) => stepNamed(s)?.judge === "fact" && !before.some((m) => m.step === s));
     const seen = evidence !== "" ? seenIn(evidence, runs) : void 0;
     const met = metIds.map((s) => before.find((m) => m.step === s) ?? {
       step: s,
@@ -4212,7 +4323,7 @@ function madeAllOf(root) {
   }
   const by = /* @__PURE__ */ new Map();
   for (const r of rows) {
-    const key = `${r.item}\0${r.kind}\0${r.name}`;
+    const key = `${r.item}\0${r.kind}\0${r.kind === "link" ? r.where : r.name}`;
     const was = by.get(key);
     const copy = r.where.startsWith("artifacts/") ? copyPath(home, r.where) : was?.copy;
     by.set(key, { row: r, versions: (was?.versions ?? 0) + 1, ...copy !== void 0 ? { copy } : {} });
@@ -4360,10 +4471,11 @@ function recordArtifact2(ws, root, req) {
   const at = artifactsAt(ws, root, req.item);
   if (at === void 0) return { ok: false, reason: "there is no current work item to record it under" };
   const { home, item } = at;
-  const where = req.where.trim();
+  let where = req.where.trim();
   if (where === "") return { ok: false, reason: "where is empty: give the link's address or the file's path" };
   if (req.kind === "link") {
     if (!/^https?:\/\//i.test(where)) return { ok: false, reason: "a link's where is its http(s) address" };
+    where = onlineDocOf(where)?.url ?? where;
     let name = req.name?.trim() ?? "";
     if (name === "" && req.page !== void 0) {
       try {
@@ -4372,7 +4484,7 @@ function recordArtifact2(ws, root, req) {
       }
     }
     const fallback = req.page !== void 0 ? basename7(req.page).replace(/\.[^.]*$/, "") : void 0;
-    recordLink(home, item, { name, ...fallback !== void 0 ? { fallback } : {}, url: where, ...req.version !== void 0 && req.version !== "" ? { version: req.version } : {}, at: (/* @__PURE__ */ new Date()).toISOString() });
+    recordLink(home, item, { name, ...fallback !== void 0 ? { fallback } : {}, url: where, ...req.version !== void 0 && req.version !== "" ? { version: req.version } : {}, at: (/* @__PURE__ */ new Date()).toISOString(), ...req.online === true ? { numbered: true } : {} });
     return { ok: true, text: `Recorded the link under ${item}'s artifacts.` };
   }
   if (req.data !== void 0) {
@@ -4447,7 +4559,7 @@ function backfillOne(ws, root, req) {
       if (item === void 0 || item === "") continue;
       for (const l of turn.links) {
         try {
-          recordLink(home, item, { ...l.title !== void 0 ? { name: l.title } : {}, url: l.url, ...l.version !== void 0 ? { version: l.version } : {}, at: turn.answerAt ?? turn.at });
+          recordLink(home, item, { ...l.title !== void 0 ? { name: l.title } : {}, url: l.url, ...l.version !== void 0 ? { version: l.version } : {}, at: turn.answerAt ?? turn.at, ...l.online === true ? { numbered: true } : {} });
           links += 1;
         } catch {
         }

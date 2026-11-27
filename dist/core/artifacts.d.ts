@@ -42,7 +42,10 @@ export interface Artifact {
     name: string;
     versions: ArtifactRow[];
 }
-/** A work item's artifacts from the table's rows, by kind and name; the newest version last within each; the most recently changed first. */
+/**
+ * A work item's artifacts from the table's rows, by kind and name — a link by its address, named as its newest
+ * version is; the newest version last within each; the most recently changed first.
+ */
 export declare function artifactsOfItem(rows: readonly ArtifactRow[], item: string): Artifact[];
 /** A page's `<title>`, from its first 8 KB. */
 export declare function pageTitle(html: string): string | undefined;

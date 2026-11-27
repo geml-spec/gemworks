@@ -131,6 +131,12 @@ export declare function appendEvents(text: string, events: readonly SessionEvent
 export declare function nextTurn(events: readonly SessionEvent[]): number;
 /** The turn now under way: the last prompt's. */
 export declare function currentTurn(events: readonly SessionEvent[]): number;
+/**
+ * A prompt the person pressed (an option the plugin said into the conversation as theirs), as it entered: the next turn,
+ * and the decisions the press made, theirs, under it. Words already the last prompt, seconds before (the same prompt
+ * recorded by its hook as well), add only the decisions.
+ */
+export declare function pressedPrompt(events: readonly SessionEvent[], text: string, at: string, decisions?: readonly string[], uuid?: string): SessionEvent[];
 /** `gist`: the answer's first sentence, kept by a reader that lets the answer itself go. */
 /** A work item a turn moved: the steps it met in that turn (with their words or press), where the item then stood, and when. */
 export interface TurnMove {
