@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { fileUnitOf, itemProgress, loadWorkspace, openWorkspace, resolvePromptRef, resolveWorkflow } from "../dist/workspace.js";
+import { fileUnitOf, journalProgress, loadWorkspace, openWorkspace, resolvePromptRef, resolveWorkflow } from "../dist/workspace.js";
 import { CLAUDE_CODE_TOOLS, NO_TOOLS } from "../dist/core/host-tools.js";
 import { readJournal, verifyJournal } from "../dist/core/journal.js";
 import { readContextDoc } from "../dist/core/stagehand.js";
@@ -897,7 +897,7 @@ test("another work item's progress: none for an unsafe id, an item with no journ
   mkdirSync(join(p.root, ".geml", "workflows", "untitled"));
   writeFileSync(join(p.root, ".geml", "workflows", "untitled", "flow.geml"), UNTITLED);
   put("feat/u", ".geml/workflows/untitled/flow.geml");
-  const progress = (id, def) => itemProgress(p.root, p.root, id, new Map(), def);
+  const progress = (id, def) => journalProgress(p.root, p.root, id, new Map(), def);
   assert.equal(progress("../escape"), undefined);
   assert.equal(progress("feat/none"), undefined);
   assert.equal(progress("feat/empty"), undefined);

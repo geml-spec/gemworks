@@ -243,13 +243,13 @@ export function sideFlows(root: string, defaultPath: string): { name: string; pa
 }
 
 /** What one work item's journal says of it, for another that names it: its state and whether that is final, when it began and last moved, the files it wrote (newest first), its name and its flow's title. */
-export interface ItemProgress { id: string; title?: string; flow?: string; state: string; stateTitle?: string; final: boolean; since: string; at: string; wrote: string[] }
+export interface JournalProgress { id: string; title?: string; flow?: string; state: string; stateTitle?: string; final: boolean; since: string; at: string; wrote: string[] }
 
 /** The flows read while answering one request, by their file: loaded once each. */
 export type FlowCache = Map<string, { sc: Statechart; title: string } | null>;
 
 /** Another work item's progress, from its journal (under `journalBase`) and its file; undefined while it has no journal. */
-export function itemProgress(root: string, journalBase: string, id: string, flows: FlowCache, defaultFile = ""): ItemProgress | undefined {
+export function journalProgress(root: string, journalBase: string, id: string, flows: FlowCache, defaultFile = ""): JournalProgress | undefined {
   if (!isSafeItemId(id)) return undefined;
   const path = join(journalBase, journalPathFor(id));
   if (!exists(path)) return undefined;
@@ -804,7 +804,7 @@ export class Workspace {
     }
     const flows: FlowCache = new Map([[this.workflowFile, { sc: this.sc, title: this.title }]]);
     this.dependsRead = ids.map((id): Dependency => {
-      const p = itemProgress(this.o.root, this.journalBase, id, flows, this.workflowFile);
+      const p = journalProgress(this.o.root, this.journalBase, id, flows, this.workflowFile);
       return p === undefined ? { id, done: false, wrote: [] } : {
         id, ...(p.title !== undefined ? { title: p.title } : {}), ...(p.flow !== undefined ? { flow: p.flow } : {}), done: p.final, since: p.since, at: p.at, wrote: p.wrote,
       };

@@ -61,7 +61,7 @@ import { flowPicture } from "./core/picture.js";
 import { runVerb } from "./verbs.js";
 import { writeSignoffs } from "./store/signoffs.js";
 import type { Lang } from "./hosts/claude-code/text.js";
-import { dependsOf, fileUnitOf, itemProgress, loadWorkspace, openWorkspace, resolveWorkflow, sideFlows, workflowNameOf, type FlowCache, type Opened, type ShellView, type Workspace } from "./workspace.js";
+import { dependsOf, fileUnitOf, journalProgress, loadWorkspace, openWorkspace, resolveWorkflow, sideFlows, workflowNameOf, type FlowCache, type Opened, type ShellView, type Workspace } from "./workspace.js";
 import type { Backfill, BoardData, BoardItem, BridgeRequest, BridgeResponse, CorrectionsView, Made, MadeAll, MadeAllEntry, MadeEntry, Artifacts, ShellStatus, TimelineEntry, TodoCount } from "./hosts/claude-code/protocol.js";
 
 type Answered = Extract<BridgeResponse, { ok: true }>;
@@ -306,7 +306,7 @@ function listItems(ws: Workspace, root: string, workflowFile: string, prs?: Read
         depends = dependsOf(source);
       } catch { title = undefined; }
     }
-    const progress = itemProgress(root, ws.journalBase, id, flows, defaultFile ?? "");
+    const progress = journalProgress(root, ws.journalBase, id, flows, defaultFile ?? "");
     // Its own flow's statechart: the one at hand, or one read for it once this request.
     const flow = own === workflowFile ? { sc: ws.sc } : flows.get(own) ?? null;
     const sc = flow?.sc;
