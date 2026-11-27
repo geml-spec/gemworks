@@ -1,9 +1,9 @@
 # Gemworks workflows — a workflow as a GEML document, and its journal
 
-*English | [中文](workflow_CN.md)*
+*English | [中文](workflow-format.zh.md)*
 
 - Status: **draft**: this may still change. Design rationale:
-  [`spec/design.md`](design.md).
+  [`design.zh.md`](design.zh.md) (in Chinese).
 - Nature: **Gemworks's own format, not a GEML profile.** It adds no block type,
   no attribute key and no diagram format to GEML, so it needs no vocabulary:
   a workflow declares [`geml-statechart/v1`](https://github.com/geml-spec/geml/blob/main/spec/profiles/geml-statechart/geml-statechart-profile.md)
@@ -849,7 +849,7 @@ workflows — and reports Gemworks's own:
 | `flow-tools` | error | the tool dictionary's (§2.3) header is wrong; `allow` or `deny` names a state the workflow does not have; `params` is not a JSON object; a use has two `default`s |
 
 A diagnostic names a transition `from→to`. Every check is pinned in
-[`checks.json`](checks.json), beside this document, and the runtime's tests
+[`test/fixtures/checks.json`](../test/fixtures/checks.json), and the runtime's tests
 replay each case: a document and the `severity:code` list the loader must
 report.
 

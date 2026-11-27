@@ -86,7 +86,7 @@ export function readsGit(sc: Statechart): { git: boolean; gh: boolean } {
 }
 
 /**
- * The clock's evidence (workflow.md §3.6): each `elapsed` variable is true once the
+ * The clock's evidence (workflow-format.md §3.6): each `elapsed` variable is true once the
  * current state has been held at least its duration — from the revision that
  * entered the state (checkpointRev) to `now`. Every such variable is returned;
  * writing one that holds its value already adds no revision.

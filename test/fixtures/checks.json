@@ -1,5 +1,5 @@
 {
-  "about": "Static checks of the Gemworks runtime (gemworks check), workflow.md §4. Each case: a workflow document, optionally the tool dictionary beside it (`tools`), and the sorted severity:code list the loader must report — loadStatechart's diagnostics, then readDictionary's against the loaded statechart.",
+  "about": "Static checks of the Gemworks runtime (gemworks check), workflow-format.md §4. Each case: a workflow document, optionally the tool dictionary beside it (`tools`), and the sorted severity:code list the loader must report — loadStatechart's diagnostics, then readDictionary's against the loaded statechart.",
   "cases": [
     {
       "name": "a clean workflow: a use, a tool variable, a machine-judged edge",

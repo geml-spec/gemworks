@@ -78,8 +78,8 @@ flowchart TB
 | 还没实测 | 在 DeepSeek Harness 上按状态重注册 `move` 与 `set` 对提示词缓存的代价。 |
 | bundle 里还带着 | `host-skills/` 下的四个技能——`geml`、`geml-code-graph`、`gemworks-mcp` 与 `split-session`（见[安装](hosts.zh.md#安装)）。 |
 
-设计：[`spec/design.md`](../spec/design.md)。
-流程格式与运行时规则：[`spec/workflow_CN.md`](../spec/workflow_CN.md)；
+设计：[`design.zh.md`](design.zh.md)。
+流程格式与运行时规则：[`workflow-format.zh.md`](workflow-format.zh.md)；
 状态机格式：GEML 仓库里的 [`spec/profiles/geml-statechart/`](https://github.com/geml-spec/geml/blob/main/spec/profiles/geml-statechart/geml-statechart-profile_CN.md)。
 
 ## 一份流程

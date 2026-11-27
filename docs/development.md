@@ -2,7 +2,7 @@
 
 [← Back to README](../README.md)
 
-This page covers the layout and how to build and test. What each part does, where it is built and why: [spec/design.md](../spec/design.md) (in Chinese).
+This page covers the layout and how to build and test. What each part does, where it is built and why: [design.zh.md](design.zh.md) (in Chinese).
 
 ## Project layout
 
@@ -98,7 +98,7 @@ node:test suite, every `*.test.mjs` under `test/`, covers the rest, including
 `test/shell/fastpath-parity.test.mjs`, which holds the plugin's fast path to what the
 workspace would refuse, record and ask about, and
 `test/core/checks-conformance.test.mjs`, which replays
-`spec/checks.json`.
+`test/fixtures/checks.json`.
 
 `src/core/` is a pure library — no `node:fs`, no `process`, no `console`, and
 no host package either (tests pin all of it) — so the CLI, the Claude Code

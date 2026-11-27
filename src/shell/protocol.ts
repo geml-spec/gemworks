@@ -181,7 +181,7 @@ export interface BoardData {
   /** What one work item is: a branch, a file (`file:` unit), or a session (dsh). */
   unit: "branch" | "file" | "session";
   states: { id: string; title: string; description: string; initial: boolean; final: boolean; uses: string[] }[];
-  /** The `elapsed` variables (workflow.md §3.6): the clocks the flow page shows. */
+  /** The `elapsed` variables (workflow-format.md §3.6): the clocks the flow page shows. */
   clocks: { name: string; iso: string; ms: number }[];
   /** The work item's content fingerprint now: a `tool` evidence entry whose `tree` differs has expired or will. */
   tree?: string;

@@ -286,7 +286,7 @@ export class Supervisor {
   }
 
   /** Write each variable's value; then take automatic transitions while one holds. */
-  /** The clock's evidence (workflow.md §3.6): the `elapsed` variables as of `meta.at`; nothing in a final state, where the work item is closed. */
+  /** The clock's evidence (workflow-format.md §3.6): the `elapsed` variables as of `meta.at`; nothing in a final state, where the work item is closed. */
   elapse(meta: Meta): { wrote: string[]; entered: string[] } {
     if (this.sc.states.get(this.run.snapshot.state)?.final === true) return { wrote: [], entered: [] };
     return this.applySignals(elapsedSignals(this.sc, this.run.history, meta.at), meta);

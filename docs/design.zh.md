@@ -2,8 +2,8 @@
 
 本文讲 gemworks 为什么做成现在这样、各部分怎么配合：§0–§3 是定位、目标与总体架构；§4–§5 是固化流程的格式与运行时；§6 是代码的组成；§7 是内置流程；§8 是各宿主上的界面；§9–§12 是测试、还没做的、取舍和宿主能力。
 
-- 固化流程格式的规范文本是 [`workflow.md`](workflow.md)（中文版 [`workflow_CN.md`](workflow_CN.md)），两边说法不一致时以它为准。
-- 代码注释里的「spec §x.y」引的是本文的章节号（§3.6 那几处引的是 workflow.md），所以改本文时章节号不动。
+- 固化流程格式的规范文本是 [`workflow-format.md`](workflow-format.md)（中文版 [`workflow-format.zh.md`](workflow-format.zh.md)），两边说法不一致时以它为准。
+- 代码注释里的「spec §x.y」引的是本文的章节号（§3.6 那几处引的是 workflow-format.md），所以改本文时章节号不动。
 
 ---
 
@@ -294,7 +294,7 @@ PR 已开。逐条处理 review 意见……
 | `flow-unit` | error | `flow-unit` 不是 `branch`，也不是 `file:` 加一个非空 glob；`flow-state-key` 写在按分支的流程里，或不是一个键名 |
 | `flow-tools` | error | 工具词典表头不对；`allow`、`deny` 里有流程没有的状态；`params` 不是 JSON 对象；同一用途有两个 `default` |
 
-诊断里转换写作 `from→to`。每条检查都钉在 [`checks.json`](checks.json) 里，由 `test/core/checks-conformance.test.mjs` 逐例重放。
+诊断里转换写作 `from→to`。每条检查都钉在 [`checks.json`](../test/fixtures/checks.json) 里，由 `test/core/checks-conformance.test.mjs` 逐例重放。
 
 ## 5. 运行时
 
@@ -802,7 +802,7 @@ Pi 的扩展分两块。**工作循环**（`src/hosts/pi/loop.ts`）总是在：
 
 - **纯函数各有单测**：核心全是纯函数——每条静态检查、每种信号、三种推进来源、工具词典的判定与学习、用途封路、journal 加锁与续链、工作项与进度、做法、规定、提议、纠正账本、会话记录；Claude Code 插件的纯部分（状态带、看板各页、待处理、会话页、分享、设置、时间与词条表、`/gemworks` 的文字）也是，含中日韩字符宽度。
 - **目录跟着 `src/` 走**：`test/` 下是 node:test 测试（`*.test.mjs`），跑的是编译后的 `dist/`，分 `core/`、`shell/`、`claude-code/`、`hosts/`、`store/`、`flows/`（内置流程从头走到尾）、`package/`（包里发出去的东西），`src/` 根目录模块的测试在 `test/` 顶层。`node test/all.mjs` 分几条并行跑全部，也可以只跑点名的几个文件。
-- **钉住格式与一致**：[`checks.json`](checks.json) 钉住静态检查，`test/core/checks-conformance.test.mjs` 逐例重放；`test/shell/fastpath-parity.test.mjs` 对着工作区钉住快路径——工作区会拒绝或记录的调用都请 `before`，会改变状态、策略或 journal 的调用都请 `after`；`test/shell/actions.test.mjs` 钉住看板的每个按钮动作在 `act()` 里都有处理分支。
+- **钉住格式与一致**：[`checks.json`](../test/fixtures/checks.json) 钉住静态检查，`test/core/checks-conformance.test.mjs` 逐例重放；`test/shell/fastpath-parity.test.mjs` 对着工作区钉住快路径——工作区会拒绝或记录的调用都请 `before`，会改变状态、策略或 journal 的调用都请 `after`；`test/shell/actions.test.mjs` 钉住看板的每个按钮动作在 `act()` 里都有处理分支。
 - **桥接与宿主**：bridge 经打包后的 `dist/gemworks.mjs` 在临时 git 仓库里逐个请求测（`gh` 用 `GEMWORKS_GH` 指向的替身）；各钩子宿主的适配器按真实事件经 bundle 驱动；DeepSeek Harness 用一个真的 dsh agent 走工具管线；Pi 用一个按 Pi 接口写的替身，`pi-parity` 测试让替身和真 Pi 的形状保持一致；`gemworks mcp` 逐条消息测。
 - **插件模块**：`test/claude-code/hooks.test.ts` 由 `claude plugin test` 在引擎的测试宿主里按真实事件顺序驱动（会话开始、工具调用写信号、自动边推进、结果里带上新阶段、看板按钮、桥接坏掉与错误应答与没有 Node 时放行、注册被拒、各界面上的状态带与看板等），桥接由测试脚本应答。另有三个检查：`hooks-types` 拿引擎写出的插件 API 声明对插件模块做类型检查，并且不许用到声明里标为弃用的调用（有理由保留的回退写在例外表里）；`hooks-purity` 沿插件模块的静态 import 链检查，不许任何需要 Node 的东西进来；`hooks-split` 检查包里除图片、字体以外的每个文件都不到 256 KiB、整个插件不超过 512 个文件，这是 Anthropic 插件目录的上限。
 - **门与 CI**：同步一次试用版之前，四道门各跑一次：`npm run build`、`claude plugin validate .`、`claude plugin test .`、`node test/all.mjs` 加这次改动碰到的测试文件；类型检查找不到声明时算失败，不算跳过。CI 在每次推送到 main 时，在 Linux、macOS、Windows 三个平台上跑全部 node:test 测试；Linux 上另跑覆盖率（`npm run coverage`：c8 经源码映射按 `src/` 计，行低于 95%、分支低于 85% 就失败）；`engine.yml` 在最新版 Claude Code 上跑 `claude plugin validate` 和 `claude plugin test`，每周一也跑一次，引擎接口变了一周之内就会发现。

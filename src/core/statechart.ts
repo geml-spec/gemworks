@@ -69,7 +69,7 @@ export type Source =
   | { kind: "file"; glob: string }
   | { kind: "git"; fact: GitFact }
   | { kind: "human" }
-  /** The clock: true once the current state has been held at least `ms` (workflow.md §3.6). `iso` is the duration as written. */
+  /** The clock: true once the current state has been held at least `ms` (workflow-format.md §3.6). `iso` is the duration as written. */
   | { kind: "elapsed"; iso: string; ms: number };
 
 export interface Var {

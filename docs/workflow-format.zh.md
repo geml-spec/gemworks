@@ -1,8 +1,8 @@
 # Gemworks 流程 —— 写成 GEML 文档的流程，和它的 journal
 
-*[English](workflow.md) | 中文*
+*[English](workflow-format.md) | 中文*
 
-- 状态：**draft**：仍可能改动。设计依据：[`spec/design.md`](design.md)。
+- 状态：**draft**：仍可能改动。设计依据：[`design.zh.md`](design.zh.md)。
 - 性质：**Gemworks 自己的格式，不是 GEML 的 profile。** 它不给 GEML 加块类型、属性键或 diagram 格式，所以不需要词汇表：流程只声明 [`geml-statechart/v1`](https://github.com/geml-spec/geml/blob/main/spec/profiles/geml-statechart/geml-statechart-profile_CN.md)。那个格式——正文的形状、通行要求的三种写法、`reset` 动作、画法、`statechart-*` 检查——属于 GEML；本文加的是挂在那台状态机的状态、变量、转换上、把它接到 Gemworks 的几个键（格式本来就把它们当属性放行），外加一个 `=== meta` 键 `flow-unit`，在 GEML 看来那只是作者的元数据。GEML 的解析器对 Gemworks 一无所知。一份流程就是一份普通的 GEML 文档：一个装着状态机的 `diagram` 块，它引用的提示词文档和通行要求 `data` 块，旁边一份只是一张 `table` 的工具词典。journal 与上下文文档也是普通的 `data`、`text` 块。GEML 不需要读其中任何新语法。解释它们的运行时是 `gemworks`（本仓库）：Claude Code 插件，Codex、Cursor、Qwen Code、OpenCode、Devin、TRAE、Kiro、Antigravity 的钩子适配器，`gemworks` CLI 及其 MCP 服务（`gemworks mcp`），以及 DeepSeek Harness 与 Pi 的进程内适配器。
 - 运行时覆盖：DeepSeek Harness 与 pi agent 适配器按会话记 journal（`item` 是 `session:<id>`），命令和工具的证据照记，但不读 git 与文件来源，也不写上下文文档。只接 MCP 的宿主不把自己的工具调用交给 Gemworks，所以在它上面工具词典、用途封路与只许人做的命令都不起作用（§3.11）。
 
@@ -510,7 +510,7 @@ Claude Code 里列为 `mcp__gemworks__status`、`mcp__gemworks__move`、`mcp__ge
 | `flow-unit` | error | `flow-unit` 不是 `branch`，也不是 `file:` 加一个非空 glob；或者 `flow-state-key` 写在按分支的流程里、不是一个键名 |
 | `flow-tools` | error | 工具词典（§2.3）表头不对；`allow`、`deny` 里有流程没有的状态；`params` 不是 JSON 对象；同一用途有两个 `default` |
 
-诊断里转换写作 `from→to`。每条检查都钉在本文旁边的 [`checks.json`](checks.json)，由运行时的测试逐例重放：每个用例是一份文档，以及载入器必须报出的 `severity:code` 列表。
+诊断里转换写作 `from→to`。每条检查都钉在 [`test/fixtures/checks.json`](../test/fixtures/checks.json)，由运行时的测试逐例重放：每个用例是一份文档，以及载入器必须报出的 `severity:code` 列表。
 
 `gemworks verify` 校验一本 journal：链、`cause` 与 `from`/`restores` 一致、每次记录的转换都是状态机里的一条转换、`by=signal` 时 `signal` 是有 `source` 的变量、`pause` 与 `resume` 是 `by=human`、状态与变量不变、暂停的是没暂停的工作项而继续的是暂停中的。
 

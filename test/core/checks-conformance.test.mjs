@@ -1,4 +1,4 @@
-// Replays spec/checks.json: the table of static
+// Replays test/fixtures/checks.json: the table of static
 // checks (§4) is the source of truth, and this file only proves the loader
 // and the dictionary reader agree.
 import { test } from "node:test";
@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { loadStatechart } from "../../dist/core/statechart.js";
 import { readDictionary } from "../../dist/core/dictionary-file.js";
 
-const table = JSON.parse(readFileSync(new URL("../../spec/checks.json", import.meta.url), "utf8"));
+const table = JSON.parse(readFileSync(new URL("../fixtures/checks.json", import.meta.url), "utf8"));
 
 for (const c of table.cases) {
   test(`checks.json: ${c.name}`, () => {

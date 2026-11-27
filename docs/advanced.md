@@ -86,8 +86,8 @@ the dictionary denies in this state; every other tool runs as usual.
 | Not yet measured | What re-registering `move` and `set` per state costs DeepSeek Harness's prompt cache. |
 | Also in this bundle | Four skills under `host-skills/` — `geml`, `geml-code-graph`, `gemworks-mcp` and `split-session` (see [Install](hosts.md#install)). |
 
-Design: [`spec/design.md`](../spec/design.md).
-The workflow format and runtime rules: [`spec/workflow.md`](../spec/workflow.md);
+Design: [`design.zh.md`](design.zh.md) (in Chinese).
+The workflow format and runtime rules: [`workflow-format.md`](workflow-format.md);
 the statechart format: [`spec/profiles/geml-statechart/`](https://github.com/geml-spec/geml/blob/main/spec/profiles/geml-statechart/geml-statechart-profile.md) in the GEML repository.
 
 ## A workflow

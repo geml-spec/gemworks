@@ -2,7 +2,7 @@
 
 [← 回到 README](../README.zh.md)
 
-这里讲目录和怎么构建、测试；现在有哪些功能、各在哪实现、为什么这样做，见 [spec/design.md](../spec/design.md)。
+这里讲目录和怎么构建、测试；现在有哪些功能、各在哪实现、为什么这样做，见 [design.zh.md](design.zh.md)。
 
 ## 项目布局
 
@@ -82,7 +82,7 @@ Node 的模块，`test/claude-code/hooks-purity.test.mjs` 沿着这条 import �
 由 `claude plugin test` 跑（它不进 `node_modules`）；其余由 `test/` 下各个 `*.test.mjs` 的 node:test 测，其中
 `test/shell/fastpath-parity.test.mjs` 把插件的快路径钉在 workspace 会拒绝、会记录、会询问的
 范围上，`test/core/checks-conformance.test.mjs` 回放
-`spec/checks.json`。
+`test/fixtures/checks.json`。
 
 `src/core/` 是纯函数库——不碰 `node:fs`、`process`、`console`，也不 import 任何
 宿主的包（这几条都有测试钉着）——所以 CLI、Claude Code 的桥、`gemworks mcp` 和两个适配器
