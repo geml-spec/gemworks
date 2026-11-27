@@ -66,6 +66,8 @@ declare module 'claude-code' {
       madeHere: string[]
       /** The online documents this turn wrote (a Lark doc, a Google sheet): one version each at the turn's end. */
       madeOnline: { url: string; name?: string }[]
+      /** Presses said into the conversation as the person's, waiting to enter it: each one's words and the decisions it made. */
+      pressed: { text: string; decisions: string[] }[]
       /** The questions the model registered with the ask tool this turn: the band's at the turn's end. */
       asked: { question: string; options: string[]; recommended?: string; item?: string; at?: string }[]
       /** The questions the person's last prompt left open: the next reply's band asks them again, after its own. */

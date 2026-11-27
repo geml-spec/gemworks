@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parse } from "@geml/geml";
-import { appendEvents, currentTurn, decisionsContext, decisionsSince, filesBySession, isLogName, legacyLogName, logName, nextTurn, NOTE_TOOL, noteReply, parseLog, personPrompts, readNote, saidByPerson, summarize } from "../../dist/core/session-log.js";
+import { appendEvents, currentTurn, decisionsContext, decisionsSince, filesBySession, isLogName, legacyLogName, logName, nextTurn, NOTE_TOOL, noteReply, parseLog, personPrompts, pressedPrompt, readNote, saidByPerson, summarize } from "../../dist/core/session-log.js";
 
 const log = (events) => appendEvents("", events);
 
@@ -36,6 +36,27 @@ test("turns: the next prompt opens one past the last; the current one is the las
   assert.equal(nextTurn(events), 3);
   assert.equal(nextTurn([]), 1);
   assert.equal(currentTurn([]), 0);
+});
+
+test("a pressed prompt as it enters: the next turn, its decisions the person's under it; the same words seconds after the last prompt add only the decisions", () => {
+  const events = [
+    { t: "session", id: "s1", host: "claude-code", at: "2026-11-27T10:00:00Z" },
+    { t: "prompt", turn: 3, at: "2026-11-27T10:01:00Z", text: "啥意思" },
+    { t: "decision", turn: 3, at: "2026-11-27T10:01:30Z", text: "模型自己的", by: "model" },
+  ];
+  assert.deepEqual(pressedPrompt(events, "要改吗？：先不改", "2026-11-27T10:05:00Z", [], "u9"), [
+    { t: "prompt", turn: 4, at: "2026-11-27T10:05:00Z", text: "要改吗？：先不改", uuid: "u9" },
+  ], "a deferral decides nothing: its words are still the person's prompt");
+  assert.deepEqual(pressedPrompt(events, "要推吗？：推", "2026-11-27T10:05:00Z", ["要推吗？：推"]), [
+    { t: "prompt", turn: 4, at: "2026-11-27T10:05:00Z", text: "要推吗？：推" },
+    { t: "decision", turn: 4, at: "2026-11-27T10:05:00Z", text: "要推吗？：推", by: "person", pressed: true },
+  ]);
+  const said = [...events, { t: "prompt", turn: 4, at: "2026-11-27T10:05:00Z", text: "要推吗？：推" }];
+  assert.deepEqual(pressedPrompt(said, "要推吗？：推", "2026-11-27T10:05:02Z", ["要推吗？：推"]), [
+    { t: "decision", turn: 4, at: "2026-11-27T10:05:02Z", text: "要推吗？：推", by: "person", pressed: true },
+  ], "recorded already, seconds before: not twice");
+  assert.equal(pressedPrompt(said, "要推吗？：推", "2026-11-27T10:15:00Z")[0].turn, 5, "the same words minutes later are a prompt of their own");
+  assert.deepEqual(personPrompts([...events, ...pressedPrompt(events, "要改吗？：先不改", "2026-11-27T10:05:00Z")]), ["啥意思", "要改吗？：先不改"], "the note finds the person's pressed words");
 });
 
 test("a session read whole: its turns with their answers and decisions, the files and commits once each", () => {

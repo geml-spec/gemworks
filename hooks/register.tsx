@@ -40,7 +40,7 @@ import type { AttentionFacts, AttentionMemory } from '../dist/shell/attention.js
 import { envParts, remoteInPlay } from '../dist/shell/env.js'
 import { engineGapText, engineVersionOf, failureText, goneCallOf, isNeeded } from '../dist/hosts/claude-code/engine.js'
 import { captureHint, offersCapture } from '../dist/hosts/claude-code/screenshot.js'
-import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, legacyLogName, logName, nextTurn, NOTE_TOOL, noteReply, parseLog, personPrompts, readNote, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
+import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, legacyLogName, logName, nextTurn, NOTE_TOOL, noteReply, parseLog, personPrompts, pressedPrompt, readNote, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
 import type { NoteRead, SeenRun, SessionEvent, SessionSummary } from '../dist/core/session-log.js'
 import { checkRequest, flowRequest, labelRequest, linkKey, promptId, readChecks, readFlowDraft, readLabels, readThemes, themeRequest, typedWords } from '../dist/core/corrections.js'
 import type { LabelledPrompt } from '../dist/core/corrections.js'
@@ -236,6 +236,8 @@ const coachFocusAtom = atom({ plugin: 'gemworks', key: 'coachFocus' } as const, 
 const workOpenAtom = atom({ plugin: 'gemworks', key: 'workOpen' } as const, [] as string[])
 /** Every layer's practices (core/practices.ts) and whether the project's memory was moved in; null until read. */
 const practicesAtom = atom({ plugin: 'gemworks', key: 'practices' } as const, null as GemworksJson)
+/** Presses said into the conversation as the person's, waiting to enter it (pressedEntered). */
+const pressedAtom = atom({ plugin: 'gemworks', key: 'pressed' } as const, [] as { text: string; decisions: string[] }[])
 /** The person's ledger of corrections as the flow tab shows it (protocol.ts CorrectionsView); null until read. */
 const correctionsAtom = atom({ plugin: 'gemworks', key: 'corrections' } as const, null as GemworksJson)
 /** Whether this session was asked to move the project's memory onto the steps. */
@@ -779,6 +781,15 @@ async function sessionsOnPrompt($: EngineInterface, text: string): Promise<strin
   await update($, decisionsSeenAtom, () => at)
   if (fresh.length === 0) return []
   return [decisionsContext(fresh, (d) => `${hostName(d.host)}${d.branch !== undefined ? ` · ${d.branch}` : ''}，${hhmm(d.at)}`)]
+}
+
+/** A press said as the person's entered the conversation, past this module's own prompt hook: its words into this session's log as theirs, with what it decided (act's `say`). */
+async function pressedEntered($: EngineInterface, text: string, uuid: string): Promise<void> {
+  const mine = ((await read($, pressedAtom)) ?? []).find((p) => p.text.trim() === text)
+  if (mine !== undefined) await update($, pressedAtom, (was) => (was ?? []).filter((p) => p.text !== mine.text))
+  const at = await nowIso($)
+  const events = await appendOwn($, (so) => pressedPrompt(so, text, at, mine?.decisions ?? [], uuid))
+  if (events.length > 0) await loadProjectSessions($)
 }
 
 /**
@@ -3342,6 +3353,14 @@ export const register: Register = (on) => {
         }
         return was
       })
+    }
+    // A press this module said as the person's: its prompt hook never saw it, so its words go into the record now.
+    const own = e.origin as { kind: string; name?: string; asUser?: boolean }
+    if (e.agentId === undefined && e.message.role === 'user' && e.message.isMeta !== true && own.kind === 'plugin' && own.name === 'gemworks' && own.asUser === true) {
+      const first = e.message.content.find((b) => b.type === 'text') as { text?: unknown } | undefined
+      const text = typeof first?.text === 'string' ? promptShown(first.text) : ''
+      const uuid = e.uuid
+      if (text !== '') $.clock.after(0, () => { void pressedEntered($, text, uuid).catch(() => undefined) })
     }
     return next(e)
   }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })

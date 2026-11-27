@@ -2374,7 +2374,7 @@ test('the diagnosis trace is off unless its setting is on: no .geml/trace.log an
   expect(log).toContain('press tab items')
 })
 
-test("an answer pressed on the band for a registered question is recorded as the person's decision; a note of status is left out and the model told", async ($, on) => {
+test("an answer pressed on the band for a registered question is recorded with its prompt, as it enters, as the person's decision and words; a note of status is left out and the model told", async ($, on) => {
   const w = world(on)
   w.sessionsDir = LOGS
   w.store.set(`init:${LOGS}`, true)
@@ -2393,14 +2393,22 @@ test("an answer pressed on the band for a registered question is recorded as the
   await band.unmount()
   await clock.settle()
   expect(said.at(-1)).toBe('要推到 origin 吗？：推')
+  // Its own prompt hook never sees it: the record waits for the row to enter, as one sent mid-turn enters only later.
+  expect(w.files.get(OWN_LOG) ?? '', 'not before it enters').not.toContain('"text":"要推到 origin 吗？：推"')
+  const PRESSED = { kind: 'plugin', name: 'gemworks', asUser: true } as const
+  await $.session.append({ message: { type: 'user', role: 'user', content: [{ type: 'text', text: '要推到 origin 吗？：推' }] }, door: 'prompt', origin: PRESSED, uuid: 'p1' })
+  await clock.settle()
   const log = w.files.get(OWN_LOG) ?? ''
-  expect(log, 'the pressed answer is in the record as a decision').toContain('"t":"decision"')
-  expect(log, 'a press is the person\'s own').toContain('"text":"要推到 origin 吗？：推","by":"person","pressed":true')
-  // The note tool: a status line is left out, the choice kept.
-  const noted = await $.tool.call({ tool: 'mcp__gemworks__note', tool_use_id: 'n1', decisions: ['feat/gemworks is pushed to origin at 2784db74.', '看板按钮总是打开工作项：用户定的'] })
+  expect(log, 'the pressed words are the person\'s prompt, a turn of their own').toContain('"t":"prompt","turn":2,')
+  expect(log, 'its row').toContain('"text":"要推到 origin 吗？：推","uuid":"p1"')
+  expect(log, 'a press is the person\'s own decision, under its turn').toContain('"t":"decision","turn":2,')
+  expect(log).toContain('"text":"要推到 origin 吗？：推","by":"person","pressed":true')
+  // The note tool: a status line is left out, the choice kept; a choice in the pressed words is the person's.
+  const noted = await $.tool.call({ tool: 'mcp__gemworks__note', tool_use_id: 'n1', decisions: ['feat/gemworks is pushed to origin at 2784db74.', '看板按钮总是打开工作项：用户定的'], theirs: [{ text: '推到 origin', said: '推' }] })
   const text = String(noted.text ?? noted.result)
-  expect(text).toMatch(/^Recorded 1 decision/)
+  expect(text).toMatch(/^Recorded 2 decisions/)
   expect(text).toMatch(/1 left out as status/)
+  expect(text).not.toMatch(/recorded as yours/)
   expect(w.files.get(OWN_LOG) ?? '').not.toContain('pushed to origin at 2784db74')
 })
 

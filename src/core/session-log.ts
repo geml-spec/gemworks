@@ -157,6 +157,23 @@ export function currentTurn(events: readonly SessionEvent[]): number {
   return 0;
 }
 
+/**
+ * A prompt the person pressed (an option the plugin said into the conversation as theirs), as it entered: the next turn,
+ * and the decisions the press made, theirs, under it. Words already the last prompt, seconds before (the same prompt
+ * recorded by its hook as well), add only the decisions.
+ */
+export function pressedPrompt(events: readonly SessionEvent[], text: string, at: string, decisions: readonly string[] = [], uuid?: string): SessionEvent[] {
+  let last: Extract<SessionEvent, { t: "prompt" }> | undefined;
+  for (let i = events.length - 1; i >= 0 && last === undefined; i--) {
+    const e = events[i] as SessionEvent;
+    if (e.t === "prompt") last = e;
+  }
+  const again = last !== undefined && last.text === text && Math.abs(Date.parse(last.at) - Date.parse(at)) < SAME_PROMPT_MS;
+  const turn = again && last !== undefined ? last.turn : nextTurn(events);
+  const prompt: SessionEvent[] = again ? [] : [{ t: "prompt", turn, at, text, ...(uuid !== undefined ? { uuid } : {}) }];
+  return [...prompt, ...decisions.map((d): SessionEvent => ({ t: "decision", turn, at, text: d, by: "person", pressed: true }))];
+}
+
 /** `gist`: the answer's first sentence, kept by a reader that lets the answer itself go. */
 /** A work item a turn moved: the steps it met in that turn (with their words or press), where the item then stood, and when. */
 export interface TurnMove { id: string; title: string; flow: string; state: string; met: MetStep[]; status: ItemStatus; at: string }

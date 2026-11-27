@@ -7,7 +7,6 @@ import type { GemworksJson, GemworksTab } from './state'
 import type { BoardAction } from '../dist/shell/actions.js'
 import { picksText } from '../dist/shell/attention.js'
 import { currentTurn, isDeferral } from '../dist/core/session-log.js'
-import type { SessionEvent } from '../dist/core/session-log.js'
 import { linkKey } from '../dist/core/corrections.js'
 import { closeEvent, holdEvent, pressEvent, readCoachFlow } from '../dist/shell/coach.js'
 import type { GoneOn } from '../dist/shell/coach.js'
@@ -73,6 +72,7 @@ const passesAtom = atom({ plugin: 'gemworks', key: 'passes' } as const, [] as Ge
 const pendingRuleAtom = atom({ plugin: 'gemworks', key: 'pendingRule' } as const, null as string | null)
 const pickedAtom = atom({ plugin: 'gemworks', key: 'picked' } as const, [] as string[])
 const practicesAtom = atom({ plugin: 'gemworks', key: 'practices' } as const, null as GemworksJson)
+const pressedAtom = atom({ plugin: 'gemworks', key: 'pressed' } as const, [] as { text: string; decisions: string[] }[])
 const promptsAtom = atom({ plugin: 'gemworks', key: 'prompts' } as const, [] as GemworksJson)
 const reloadUnavailableAtom = atom({ plugin: 'gemworks', key: 'reloadUnavailable' } as const, false)
 const rootAtom = atom({ plugin: 'gemworks', key: 'root' } as const, null as string | null)
@@ -613,21 +613,19 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
       if (action.toast !== undefined) $.ui.toast(action.toast)
       await setQueued($, (q) => [...q.filter((x) => x.text !== action.text), { text: action.text, entered: false }])
       await attentionOnPrompt($, action.text, false)
+      // What the press decided waits for its prompt to enter the conversation, where it goes into the record with it as
+      // the person's own, under the turn it opens (register.tsx, pressedEntered): a prompt sent mid-turn enters later.
+      const decided = action.decisions ?? []
+      if (decided.length > 0) await update($, pressedAtom, (was) => [...(was ?? []).filter((p) => p.text !== action.text), { text: action.text, decisions: [...decided] }])
       try {
         await $.prompt.submit({ text: action.text, asUser: true })
       } catch (err) {
         await setQueued($, (q) => q.filter((x) => x.text !== action.text))
+        if (decided.length > 0) await update($, pressedAtom, (was) => (was ?? []).filter((p) => p.text !== action.text))
         throw err
       }
       // A press whose card was put away leaves nothing to show under way: brought back, the card offers its buttons again.
       await setQueued($, (q) => (action.dismiss !== undefined ? q.filter((x) => x.text !== action.text) : q.map((x) => (x.text === action.text ? { ...x, entered: true } : x))))
-      // What the press decided goes into the record as the person's own, under the turn its prompt opened.
-      if (action.decisions !== undefined && action.decisions.length > 0) {
-        const decided = action.decisions
-        const at = await nowIso($)
-        const events = await appendOwn($, (so) => decided.map((text): SessionEvent => ({ t: 'decision', turn: currentTurn(so), at, text, by: 'person', pressed: true })))
-        if (events.length > 0) await loadProjectSessions($)
-      }
       return
     }
     // One of several asks answered: kept, the band moves to the next; the last answer says them all as the person's prompt.
