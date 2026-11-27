@@ -2,7 +2,7 @@
 // a question the band asks, and a work item of this session standing at a step
 // the person judges. Each is said once — `seen` holds the keys said before, and
 // the answer's `keys` are what stands now, kept for the next turn. Pure.
-import { itemProgress } from "./coach.js";
+import { itemProgress } from "../../shell/coach.js";
 export function waitingNotices(asks, items, flows, session, seen, t) {
     const askKeys = asks.map((a) => ({ key: `ask:${a.question}`, text: a.question }));
     const confirmKeys = [];

@@ -1,4 +1,4 @@
-import type { CallFacts } from "../claude-code/fastpath.js";
+import type { CallFacts } from "../../shell/fastpath.js";
 /** Whether a tool is Kiro's shell, by any of its names. */
 export declare const isShell: (tool: string) => boolean;
 /** An MCP tool's own name: Kiro's hook events name it `mcp_<server>_<tool>`, gemworks' own `mcp_gemworks_<tool>`. */

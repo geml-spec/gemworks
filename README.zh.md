@@ -1,23 +1,43 @@
 # Gemworks
 
-**装在对话窗口边的工作台。**
+**让你的 Coding Agent 真正吃一堑、长一智的自进化可视化助手。**
 
-陪你做项目：管产物、总结经验、记住你定下的事，让流程自己长出来。就在你天天用的 Claude Code 里。
+不需要再装另一个 IDE，直接接入你正在用的 Claude Code、Codex、Cursor 或任意 MCP 客户端。这个轻量插件让进度、跨会话拍板和版本化产物一目了然；干活过程中，它只在踩坑的那一步精准提醒（不再把 `CLAUDE.md` 或 `AGENTS.md` 塞成杂物堆），让工作流自己长出来，关键习惯还能一键锁成硬性卡关。更重要的是，一切都在本地运行——我懂，只有本地优先，才让你觉得一切真正尽在掌控。
 
 [English](README.md) | 中文
 
-<!-- 截图待补：状态带和看板，放到 docs/images/band-and-board.png 后改成 ![状态带和看板](docs/images/band-and-board.png) -->
-
 ## 装上后你会看到
+
+<table>
+  <tr>
+    <td><img src="docs/images/zh/overview.png" width="620" alt="输入框上方的状态带和右边的看板"></td>
+    <td><img src="docs/images/zh/items.png" width="320" alt="看板的工作项页"></td>
+    <td><img src="docs/images/zh/flow.png" width="320" alt="看板的流程页"></td>
+    <td><img src="docs/images/zh/artifacts.png" width="320" alt="看板的产物页"></td>
+    <td><img src="docs/images/zh/sessions.png" width="320" alt="看板的会话页"></td>
+    <td><img src="docs/images/zh/tools.png" width="320" alt="看板的工具页"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>状态带在输入框上方，看板在右边</sub><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+    <td align="center"><sub>工作项：每件事走到哪一步、还差什么</sub><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+    <td align="center"><sub>流程：每一步防什么坑、挂着哪些做法</sub><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+    <td align="center"><sub>产物：做出来的文件、页面、链接，按日期列着</sub><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+    <td align="center"><sub>会话：每一轮问了什么、做了什么</sub><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+    <td align="center"><sub>工具：这两天用过哪些工具、各用了几次</sub><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+  </tr>
+</table>
 
 - **输入框上方多一行**：你在做哪件事、走到哪一步、等你定什么、接下来模型去做什么。
   轮到你拍板时，选项就是按钮；不点，直接打字回答也行。
+
+  <img src="docs/images/zh/band.png" width="560" alt="输入框上方的状态带">
+
 - **一个看板**，五个页签：
   - **会话**：这个项目所有的会话，每轮问了什么、做了什么。
   - **工作项**：每件事走到哪一步、还差什么。
   - **产物**：做出来的文件、提交、页面、链接，按版本列着，点开就看。
   - **流程**：每条流程有哪几步、每一步防什么坑、上面挂着哪些做法。
-  - **工具**：哪个工具在哪一步能用（进阶，平时不用管）。
+  - **工具**：这两天用过哪些工具、各用了几次，放行过哪些对外动作（推送、发布这类）；有工作流时，还能给工具归类，限定它在哪一步能用。
 - **新学到几条、有几条提议**：它从你的纠正里学到东西，就在这一行告诉你。
 
 ## 三个场景
@@ -139,6 +159,7 @@
 ## 命令行 · 开发 · 许可证
 
 - **命令行**：`gemworks`（简写 `gwx`）在终端里看状态、推进阶段、导出记录，见 [docs/cli.zh.md](docs/cli.zh.md)。
-- **开发**：项目布局、怎么构建和测试，见 [docs/development.zh.md](docs/development.zh.md)。
+- **开发**：项目布局、怎么构建和测试，见 [docs/development.zh.md](docs/development.zh.md)；
+  现在有哪些功能、各在哪实现、为什么这样做，见 [docs/design.zh.md](docs/design.zh.md)。
 - **许可证**：AGPL-3.0-only。只是使用，不用做任何事；改了代码再分发，
   或者让别人通过网络使用你改过的版本，就要按 AGPL 公开改过的源码。

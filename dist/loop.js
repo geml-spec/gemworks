@@ -2,7 +2,7 @@
 // and Antigravity's hooks, DeepSeek Harness, Pi): the light flows read from the
 // project's `.geml/coach/` and the ones the package ships; the work items, the
 // practices, the proposals and the questions the model reports with its tools,
-// written into the project's shared record (session-store.ts, practice-store.ts,
+// written into the project's shared record (store/sessions.ts, store/practices.ts,
 // `.geml/proposals.geml`) where every host and the Claude Code board read them;
 // and what the model is told once and beside each prompt. The Claude Code module
 // does the same through its engine's file calls (hooks/register.tsx); the pure
@@ -13,19 +13,23 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ARTIFACT_TOOL } from "./core/artifact-tool.js";
 import { ASK_PROMPT_ON_BOARD, ASK_TOOL_ON_BOARD, askedOf } from "./core/ask-tool.js";
-import { ANSWER_TOOL, applyToFlow, flowText, GROWTH_PROMPT_ON_BOARD, newFlow, newProposals, parseProposals, PROPOSE_TOOL_ON_BOARD, proposalsText } from "./core/growth.js";
+import { practiceCounts } from "./core/corrections.js";
+import { readLedger } from "./store/corrections.js";
+import { keysOf } from "./core/dictionary.js";
+import { ANSWER_TOOL, applyToFlow, flowText, GROWTH_PROMPT_ON_BOARD, isRulesFile, newFlow, newProposals, parseProposals, parseRules, PROPOSE_TOOL_ON_BOARD, proposalsText, ruleRefusal, RULES_FILE_HELD, rulesText } from "./core/growth.js";
+import { CLAUDE_CODE_TOOLS } from "./core/host-tools.js";
 import { GEML_DIR } from "./core/layout.js";
-import { PRACTICE_PROMPT, PRACTICE_TOOL, practiceContext } from "./core/practice-tool.js";
+import { PRACTICE_PROMPT, PRACTICE_TOOL, practiceAnswer, practiceContext } from "./core/practice-tool.js";
 import { newPractices } from "./core/practices.js";
 import { currentTurn } from "./core/session-log.js";
 import { COACH_FLOWS, readCoachFlow, turnItem, WORK_TOOL, workContext, workEvents, workItemsOf, workPrompt } from "./core/work.js";
 import { handleRequest } from "./bridge.js";
 import { journalBaseOf } from "./host-git.js";
-import { readPractices, writePractices } from "./practice-store.js";
-import { appendSession, readSessions } from "./session-store.js";
-import { writeSignoffs } from "./signoff.js";
+import { readPractices, writePractices } from "./store/practices.js";
+import { appendSession, readSessions } from "./store/sessions.js";
+import { writeSignoffs } from "./store/signoffs.js";
 /** The flows the package ships, beside `dist/`. */
-export const SHIPPED_COACH = fileURLToPath(new URL("../coach/", import.meta.url));
+export const SHIPPED_COACH = fileURLToPath(new URL("../flows/starter/", import.meta.url));
 /** The tools of the work loop on a host with no status band, in the order they are listed. */
 export const LOOP_TOOLS = [WORK_TOOL, PRACTICE_TOOL, PROPOSE_TOOL_ON_BOARD, ANSWER_TOOL, ASK_TOOL_ON_BOARD, ARTIFACT_TOOL];
 /** Whether a tool name is one of the loop's. */
@@ -73,6 +77,53 @@ export function coachFlowsAt(root, shipped = SHIPPED_COACH) {
 export function workItemsAt(root, flows) {
     return workItemsOf(readSessions(root), flows);
 }
+/** The paths a write names: the one under file_path, notebook_path or path, or a patch's `files`. */
+function writtenPaths(input) {
+    const files = input["files"];
+    if (Array.isArray(files))
+        return files.filter((f) => typeof f === "string" && f !== "");
+    const one = ["file_path", "notebook_path", "path"].map((f) => input[f]).find((v) => typeof v === "string" && v !== "");
+    return one !== undefined ? [one] : [];
+}
+/**
+ * What holds a tool call, as the Claude Code module's ruleHold has it: a write to a file that keeps rules (they are the
+ * person's to change), or a rule of the project (`.geml/rules.geml`) or the team (`.gemworks/rules.geml`) whose key the
+ * call matches while the step it requires is unmet on this session's work item; a project rule that held counts it.
+ * The call's keys are read under Claude Code's tool names, as rules are written: the host's shell is `Bash`, its tool
+ * named write `Write`, its other write tools `Edit`. Undefined lets the call through, and so does anything that fails.
+ */
+export function ruleHold(root, session, tool, input, tools = CLAUDE_CODE_TOOLS) {
+    try {
+        const writes = tools.write.includes(tool);
+        const paths = writes ? writtenPaths(input) : [];
+        if (paths.some(isRulesFile))
+            return RULES_FILE_HELD;
+        const file = join(gemlHome(root), "rules.geml");
+        const project = parseRules(readAt(file) ?? "", "project");
+        const rules = [...project, ...parseRules(readAt(join(root, ".gemworks", "rules.geml")) ?? "", "team")];
+        if (rules.length === 0)
+            return undefined;
+        const flows = coachFlowsAt(root);
+        const item = turnItem(workItemsAt(root, flows), session);
+        if (item === undefined)
+            return undefined;
+        const name = tools.run.includes(tool) ? "Bash" : writes ? (tool.toLowerCase() === "write" ? "Write" : "Edit") : tool;
+        const keys = paths.length > 0 ? paths.map((p) => `${name}(${p.replace(/\\/g, "/")})`) : keysOf(name, input, CLAUDE_CODE_TOOLS.run, CLAUDE_CODE_TOOLS.write);
+        const held = ruleRefusal(rules, item, flows, keys);
+        if (held === undefined)
+            return undefined;
+        if (held.rule.layer === "project") {
+            try {
+                writeFileSync(file, rulesText(project.map((r) => (r.id === held.rule.id ? { ...r, held: (r.held ?? 0) + 1 } : r))), "utf8");
+            }
+            catch { /* counted another time */ }
+        }
+        return held.reason;
+    }
+    catch {
+        return undefined;
+    }
+}
 /** The work tool: the turn's work items, checked against the flows, into this session's log. */
 export function recordWork(root, host, session, args, now = new Date().toISOString()) {
     const flows = coachFlowsAt(root);
@@ -106,10 +157,16 @@ export function recordPractices(root, host, session, args, now = new Date().toIS
     const stamp = stampOf(now);
     const turn = currentTurn(appendSession(root, host, session, () => [], now));
     const r = newPractices(given, kept, now, memory ? "memory" : "model", (n) => `p${stamp}${n}`, flows.map((f) => ({ name: f.name, steps: f.states.map((s) => s.id) })), { session, turn });
+    let counts = {};
+    try {
+        counts = practiceCounts(readLedger(), kept.filter((p) => p.deleted !== true));
+    }
+    catch { /* listed without how they fared */ }
+    const answer = practiceAnswer(r, kept, counts);
     if (r.added.length === 0 && !memory)
-        return { ok: false, text: `Nothing recorded: ${r.errors.join("; ") || "practices is a list"}.` };
+        return { ok: false, text: r.unreviewed.length > 0 ? answer.text : `Nothing recorded: ${r.errors.join("; ") || "practices is a list"}.` };
     writePractices(root, r.added, memory);
-    return { ok: true, text: `Recorded ${r.added.length} practice${r.added.length === 1 ? "" : "s"}; they remind at their steps.${r.errors.length > 0 ? ` Left out: ${r.errors.join("; ")}.` : ""}` };
+    return { ok: true, text: answer.text };
 }
 /** The proposals kept in the project's `.geml/proposals.geml`. */
 export function proposalsAt(root) {
@@ -216,7 +273,10 @@ export async function callLoopTool(root, host, session, name, args, now = new Da
 export function loopPrompt(flows) {
     return flows.length === 0 ? [ASK_PROMPT_ON_BOARD] : [ASK_PROMPT_ON_BOARD, workPrompt(flows), PRACTICE_PROMPT, GROWTH_PROMPT_ON_BOARD];
 }
-/** The lines beside a prompt: the work items on the way, by id, and the practices of the step this session's item stands at. */
+/**
+ * The lines beside a prompt: the work items on the way, by id, and the practices of the step this session's item
+ * stands at, each with how often it was corrected from the person's ledger (about 20 ms on a ledger of 2,800 prompts).
+ */
 export function loopContext(root, session, flows = coachFlowsAt(root)) {
     if (flows.length === 0)
         return [];
@@ -226,5 +286,10 @@ export function loopContext(root, session, flows = coachFlowsAt(root)) {
         practices = readPractices(root).practices;
     }
     catch { /* no reminder this time */ }
-    return [...workContext(items, flows), ...practiceContext(items, flows, practices, session)];
+    let counts = {};
+    try {
+        counts = practiceCounts(readLedger(), practices.filter((p) => p.deleted !== true));
+    }
+    catch { /* the why alone */ }
+    return [...workContext(items, flows), ...practiceContext(items, flows, practices, session, counts)];
 }

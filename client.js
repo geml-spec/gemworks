@@ -2,7 +2,7 @@
  * Gemworks — the browser half for DeepSeek Harness's web GUI (spec §8.10).
  *
  * One tab type in the right Sidebar, "Gemworks", and its body: the board the
- * Claude Code plugin draws, with the same six tabs and the same words. The
+ * Claude Code plugin draws, its tabs for a session and the same words. The
  * rows come ready-made from the host half (`GET /api/gemworks/board`), built by
  * the same functions that build the Claude Code board; this file only draws
  * them and sends a press back (`POST /api/gemworks/act`). A tab, a filter and

@@ -3,39 +3,39 @@
 // 256 KiB Anthropic's plugin directory reads whole. Only register.tsx calls act, after both modules have loaded.
 import type { EngineInterface } from 'claude-code'
 import { atom, read, update } from 'claude-code'
-import type { GemworksJson, GemworksTab } from '../types'
-import type { BoardAction } from '../dist/hosts/claude-code/actions.js'
-import { answered, picksText } from '../dist/hosts/claude-code/attention.js'
+import type { GemworksJson, GemworksTab } from './state'
+import type { BoardAction } from '../dist/shell/actions.js'
+import { answered, picksText } from '../dist/shell/attention.js'
 import { currentTurn, isDeferral } from '../dist/core/session-log.js'
 import type { SessionEvent } from '../dist/core/session-log.js'
 import { linkKey } from '../dist/core/corrections.js'
-import { closeEvent, holdEvent, pressEvent, readCoachFlow } from '../dist/hosts/claude-code/coach.js'
-import type { GoneOn } from '../dist/hosts/claude-code/coach.js'
+import { closeEvent, holdEvent, pressEvent, readCoachFlow } from '../dist/shell/coach.js'
+import type { GoneOn } from '../dist/shell/coach.js'
 import { newPractices } from '../dist/core/practices.js'
-import { applyToFlow, exportText as flowExport, flowText, referenceName, referenceProposals, newFlow, parseRules, ruleAsk, rulesText, type Proposal } from '../dist/hosts/claude-code/growth.js'
+import { applyToFlow, exportText as flowExport, flowText, referenceName, referenceProposals, newFlow, parseRules, ruleAsk, rulesText, type Proposal } from '../dist/shell/growth.js'
 import { boardText } from '../dist/hosts/claude-code/command.js'
-import { BRIDGE_TIMEOUT_MS, SLOW_TIMEOUT_MS } from '../dist/hosts/claude-code/protocol.js'
-import type { BridgeOp, BridgeResponse } from '../dist/hosts/claude-code/protocol.js'
-import { promptLine } from '../dist/hosts/claude-code/sessions.js'
-import type { PromptRecord } from '../dist/hosts/claude-code/sessions.js'
-import { MADE_PAGE, MADE_VIEW } from '../dist/hosts/claude-code/made.js'
-import type { MemoryList } from '../dist/memory-store.js'
-import { hhmm } from '../dist/hosts/claude-code/time.js'
+import { BRIDGE_TIMEOUT_MS, SLOW_TIMEOUT_MS } from '../dist/shell/protocol.js'
+import type { BridgeOp, BridgeResponse } from '../dist/shell/protocol.js'
+import { promptLine } from '../dist/shell/sessions.js'
+import type { PromptRecord } from '../dist/shell/sessions.js'
+import { MADE_PAGE, MADE_VIEW } from '../dist/shell/made.js'
+import type { MemoryList } from '../dist/store/memory.js'
+import { hhmm } from '../dist/shell/time.js'
 import { captureFailed, capturesFor } from '../dist/hosts/claude-code/screenshot.js'
 import { withSetting } from '../dist/hosts/claude-code/settings.js'
 import type { Judgement } from '../dist/hosts/claude-code/judge.js'
-import { HOME_TAB } from '../dist/hosts/claude-code/board.js'
+import { HOME_TAB } from '../dist/shell/board.js'
 import {
   QUEUED_MATCH_MS, STORE_SETTINGS, TURNS_SHOWN, answerOf, appendOwn, attentionOnPrompt, bridge, checkLatest,
   coachFlows, coachFlowsKept, correctionsKept, dismissedOf, exportText, gemlDir, loadBoard, loadCorrections,
   loadGrowth, loadMade, loadMemory, loadPractices, loadProjectSessions, loadWorkflows, nowIso, openBoard,
-  openDialog, openFile, otherSessionText, practicesKept, proposalsKept, readAttention, readBoard, readPrompts,
+  openDialog, openFile, otherSessionText, outwardChanged, practicesKept, proposalsKept, readAttention, readBoard, readPrompts,
   readSettings, reasonOf, rulesKept, saveProposals, saveRules, sessionText, setQueued, share, startBridge,
   signoffAfter, storePrompts, takeOption, themeLedger, trace, turnBusy, words, workItems, writeOwnFlow,
 } from './register.tsx'
 // The atoms act reads and updates, declared here as register.tsx declares them: the same plugin and key is the same
 // value, and the validator reads a state source only from an atom made in the file that reads it.
-// test/hooks-split.test.mjs holds each line to its twin in register.tsx.
+// test/claude-code/hooks-split.test.mjs holds each line to its twin in register.tsx.
 const artifactMenuAtom = atom({ plugin: 'gemworks', key: 'artifactMenu' } as const, null as string | null)
 const attentionAtom = atom({ plugin: 'gemworks', key: 'attention' } as const, null as GemworksJson)
 const coachFocusAtom = atom({ plugin: 'gemworks', key: 'coachFocus' } as const, null as GemworksJson)
@@ -61,6 +61,8 @@ const latestAtom = atom({ plugin: 'gemworks', key: 'latest' } as const, null as 
 const madeViewAtom = atom({ plugin: 'gemworks', key: 'madeView' } as const, MADE_VIEW as { kind: string; shown: number; item: string | null })
 const manualExpandedAtom = atom({ plugin: 'gemworks', key: 'manualExpanded' } as const, null as string[] | null)
 const manualMenuAtom = atom({ plugin: 'gemworks', key: 'manualMenu' } as const, null as string | null)
+/** Where the page of the practices for every time starts. */
+const manualAnywhereAtom = atom({ plugin: 'gemworks', key: 'manualAnywhere' } as const, 0 as number)
 const memoryAtom = atom({ plugin: 'gemworks', key: 'memory' } as const, null as MemoryList | null)
 const memoryEditAtom = atom({ plugin: 'gemworks', key: 'memoryEdit' } as const, null as string | null)
 const memoryGroupAtom = atom({ plugin: 'gemworks', key: 'memoryGroup' } as const, null as string | null)
@@ -115,7 +117,7 @@ async function capture($: EngineInterface, platform: string): Promise<void> {
 /** A press on the band or the board: what it does. */
 export async function act($: EngineInterface, action: BoardAction, surface?: string): Promise<void> {
   // An entry of a flow-tab menu closes the menu, whatever it then does.
-  if (['practice-layer', 'practice-share', 'practice-claude-md', 'flow-share', 'flow-export', 'manual-open'].includes(action.op)) await update($, manualMenuAtom, () => null)
+  if (['practice-layer', 'practice-share', 'practice-claude-md', 'flow-share', 'flow-export', 'manual-open', 'manual-anywhere'].includes(action.op)) await update($, manualMenuAtom, () => null)
   // A view change first, before anything is read: a tab, a filter, a fold or a menu shows at once.
   switch (action.op) {
     case 'manual-menu': await update($, manualMenuAtom, () => action.key); return
@@ -164,8 +166,11 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
       const first = (await workItems($)).filter((i) => i.status === 'open').sort((a, b) => (a.at < b.at ? 1 : -1))[0]?.flow
       const was = now ?? (first !== undefined ? [first] : [])
       await update($, manualExpandedAtom, () => [...was.filter((f) => f !== action.flow), ...(action.open ? [action.flow] : [])])
+      // The practices for every time open on their first page.
+      if (action.flow === '*') await update($, manualAnywhereAtom, () => 0)
       return
     }
+    case 'manual-anywhere': await update($, manualAnywhereAtom, () => Math.max(0, action.from)); return
     case 'practice-delete':
     case 'practice-layer':
     case 'practice-everywhere': {
@@ -310,7 +315,9 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
         await $.fs.write(`${geml}/references/${name}.geml`, text)
         kept = [...kept, ...referenceProposals(ref, name, flows, kept, at, (n) => `f${stamp}${read}${n}`)]
       }
+      // Read: the field closes (the + opens it again); unread, it stays open for the path put right.
       if (read === 0) { $.ui.toast(t('读不出参考：{0}', action.path)); return }
+      await update($, manualMenuAtom, () => null)
       await saveProposals($, kept)
       $.ui.toast(t('已导入 {0} 份参考，它有的步骤在流程页上提议', read))
       return
@@ -323,6 +330,8 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
       trace($, `tab is now ${action.tab}`)
       const filter = action.filter
       if (filter !== undefined) await update($, filterAtom, () => filter)
+      // The outward actions let through, read when the tab that lists them is chosen: no session start pays for them.
+      if (action.tab === 'tools') $.clock.after(0, () => { void outwardChanged($, {}).catch(() => undefined) })
       if (action.tab === 'sessions') {
         // Chosen anew, the sessions tab's memory and decisions start on their first page: a page kept from before is a tree the desktop may not take.
         await update($, decisionsShownAtom, () => 20)
@@ -437,6 +446,18 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
     return res
   }
   switch (action.op) {
+    // A step the project took out of the shipped flow, put back where it stood; kept as a proposal accepted, so the flow's growth lists it.
+    case 'flow-step-back': {
+      const flow = (await coachFlowsKept($)).find((f) => f.name === action.flow)
+      const m = flow?.missing?.find((x) => x.id === action.step)
+      if (flow === undefined || m === undefined) return
+      const step = { id: m.id, title: m.title, need: m.need, judge: m.judge, prevents: m.prevents }
+      await writeOwnFlow($, applyToFlow(flow, { kind: 'add-step', after: m.after, step }))
+      const at = await nowIso($)
+      const back: Proposal = { id: `b${Date.parse(at).toString(36).slice(-6)}`, kind: 'add-step', flow: action.flow, after: m.after, step, why: t('从参考加回来'), at, by: 'reference', status: 'accepted' }
+      await saveProposals($, [...(await proposalsKept($)), back])
+      return
+    }
     // A person's option: taken on its own work item, then said into the conversation in their words, so the model hears what they chose.
     case 'advance': {
       const res = await bridge($, { op: 'advance', to: action.to }, BRIDGE_TIMEOUT_MS, action.file)
@@ -456,6 +477,8 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
       await update($, toolNamingAtom, () => null)
       await loadBoard($)
       return
+    // Taken out of the dictionary: asked about again before it runs.
+    case 'outward-forget': await outwardChanged($, { forget: [action.key] }); return
     case 'pass-once':
       await update($, passesAtom, (was) => [...new Set([...((((was as unknown) as string[] | null) ?? [])), ...action.keys])] as unknown as GemworksJson)
       $.ui.toast(t('放行一次'))
@@ -602,7 +625,7 @@ export async function act($: EngineInterface, action: BoardAction, surface?: str
       if (action.decisions !== undefined && action.decisions.length > 0) {
         const decided = action.decisions
         const at = await nowIso($)
-        const events = await appendOwn($, (so) => decided.map((text): SessionEvent => ({ t: 'decision', turn: currentTurn(so), at, text })))
+        const events = await appendOwn($, (so) => decided.map((text): SessionEvent => ({ t: 'decision', turn: currentTurn(so), at, text, by: 'person', pressed: true })))
         if (events.length > 0) await loadProjectSessions($)
       }
       return

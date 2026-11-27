@@ -4,11 +4,11 @@
 // the plugin module, which draws every other row and calls these: each file the plugin ships stays under the 256 KiB
 // Anthropic's plugin directory reads whole.
 import type { EngineInterface } from 'claude-code'
-import type { BoardRow } from '../dist/hosts/claude-code/board.js'
+import type { BoardRow } from '../dist/shell/board.js'
 import type { Judge } from '../dist/core/progress.js'
-import { toneProps } from '../dist/hosts/claude-code/band.js'
-import type { Tone } from '../dist/hosts/claude-code/band.js'
-import { press } from './register.tsx'
+import { toneProps } from '../dist/shell/band.js'
+import type { Tone } from '../dist/shell/band.js'
+import { iconButton, press } from './register.tsx'
 
 type Els = { Box: any; Text: any; Button: any; Svg?: any }
 type Row<K extends BoardRow['kind']> = Extract<BoardRow, { kind: K }>
@@ -45,18 +45,22 @@ export function drawJudges(els: Els, row: Row<'judges'>, i: number): unknown {
   )
 }
 
-/** Words, then the presses after them on one line: 没有在走的：优化 ▸. */
+/** Words, then the presses after them on one line: 没有在走的：优化 ▸; last an icon that is a press (the +), its name under the pointer. */
 export function drawPresses($: EngineInterface, els: Els, row: Row<'presses'>): unknown {
   const { Box, Text, Button } = els
   return (
-    <Box key={row.key} gap={1} flexWrap="wrap">
-      <Text dimColor>{row.lead}</Text>
+    <Box key={row.key} gap={1} flexWrap="wrap" alignItems="center">
+      {row.lead !== '' && <Text dimColor>{row.lead}</Text>}
       {row.items.map((b) => <Button key={b.key} plain dimColor label={b.label} onPress={press($, b.action)} />)}
+      {row.icon !== undefined && iconButton($, els, row.icon.press, row.icon.glyph, { tone: row.icon.on ? 'active' : 'dim', from: 'left', size: 17 })}
     </Box>
   )
 }
 
-/** A flow's heading: its name and how it stands in one run of words, wrapped; its presses (⋯) at the end of the line. */
+/**
+ * A flow's heading: its name and how it stands in one run of words, wrapped; at the end of the line the press that
+ * lists its practices or folds them (an icon, its name under the pointer; the words on the terminal), then ⋯.
+ */
 export function drawHeading($: EngineInterface, els: Els, row: Row<'section'>, i: number): unknown {
   const { Box, Text, Button } = els
   return (
@@ -64,6 +68,7 @@ export function drawHeading($: EngineInterface, els: Els, row: Row<'section'>, i
       <Box flexGrow={1} flexShrink={1} minWidth={0}>
         <Text wrap="wrap"><Text weight="semibold" size="body">{row.text}</Text>{row.note !== undefined && row.note !== '' && <Text dimColor>{`  ${row.note}`}</Text>}</Text>
       </Box>
+      {row.fold !== undefined && iconButton($, els, row.fold, row.open === true ? 'gather' : 'spread', { from: 'right', size: 18 })}
       {(row.actions ?? []).map((b) => <Button key={b.key} label={b.label} onPress={press($, b.action)} />)}
     </Box>
   )
@@ -115,6 +120,22 @@ export function drawPracticeBlock($: EngineInterface, els: Els, key: string, inn
 export function drawStep($: EngineInterface, els: Els, row: Row<'step'>, inner: readonly BoardRow[], draw: (r: BoardRow, n: number) => unknown): unknown {
   const { Box, Text, Button, Svg } = els
   const pictures = Svg !== undefined
+  // A step of the shipped flow the project took out: crossed out on a dashed bar, where it stood, with the press that puts it back.
+  if (row.missing !== undefined) return (
+    <Box key={row.key} flexDirection="column" paddingLeft={pictures ? 2 : 1} paddingRight={1} {...(pictures ? { marginTop: 'xs', paddingY: 'xs' } : {})}>
+      {pictures && (
+        <Box key={`${row.key}-bar`} position="absolute" top={0} bottom={0} left={0} overflow="hidden">
+          <Svg source={BAR_END} alt="┆" width={3} height={2000} />
+        </Box>
+      )}
+      <Box gap={1} alignItems="center">
+        <Box flexShrink={1} minWidth={0}><Text dimColor strikethrough wrap="truncate-end">{row.need !== '' ? `${row.title} · ${row.need}` : row.title}</Text></Box>
+        <Box flexGrow={1} />
+        {row.judge !== '' && <Box flexShrink={0}><Text dimColor>{row.judge}</Text></Box>}
+        <Button key={row.missing.key} plain dimColor label={row.missing.label} onPress={press($, row.missing.action)} />
+      </Box>
+    </Box>
+  )
   return (
     <Box key={row.key} flexDirection="column" paddingLeft={pictures ? 2 : 1} paddingRight={1} {...(pictures ? { marginTop: 'xs', paddingY: 'xs' } : {})} {...(row.here && pictures ? { backgroundColor: SELECTED } : {})}>
       {pictures && (
@@ -123,12 +144,15 @@ export function drawStep($: EngineInterface, els: Els, row: Row<'step'>, inner: 
         </Box>
       )}
       <Box gap={1}>
-        <Text {...(row.final ? { dimColor: true } : row.here ? { bold: true } : {})}>{row.here && !pictures ? `▸${row.title}` : row.title}</Text>
+        {/* The title and the chip in boxes that never shrink, the need truncating instead: Try it and the model's chip went
+            onto two lines when all three shrank alike. The chip's box is the one that pushes it right. */}
+        <Box flexShrink={0}><Text {...(row.final ? { dimColor: true } : row.here ? { weight: 'semibold' as const } : {})}>{row.here && !pictures ? `▸${row.title}` : row.title}</Text></Box>
+        {row.grown !== undefined && <Box flexShrink={0}><Text {...toneProps('warning')}>{row.grown}</Text></Box>}
         {row.need !== '' && <Box flexShrink={1} minWidth={0}><Text dimColor wrap="truncate-end">{`· ${row.need}`}</Text></Box>}
-        <Box flexGrow={1} />
-        {row.judge !== '' && judgeChip(els, row.judgeKind, row.judge, `${row.key}-judge`)}
+        <Box flexGrow={1} flexShrink={0} justifyContent="flex-end">{row.judge !== '' && judgeChip(els, row.judgeKind, row.judge, `${row.key}-judge`)}</Box>
       </Box>
       {row.prevents !== '' && <Text dimColor wrap="wrap">{row.prevents}</Text>}
+      {row.on !== undefined && <Text color="#2a6fdb" wrap="truncate-end">{row.on}</Text>}
       {(row.rules ?? []).map((r, n) => <Text key={`rule${n}`} {...toneProps('warning')} wrap="truncate-end">{`🔒 ${r}`}</Text>)}
       {inner.map((x, n) => (x.kind === 'practice' ? drawPractice($, els, x, 0) : draw(x, n)))}
       {row.more !== undefined && <Box><Button key={row.more.key} plain dimColor label={row.more.label} onPress={press($, row.more.action)} /></Box>}

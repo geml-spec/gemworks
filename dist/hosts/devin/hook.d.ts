@@ -1,4 +1,4 @@
-import type { CallFacts } from "../claude-code/fastpath.js";
+import type { CallFacts } from "../../shell/fastpath.js";
 import { bareTool } from "../qwen/hook.js";
 export { bareTool };
 /** Devin's shell tool. */

@@ -140,7 +140,7 @@ export declare function sideFlows(root: string, defaultPath: string): {
     glob: string;
 }[];
 /** What one work item's journal says of it, for another that names it: its state and whether that is final, when it began and last moved, the files it wrote (newest first), its name and its flow's title. */
-export interface ItemProgress {
+export interface JournalProgress {
     id: string;
     title?: string;
     flow?: string;
@@ -157,7 +157,7 @@ export type FlowCache = Map<string, {
     title: string;
 } | null>;
 /** Another work item's progress, from its journal (under `journalBase`) and its file; undefined while it has no journal. */
-export declare function itemProgress(root: string, journalBase: string, id: string, flows: FlowCache, defaultFile?: string): ItemProgress | undefined;
+export declare function journalProgress(root: string, journalBase: string, id: string, flows: FlowCache, defaultFile?: string): JournalProgress | undefined;
 /** The work items an item file waits for: its meta `depends`, ids apart by spaces or commas. */
 export declare function dependsOf(source: string): string[];
 /**

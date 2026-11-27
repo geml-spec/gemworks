@@ -1,4 +1,5 @@
 import { type Proposal } from "./core/growth.js";
+import { type HostTools } from "./core/host-tools.js";
 import { type CoachFlow, type WorkItem } from "./core/work.js";
 /** The flows the package ships, beside `dist/`. */
 export declare const SHIPPED_COACH: string;
@@ -27,6 +28,14 @@ export declare const gemlHome: (root: string) => string;
 export declare function coachFlowsAt(root: string, shipped?: string): CoachFlow[];
 /** The work items the project's sessions reported, as they stand now, newest first. */
 export declare function workItemsAt(root: string, flows: readonly CoachFlow[]): WorkItem[];
+/**
+ * What holds a tool call, as the Claude Code module's ruleHold has it: a write to a file that keeps rules (they are the
+ * person's to change), or a rule of the project (`.geml/rules.geml`) or the team (`.gemworks/rules.geml`) whose key the
+ * call matches while the step it requires is unmet on this session's work item; a project rule that held counts it.
+ * The call's keys are read under Claude Code's tool names, as rules are written: the host's shell is `Bash`, its tool
+ * named write `Write`, its other write tools `Edit`. Undefined lets the call through, and so does anything that fails.
+ */
+export declare function ruleHold(root: string, session: string, tool: string, input: Readonly<Record<string, unknown>>, tools?: HostTools): string | undefined;
 /** The work tool: the turn's work items, checked against the flows, into this session's log. */
 export declare function recordWork(root: string, host: string, session: string, args: Record<string, unknown>, now?: string): LoopResult;
 /** The practice tool: the practices given, checked against the flows and the ones kept, into their layers. */
@@ -50,5 +59,8 @@ export declare function recordArtifact(root: string, session: string, args: Reco
 export declare function callLoopTool(root: string, host: string, session: string, name: string, args: Record<string, unknown>, now?: string): Promise<LoopResult | undefined>;
 /** What the model is told once, at a session's start, about the loop's tools: with the flows' steps, when there are flows. */
 export declare function loopPrompt(flows: readonly CoachFlow[]): string[];
-/** The lines beside a prompt: the work items on the way, by id, and the practices of the step this session's item stands at. */
+/**
+ * The lines beside a prompt: the work items on the way, by id, and the practices of the step this session's item
+ * stands at, each with how often it was corrected from the person's ledger (about 20 ms on a ledger of 2,800 prompts).
+ */
 export declare function loopContext(root: string, session: string, flows?: readonly CoachFlow[]): string[];

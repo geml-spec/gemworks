@@ -3,6 +3,7 @@ import {
   changesDirectory,
   commandDirs,
   commandOf,
+  commandsRun,
   isDirectoryChange,
   isSearchOnlyCommand,
   pathWords,
@@ -14,12 +15,13 @@ import {
   switchesWorkItemOnly,
   withoutDataHereDocs,
   withoutQuoting
-} from "./gemworks-chunk-UEVNGPQ5.mjs";
+} from "./gemworks-chunk-YDF5DTZJ.mjs";
 export {
   MAX_SIGNAL_COMMAND_LENGTH,
   changesDirectory,
   commandDirs,
   commandOf,
+  commandsRun,
   isDirectoryChange,
   isSearchOnlyCommand,
   pathWords,

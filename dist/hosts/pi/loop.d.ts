@@ -3,7 +3,7 @@ import { type Waiting } from "../../core/board-page.js";
 import { type Practice } from "../../core/practices.js";
 import { type SharedDecision } from "../../core/session-log.js";
 import { type CoachFlow, type WorkItem } from "../../core/work.js";
-import { type Complete } from "../../ledger-run.js";
+import { type Complete } from "./ledger-run.js";
 export declare const PI_HOST = "pi";
 /** What the band and the board are drawn from. */
 export interface PiLoopData {

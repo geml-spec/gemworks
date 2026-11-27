@@ -4,7 +4,7 @@
 // is copied into .geml/artifacts/ under its content's hash, one copy a version;
 // a GEML document's later versions go into its copy's .gemlhistory instead. A
 // row is one version: an artifact's versions are its rows, oldest first. Pure:
-// rows in, text out; artifacts-store.ts reads the files and git and writes.
+// rows in, text out; store/artifacts.ts reads the files and git and writes.
 import { parse, unitSpans } from "@geml/geml";
 export const ARTIFACTS_TABLE = "artifacts";
 export const ARTIFACT_COLUMNS = ["item", "kind", "name", "where", "version", "size", "at", "sha256"];

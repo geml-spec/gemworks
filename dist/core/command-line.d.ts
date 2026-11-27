@@ -27,6 +27,15 @@ export declare function simpleCommands(line: string): string[] | null;
 export declare function signalHeads(line: string): string[] | null;
 /** The line with line continuations, quotes and backslashes removed and every run of blanks made one space: roughly the text the shell will read as words. */
 export declare function withoutQuoting(command: string): string;
+/**
+ * The commands a line runs, each as its words from the command word on (quotes and backslashes removed): one per
+ * command position — after `;`, `&&`, a pipe, a newline, a subshell, a substitution, a prefix such as `command` — and
+ * those in the strings a shell is handed (`bash -c "…"`, `pwsh -c "…"`, `sudo sh -c "…"`). What a launcher runs
+ * (`sudo git push`, `rtk git push`) is left to the reader, which knows the words it skips. A line that does not
+ * tokenise, a command word built by expansion, a shell nested deeper than the scan reads and PowerShell's strings are
+ * read loosely as well: their words from each one on, so a reader that keeps to the safe side still finds a command.
+ */
+export declare function commandsRun(line: string, depth?: number): string[][];
 /** The person-only refusal's words for one verb: what the model reads, whichever scan found the verb. */
 export declare function personOnlyReason(verb: string): string;
 /**

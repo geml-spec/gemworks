@@ -1,0 +1,113 @@
+/**
+ * Where the practices of a project are kept (core/practices.ts): the person's own in ~/.gemworks/practices.geml, the
+ * project's in the main working tree's .geml/practices.geml (beside its sessions, out of git), the team's in the
+ * repository's .gemworks/practices.geml (committed by the person, never written here but by sharing). Reading a layer
+ * whose file is missing gives none; a layer the person cannot write keeps what it had.
+ */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { journalBaseOf } from "../host-git.js";
+import { parsePractices, practicesText } from "../core/practices.js";
+export const PRACTICES_FILE = "practices.geml";
+/** The file of each layer for a checkout. */
+export function practicePaths(root, home = homedir()) {
+    return {
+        personal: join(home, ".gemworks", PRACTICES_FILE),
+        project: join(journalBaseOf(root), ".geml", PRACTICES_FILE),
+        team: join(root, ".gemworks", PRACTICES_FILE),
+    };
+}
+function readLayer(path, layer) {
+    if (!existsSync(path))
+        return { practices: [], memoryMoved: false };
+    try {
+        return parsePractices(readFileSync(path, "utf8"), layer);
+    }
+    catch {
+        return { practices: [], memoryMoved: false };
+    }
+}
+function writeLayer(path, file) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, practicesText(file));
+}
+/** Every layer's practices, the team's first; whether this project's memory was moved in. */
+export function readPractices(root, home) {
+    const paths = practicePaths(root, home);
+    const team = readLayer(paths.team, "team");
+    const project = readLayer(paths.project, "project");
+    const personal = readLayer(paths.personal, "personal");
+    return { practices: [...team.practices, ...project.practices, ...personal.practices], memoryMoved: project.memoryMoved };
+}
+/**
+ * Practices written into their layers (personal or project); `memory` marks the project's memory moved. One that
+ * `replaces` another takes its place: that one, in whichever of the two layers, is kept taken out, naming it.
+ */
+export function writePractices(root, added, memory, home) {
+    const paths = practicePaths(root, home);
+    const by = new Map(added.flatMap((p) => (p.replaces !== undefined ? [[p.replaces, p.id]] : [])));
+    for (const layer of ["personal", "project"]) {
+        const mine = added.filter((p) => p.layer === layer);
+        const file = readLayer(paths[layer], layer);
+        const replacing = file.practices.some((p) => by.has(p.id));
+        if (mine.length === 0 && !replacing && !(layer === "project" && memory))
+            continue;
+        const kept = file.practices.map((p) => (by.has(p.id) ? { ...p, deleted: true, replacedBy: by.get(p.id) } : p));
+        writeLayer(paths[layer], { practices: [...kept, ...mine], memoryMoved: file.memoryMoved || (layer === "project" && memory) });
+    }
+}
+/**
+ * One practice changed: taken out (kept as a tombstone, so it is not learned again), moved to the other of the
+ * person's and the project's layers, or hung on every flow and step (`everywhere`: what it asks was said off its step
+ * too). A team practice is changed in the repository, not here. False when there is no such practice it can change.
+ * A rewrite taken out gives back the one it took the place of: the person undoes the model's rewrite.
+ */
+export function changePractice(root, id, change, home) {
+    const paths = practicePaths(root, home);
+    if (change.deleted === true) {
+        const rewrite = readPractices(root, home).practices.find((p) => p.id === id && p.layer !== "team");
+        if (rewrite?.replaces !== undefined) {
+            for (const layer of ["personal", "project"]) {
+                const file = readLayer(paths[layer], layer);
+                if (!file.practices.some((p) => p.id === rewrite.replaces && p.replacedBy === id))
+                    continue;
+                writeLayer(paths[layer], { ...file, practices: file.practices.map((p) => (p.id === rewrite.replaces ? (({ replacedBy: _by, deleted: _deleted, ...back }) => back)(p) : p)) });
+            }
+        }
+    }
+    const changed = (p) => ({ ...p, ...(change.deleted !== undefined ? { deleted: change.deleted } : {}), ...(change.everywhere === true ? { flow: "*", step: "*" } : {}) });
+    for (const layer of ["personal", "project"]) {
+        const file = readLayer(paths[layer], layer);
+        const p = file.practices.find((x) => x.id === id);
+        if (p === undefined)
+            continue;
+        if (change.layer !== undefined && change.layer !== layer) {
+            writeLayer(paths[layer], { ...file, practices: file.practices.filter((x) => x.id !== id) });
+            const to = readLayer(paths[change.layer], change.layer);
+            writeLayer(paths[change.layer], { ...to, practices: [...to.practices, { ...changed(p), layer: change.layer }] });
+            return true;
+        }
+        writeLayer(paths[layer], { ...file, practices: file.practices.map((x) => (x.id === id ? changed(x) : x)) });
+        return true;
+    }
+    return false;
+}
+/** Practices moved from the person's or the project's layer into the team's (the repository's .gemworks/practices.geml); how many moved. */
+export function sharePractices(root, ids, home) {
+    const paths = practicePaths(root, home);
+    const moving = [];
+    for (const layer of ["personal", "project"]) {
+        const file = readLayer(paths[layer], layer);
+        const going = file.practices.filter((p) => ids.includes(p.id) && p.deleted !== true);
+        if (going.length === 0)
+            continue;
+        moving.push(...going);
+        writeLayer(paths[layer], { ...file, practices: file.practices.filter((p) => !going.includes(p)) });
+    }
+    if (moving.length === 0)
+        return 0;
+    const team = readLayer(paths.team, "team");
+    writeLayer(paths.team, { ...team, practices: [...team.practices, ...moving.map(({ session: _session, turn: _turn, ...p }) => ({ ...p, layer: "team" }))] });
+    return moving.length;
+}

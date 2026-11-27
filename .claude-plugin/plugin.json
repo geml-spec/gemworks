@@ -1,6 +1,6 @@
 {
   "name": "gemworks",
-  "version": "0.3.19",
+  "version": "0.4.0",
   "description": "A workbench right beside your agent chat: it keeps your artifacts in order, sums up what you've learned, remembers what you've decided, and lets your workflow grow on its own. A line above the prompt shows where the work stands; a board holds the work items, artifacts and flows.",
   "author": {
     "name": "geml-spec",
@@ -16,7 +16,7 @@
     "journal",
     "hooks"
   ],
-  "types": "./types/index.d.ts",
+  "types": "./hooks/state.d.ts",
   "hooks": "./hooks/modules.json",
   "dependencies": [
     "geml@geml"

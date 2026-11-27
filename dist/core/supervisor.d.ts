@@ -123,7 +123,7 @@ export declare class Supervisor {
         entered: string[];
     };
     /** Write each variable's value; then take automatic transitions while one holds. */
-    /** The clock's evidence (spec §3.6): the `elapsed` variables as of `meta.at`; nothing in a final state, where the work item is closed. */
+    /** The clock's evidence (workflow-format.md §3.6): the `elapsed` variables as of `meta.at`; nothing in a final state, where the work item is closed. */
     elapse(meta: Meta): {
         wrote: string[];
         entered: string[];

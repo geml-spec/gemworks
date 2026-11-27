@@ -1,4 +1,4 @@
-import type { CallFacts } from "../claude-code/fastpath.js";
+import type { CallFacts } from "../../shell/fastpath.js";
 export interface QwenEvent {
     hook_event_name: string;
     session_id?: string;

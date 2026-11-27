@@ -41,7 +41,7 @@ export interface Attached {
 }
 export declare function apply(ctx: Context, config: Config): void;
 /**
- * One agent in the project's shared session record (session-store.ts): its
+ * One agent in the project's shared session record (store/sessions.ts): its
  * prompts as each turn opens, its answer as the turn closes (the text the
  * stream carried), the files its write tools wrote and the commits its
  * commands made, the decisions the model notes with `gemworks_note`; and the

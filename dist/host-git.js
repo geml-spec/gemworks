@@ -8,7 +8,17 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { realPath } from "./host-fs.js";
-const TIMEOUT_MS = 10_000;
+/**
+ * How long one git or gh call may take before it reads as unanswered: ten seconds, or GEMWORKS_GIT_TIMEOUT_MS when that
+ * is a positive number of milliseconds. Alone, git answers in a fraction of a second; the test suite sets it longer,
+ * because at full width it keeps the machine busy enough for a git call to pass ten seconds and fail a test that passes
+ * run alone.
+ */
+export function gitTimeoutFrom(value) {
+    const ms = Number(value);
+    return Number.isFinite(ms) && ms > 0 ? ms : 10_000;
+}
+const TIMEOUT_MS = gitTimeoutFrom(process.env["GEMWORKS_GIT_TIMEOUT_MS"]);
 function run(cmd, args, cwd, trim = true, timeout = TIMEOUT_MS) {
     const r = spawnSync(cmd, args, {
         cwd, encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
@@ -76,7 +86,8 @@ function once(key, read) {
 /**
  * The checkout's git directory and the repository's common one (a worktree's
  * .git is a file naming its own directory, whose commondir names the shared
- * one); undefined when root holds no .git, or one this does not read.
+ * one); undefined when root holds no .git, one this does not read, or one
+ * naming a directory that is gone (a pruned worktree's: git says no repository).
  */
 function gitDirsOf(root) {
     const dot = join(root, ".git");
@@ -87,6 +98,8 @@ function gitDirsOf(root) {
         if (named === null)
             return undefined;
         const git = resolve(root, named[1]);
+        if (!existsSync(git))
+            return undefined;
         let common = git;
         try {
             common = resolve(git, readFileSync(join(git, "commondir"), "utf8").trim());

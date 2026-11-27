@@ -1,4 +1,4 @@
-import type { CallFacts } from "../claude-code/fastpath.js";
+import type { CallFacts } from "../../shell/fastpath.js";
 /** OpenCode's shell tool. */
 export declare const SHELL = "shell";
 /** An MCP tool's own name: OpenCode lists a server's tools as `<server>.<tool>`. */

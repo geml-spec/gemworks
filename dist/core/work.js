@@ -56,7 +56,16 @@ export function readCoachFlow(name, text, reference) {
     const diff = reference !== undefined
         ? { added: states.filter((s) => !s.final && !reference.states.some((r) => r.id === s.id)).map((s) => s.title), removed: reference.states.filter((r) => !r.final && !states.some((s) => s.id === r.id)).map((r) => r.title) }
         : undefined;
-    return { name, title, states, edges, ...(diff !== undefined ? { diff } : {}) };
+    // Each shipped step it lacks comes back after the nearest step before it in the shipped flow that it has, else its first.
+    const shipped = reference?.states.filter((r) => !r.final) ?? [];
+    const has = (id) => states.some((s) => s.id === id && !s.final);
+    const missing = shipped.flatMap((r, i) => {
+        if (states.some((s) => s.id === r.id))
+            return [];
+        const after = shipped.slice(0, i).reverse().find((x) => has(x.id))?.id ?? states.find((s) => !s.final)?.id;
+        return after === undefined ? [] : [{ id: r.id, title: r.title, need: r.need, judge: r.judge, prevents: r.prevents, after }];
+    });
+    return { name, title, states, edges, ...(diff !== undefined ? { diff } : {}), ...(missing.length > 0 ? { missing } : {}) };
 }
 /**
  * The steps an event has met: the ones it names, or for an event that names only the state it stood in (written before

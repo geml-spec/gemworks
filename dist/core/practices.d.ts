@@ -5,7 +5,8 @@ export type PracticeBy = "model" | "memory" | "person";
 /**
  * A practice: the step it hangs on (`flow` and `step`, `*` for every one), what to do, why (the incident it came from),
  * when and by whom it was written, its layer; `ref` the address of the text where a file read every turn keeps it
- * (CLAUDE.md#build-and-check), `from` its source (memory:<file>), `deleted` once the person took it out.
+ * (CLAUDE.md#build-and-check), `from` its source (memory:<file>), `deleted` once the person took it out. `replaces`
+ * the one a rewrite took the place of; that one, kept as taken out, names it in `replacedBy`: one problem's attempts.
  */
 export interface Practice {
     id: string;
@@ -21,6 +22,8 @@ export interface Practice {
     deleted?: boolean;
     session?: string;
     turn?: number;
+    replaces?: string;
+    replacedBy?: string;
 }
 /** A layer's file read: its practices, and whether the host's memory was moved into it. */
 export interface PracticeFile {
@@ -38,9 +41,22 @@ export declare function practicesText(file: PracticeFile): string;
  */
 export declare function practicesAt(list: readonly Practice[], flow: string, step: string, limit?: number): Practice[];
 /**
+ * How alike two practices read, 0 to 1: the share of neighbouring-character pairs they have in common (Dice). Crude,
+ * and needs no model: a restatement of a practice in other words scored 0.41 against it, the next of 81 kept 0.07.
+ */
+export declare function likeness(a: string, b: string): number;
+/**
+ * The practices kept most like `text`, on any step, the most alike first and the newer among equals: those the person
+ * took out as well (an idea tried and dropped), not those a rewrite took the place of (their rewrite stands for them).
+ */
+export declare function closestPractices(kept: readonly Practice[], text: string, n?: number): Practice[];
+/**
  * Practices given (the practice tool, the move from memory) checked against the ones kept: each needs its flow, step
- * and text; one already kept on the same step (or one the person took out) is not added again. `newId` names a new
- * one. What to write, and what was wrong with the rest.
+ * and text; one already kept on the same step (or one the person took out) is not added again. The model says of each
+ * whether it is new (`new: true`) or rewrites one kept (`replaces`, by id, which it then takes the place of): one that
+ * says neither, while practices are kept, is held back in `unreviewed`, so that the closest are shown before it is
+ * written. Only the model's are: the move from memory and the person's own say neither. `newId` names a new one. What to write, the ones it replaces, what was
+ * held back, and what was wrong with the rest.
  */
 export declare function newPractices(given: readonly unknown[], kept: readonly Practice[], at: string, by: PracticeBy, newId: (n: number) => string, flows: readonly {
     name: string;
@@ -51,6 +67,14 @@ export declare function newPractices(given: readonly unknown[], kept: readonly P
 }): {
     added: Practice[];
     errors: string[];
+    replaced: {
+        id: string;
+        by: string;
+    }[];
+    unreviewed: {
+        n: number;
+        text: string;
+    }[];
 };
 /** Whether a practice is new: written by the model in the last `days` days (新学到, with its ×). */
 export declare function isNew(p: Practice, now: string, days?: number): boolean;

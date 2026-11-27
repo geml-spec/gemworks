@@ -1,6 +1,6 @@
 import { GITIGNORE } from "./project-home.js";
 export { GITIGNORE };
-/** The workflows this package ships: the directories under its `workflows/`. */
+/** The workflows this package ships: the directories under its `flows/strict/`. */
 export declare function bundledWorkflows(): string[];
 /** Which bundled workflow fits a project that has none yet, and what in the project says so. */
 export interface Suggestion {

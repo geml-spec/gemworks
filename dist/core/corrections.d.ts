@@ -165,6 +165,8 @@ export interface PracticeCount {
     before: number;
     after: number;
 }
+/** How many corrections said since a practice, where it reminds, make it one that does not hold: the flow tab's 失效 card, the reminder's not holding. */
+export declare const FAILING_AFTER = 2;
 /**
  * For each practice linked to a theme: how many of the theme's corrections came before it was written (anywhere), how
  * many after where it reminds, read against the practice's own words and found to hold (unchecked). One said after it

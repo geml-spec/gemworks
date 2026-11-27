@@ -1,6 +1,6 @@
-import type { BoardAction } from "./actions.js";
-import type { InboxItem } from "./inbox.js";
-import type { T } from "./text.js";
+import type { BoardAction } from "../../shell/actions.js";
+import type { InboxItem } from "../../shell/inbox.js";
+import type { T } from "../../shell/text.js";
 /** An option the judgement may pick: the thing waiting, the option's words, and what pressing it does. */
 export interface JudgeOption {
     key: string;

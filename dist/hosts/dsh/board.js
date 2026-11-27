@@ -1,12 +1,12 @@
-import { learnInFile } from "../../dictionary-io.js";
+import { learnInFile } from "../../store/dictionary.js";
 import { flowPicture } from "../../core/picture.js";
 import { policyOf } from "../../core/policy.js";
 import { statusOf } from "../../core/status.js";
 import { varsBySource } from "../../core/statechart.js";
 import { timelineOf } from "../../timeline.js";
-import { HOME_TAB, ICON_CHAR, inputAction, paneRows, tabs } from "../claude-code/board.js";
-import { inboxItems } from "../claude-code/inbox.js";
-import { langOf, wordsFor } from "../claude-code/text.js";
+import { HOME_TAB, ICON_CHAR, inputAction, paneRows, tabs } from "../../shell/board.js";
+import { inboxItems } from "../../shell/inbox.js";
+import { langOf, wordsFor } from "../../shell/text.js";
 const FILTERS = ["all", "artifacts", "evidence", "moves", "refusals", "depends"];
 /** The tabs on this host: every tab but the sessions tab. */
 // No sessions tab on this host: its journal is where what happened shows, so it keeps 记录.

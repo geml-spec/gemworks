@@ -1,7 +1,7 @@
 import { type Overlay } from "@geml/geml/dist/statechart-svg.js";
 import type { Statechart } from "./statechart.js";
 import type { Status } from "./status.js";
-import type { FlowPicture, TimelineEntry } from "../hosts/claude-code/protocol.js";
+import type { FlowPicture, TimelineEntry } from "../shell/protocol.js";
 export interface PictureInput {
     sc: Statechart;
     status: Status | null;

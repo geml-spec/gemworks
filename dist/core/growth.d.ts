@@ -69,6 +69,8 @@ export declare const parseRules: (text: string, layer: Rule["layer"]) => Rule[];
 export declare const rulesText: (list: readonly Rule[]) => string;
 /** Whether a path is one of the files that keep rules: rules are the person's to change, not the model's. */
 export declare function isRulesFile(path: string): boolean;
+/** What a write to a file that keeps rules is refused with: rules are the person's to change. */
+export declare const RULES_FILE_HELD = "\u89C4\u5B9A\u53EA\u6709\u5B9A\u5B83\u7684\u4EBA\u80FD\u6539\uFF1Arules.geml \u8BF7\u4F60\u81EA\u5DF1\u6539\u3002";
 /**
  * Why a tool call is refused, if a rule holds it: one of its keys matches a rule of the flow this session's work item
  * is on (or of every flow), and the step the rule requires is unmet on that item.

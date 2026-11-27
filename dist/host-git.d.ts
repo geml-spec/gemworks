@@ -18,6 +18,13 @@ export type GhFacts = ({
     available: false;
     reason: string;
 };
+/**
+ * How long one git or gh call may take before it reads as unanswered: ten seconds, or GEMWORKS_GIT_TIMEOUT_MS when that
+ * is a positive number of milliseconds. Alone, git answers in a fraction of a second; the test suite sets it longer,
+ * because at full width it keeps the machine busy enough for a git call to pass ten seconds and fail a test that passes
+ * run alone.
+ */
+export declare function gitTimeoutFrom(value: string | undefined): number;
 /** Forget what was remembered: the next question goes to git (a test that answers several requests in one process, as several processes would). */
 export declare function forgetGitFacts(): void;
 export declare function beginGitRequest(): void;

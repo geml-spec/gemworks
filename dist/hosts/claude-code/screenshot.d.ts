@@ -1,4 +1,4 @@
-import { type T } from "./text.js";
+import { type T } from "../../shell/text.js";
 /** A way to start a region capture that leaves the picture on the clipboard. */
 export interface Capture {
     argv: string[];

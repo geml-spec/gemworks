@@ -17,18 +17,18 @@ import { isAbsolute, join } from "node:path";
 import { createInterface } from "node:readline";
 import { HOST_TOOLS, NO_TOOLS } from "./core/host-tools.js";
 import { FLOW_TOOLS } from "./core/verb-specs.js";
-import { decisionsContext, NOTE_TOOL, SESSIONS_PROMPT } from "./core/session-log.js";
+import { decisionsContext, NOTE_TOOL, noteReply, SESSIONS_PROMPT } from "./core/session-log.js";
 import { callLoopTool, coachFlowsAt, isLoopTool, LOOP_TOOLS, loopContext, loopPrompt } from "./loop.js";
-import { boardHasWork, openBoardOnce } from "./board-file.js";
-import { decisionsFor, hostLabel, latestSessionOf, recordDecisions } from "./session-store.js";
-import { activeOf, ANTIGRAVITY_HOST } from "./antigravity.js";
-import { activeOf as cursorActiveOf, CURSOR_HOST } from "./cursor.js";
-import { QWEN_HOST } from "./qwen.js";
-import { OPENCODE_HOST } from "./opencode.js";
-import { DEVIN_HOST, mcpRootOf as devinRootOf } from "./devin.js";
-import { TRAE_HOST } from "./trae.js";
-import { KIRO_HOST } from "./kiro.js";
-import { mcpRootOf as hookedMcpRootOf } from "./hooked.js";
+import { boardHasWork, openBoardOnce } from "./store/board.js";
+import { decisionsFor, hostLabel, latestSessionOf, recordNote } from "./store/sessions.js";
+import { activeOf, ANTIGRAVITY_HOST } from "./hosts/antigravity/adapter.js";
+import { activeOf as cursorActiveOf, CURSOR_HOST } from "./hosts/cursor/adapter.js";
+import { QWEN_HOST } from "./hosts/qwen/adapter.js";
+import { OPENCODE_HOST } from "./hosts/opencode/adapter.js";
+import { DEVIN_HOST, mcpRootOf as devinRootOf } from "./hosts/devin/adapter.js";
+import { TRAE_HOST } from "./hosts/trae/adapter.js";
+import { KIRO_HOST } from "./hosts/kiro/adapter.js";
+import { mcpRootOf as hookedMcpRootOf } from "./hosts/hooked.js";
 import { ghOncePerBranch } from "./host-git.js";
 import { runVerb } from "./verbs.js";
 import { openWorkspace } from "./workspace.js";
@@ -130,14 +130,13 @@ export async function answer(msg, o) {
         return "";
     } };
     if (name === NOTE_TOOL.name) {
-        const given = m?.params?.["arguments"]?.decisions;
-        const decisions = Array.isArray(given) ? given.filter((d) => typeof d === "string") : [];
         try {
-            const n = recordDecisions(root, o.host, sessionOf(), decisions);
+            const note = recordNote(root, o.host, sessionOf(), m?.params?.["arguments"]);
+            const n = note.decided.length;
             // The GEML board says it now: opened the first time this session records something.
             if (n > 0)
                 openBoardOnce(root, sessionOf());
-            return withNews(n === 0 ? "Nothing recorded: decisions is a list of short sentences." : `Recorded ${n} decision${n === 1 ? "" : "s"}; the project's other sessions will see ${n === 1 ? "it" : "them"}.`, n === 0);
+            return withNews(noteReply(note), n === 0);
         }
         catch (e) {
             return text(id, `gemworks: ${e instanceof Error ? e.message : String(e)}`, true);

@@ -1,6 +1,6 @@
-import type { InboxItem } from "./inbox.js";
-import type { Artifacts, ShellStatus } from "./protocol.js";
-import type { T } from "./text.js";
+import type { InboxItem } from "../../shell/inbox.js";
+import type { Artifacts, ShellStatus } from "../../shell/protocol.js";
+import type { T } from "../../shell/text.js";
 /**
  * Where the work stands, in a few lines: the work item, its flow and stage;
  * the first thing to decide and the first to accept, with how many more

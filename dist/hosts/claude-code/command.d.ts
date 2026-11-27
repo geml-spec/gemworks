@@ -1,6 +1,6 @@
-import type { BoardTab } from "./actions.js";
-import type { BridgeResponse, ShellStatus } from "./protocol.js";
-import { type T } from "./text.js";
+import type { BoardTab } from "../../shell/actions.js";
+import type { BridgeResponse, ShellStatus } from "../../shell/protocol.js";
+import { type T } from "../../shell/text.js";
 export type CommandIntent = {
     kind: "status";
 } | {

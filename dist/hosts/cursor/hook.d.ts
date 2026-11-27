@@ -1,4 +1,4 @@
-import type { CallFacts } from "../claude-code/fastpath.js";
+import type { CallFacts } from "../../shell/fastpath.js";
 export interface CursorEvent {
     hook_event_name: string;
     conversation_id?: string;

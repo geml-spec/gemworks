@@ -1,9 +1,10 @@
 // Gemworks's Claude Code shell. This module runs with no Node and no DOM: from
 // the latest policy snapshot it decides whether a tool call can matter to the
 // workflow, and asks the bundled CLI (dist/gemworks.mjs: one JSON request on
-// stdin, one JSON answer on stdout) only when it can. It never writes a
-// project file — journals, .geml/context.geml, the dictionary, the backlog and
-// the exports belong to the CLI, which writes them under locks. Gemworks fails
+// stdin, one JSON answer on stdout) only when it can. The files written under a
+// lock — journals, .geml/context.geml, the dictionary, the backlog, the
+// artifacts table — belong to the CLI; the session record, the proposals, the
+// rules and the project's own starter flows this module writes whole itself. Gemworks fails
 // open: when Node is missing, the bridge fails or times out, or an answer does
 // not parse, the call goes through, nothing is recorded, and the band says
 // what is wrong; a start that got no answer is tried again by a later tool
@@ -18,65 +19,66 @@
 // The one question asked here, with $.ui.ask, is about a tool that is not its
 // use's preferred one; the answer goes through the bridge into the dictionary.
 //
-// What the person sees (spec §8): the band above the prompt — the G mark, the
-// words, the one or two actions the moment needs, the pending count — and the
-// board's six tabs, each drawn from the pure modules under
+// What the person sees (spec §8): the band above the prompt — the mark, the
+// one thing that is the person's now with up to three options, how many more
+// wait — and the board's five tabs, each drawn from the pure modules under
 // src/hosts/claude-code/ and run through `act`. The settings live in the
 // plugin's store; the words follow the chosen language.
 import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
 import { atom, read, update } from 'claude-code'
-import type { GemworksJson, GemworksTab } from '../types'
+import type { GemworksJson, GemworksTab } from './state'
 import { preferAnswer, preferQuestion } from '../dist/core/asking.js'
 import type { Answered } from '../dist/core/asking.js'
 import { CLAUDE_CODE_TOOLS } from '../dist/core/host-tools.js'
 import { commitMessageFiles } from '../dist/core/commit-message.js'
 import { FLOW_TOOLS } from '../dist/core/verb-specs.js'
 import type { VerbName } from '../dist/core/verb-specs.js'
-import type { BoardAction, BoardTab, Dialog, JournalFilter, Pressable, ShareHow, ShareWhat } from '../dist/hosts/claude-code/actions.js'
-import { answered, asksAfterTurn, bandLine, heldSteps, leadOf, newsOf, NO_FACTS, NO_MEMORY, nowRows, openAfter, pendingNote, pressablesFor, pressedOf, remember, standingOf, stepPressables } from '../dist/hosts/claude-code/attention.js'
-import type { Queued } from '../dist/hosts/claude-code/attention.js'
-import type { AttentionFacts, AttentionMemory } from '../dist/hosts/claude-code/attention.js'
-import { envParts, remoteInPlay } from '../dist/hosts/claude-code/env.js'
+import type { BoardAction, BoardTab, Dialog, JournalFilter, Pressable, ShareHow, ShareWhat } from '../dist/shell/actions.js'
+import { answered, asksAfterTurn, bandLine, heldSteps, leadOf, newsOf, NO_FACTS, NO_MEMORY, nowRows, openAfter, pendingNote, pressablesFor, pressedOf, remember, standingOf, stepPressables } from '../dist/shell/attention.js'
+import type { Queued } from '../dist/shell/attention.js'
+import type { AttentionFacts, AttentionMemory } from '../dist/shell/attention.js'
+import { envParts, remoteInPlay } from '../dist/shell/env.js'
+import { engineGapText, engineVersionOf, failureText, goneCallOf, isNeeded } from '../dist/hosts/claude-code/engine.js'
 import { captureHint, offersCapture } from '../dist/hosts/claude-code/screenshot.js'
-import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, isStatusLine, legacyLogName, logName, nextTurn, NOTE_TOOL, parseLog, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
-import type { SeenRun, SessionEvent, SessionSummary } from '../dist/core/session-log.js'
+import { appendEvents, currentTurn, decisionsContext, decisionsSince, formatLog, isLogName, legacyLogName, logName, nextTurn, NOTE_TOOL, noteReply, parseLog, personPrompts, readNote, SAME_PROMPT_MS, SESSIONS_GITIGNORE, SESSIONS_PROMPT, summarize, withEarlierTurns } from '../dist/core/session-log.js'
+import type { NoteRead, SeenRun, SessionEvent, SessionSummary } from '../dist/core/session-log.js'
 import { checkRequest, flowRequest, labelRequest, linkKey, promptId, readChecks, readFlowDraft, readLabels, readThemes, themeRequest, typedWords } from '../dist/core/corrections.js'
 import type { LabelledPrompt } from '../dist/core/corrections.js'
 import { ARTIFACT_TOOL, isMadeForPeople, publishedLink } from '../dist/core/artifact-tool.js'
 import { ASK_PROMPT, ASK_TOOL, askedOf } from '../dist/core/ask-tool.js'
-import { COACH_FLOWS, coachBand, goneOnAfterTurn, itemProgress, readCoachFlow, stripText, turnItem, turnWords, WORK_REMINDER, WORK_TOOL, workContext, workEvents, workItemsOf, workPrompt } from '../dist/hosts/claude-code/coach.js'
-import type { CoachFlow, CoachFocus, Doing, GoneOn, WorkGroup, WorkItem } from '../dist/hosts/claude-code/coach.js'
-import { memoryMoveContext, PRACTICE_PROMPT, PRACTICE_TOOL, practiceContext } from '../dist/hosts/claude-code/practice.js'
+import { COACH_FLOWS, coachBand, goneOnAfterTurn, itemProgress, readCoachFlow, stripText, turnItem, turnWords, WORK_REMINDER, WORK_TOOL, workContext, workEvents, workItemsOf, workPrompt } from '../dist/shell/coach.js'
+import type { CoachFlow, CoachFocus, Doing, GoneOn, WorkGroup, WorkItem } from '../dist/shell/coach.js'
+import { memoryMoveContext, PRACTICE_PROMPT, PRACTICE_TOOL, practiceAnswer, practiceContext } from '../dist/hosts/claude-code/practice.js'
 import { isNew, newPractices, type Practice } from '../dist/core/practices.js'
-import { expireEvent, expiring, exportText as flowExport, flowText, GROWTH_PROMPT, isRulesFile, newProposals, parseProposals, parseRules, PROPOSE_TOOL, proposalsText, RULE_TOOL, ruleRefusal, rulesText, skippedSteps, type Proposal, type Rule } from '../dist/hosts/claude-code/growth.js'
+import { expireEvent, expiring, exportText as flowExport, flowText, GROWTH_PROMPT, isRulesFile, newProposals, parseProposals, parseRules, PROPOSE_TOOL, proposalsText, RULE_TOOL, RULES_FILE_HELD, ruleRefusal, rulesText, skippedSteps, type Proposal, type Rule } from '../dist/shell/growth.js'
 import { keysOf } from '../dist/core/dictionary.js'
 import { isVisualTool, visualFileName, visualPage } from '../dist/hosts/claude-code/visual.js'
-import { transcriptEvents, type Transcript } from '../dist/core/transcript.js'
+import { promptShown, transcriptEvents, type Transcript } from '../dist/core/transcript.js'
 import type { Asked } from '../dist/core/ask-tool.js'
-import type { AttachedClient, HostInfo } from '../dist/hosts/claude-code/env.js'
-import { BROWSER_PROGID_ARGV, baseName, browserCommandArgv, browserExeOf, openersFor, opensInBrowser, progIdOf } from '../dist/hosts/claude-code/open-file.js'
-import { bandView, BRAND_RED, cellWidth, MARK, MARK_SVG, SEP, toneProps, truncate, wrapCells } from '../dist/hosts/claude-code/band.js'
-import type { BandView, Tone } from '../dist/hosts/claude-code/band.js'
-import { BOARD_ID, ciSuggestions, DIALOG_ID, glyphSvg, heldRows, HOME_TAB, hostName, ICON_CHAR, ICON_SVG, ICON_TONE, inputAction, paneRows, projectPath, sessionLabel, TAB_IDS, tabs, toolSuggestions } from '../dist/hosts/claude-code/board.js'
-import type { BoardRow, FlowEdgeRow, Glyph, Icon } from '../dist/hosts/claude-code/board.js'
+import type { AttachedClient, HostInfo } from '../dist/shell/env.js'
+import { BROWSER_PROGID_ARGV, baseName, browserCommandArgv, browserExeOf, openersFor, opensInBrowser, progIdOf } from '../dist/shell/open-file.js'
+import { bandView, BRAND_RED, cellWidth, MARK, MARK_SVG, SEP, toneProps, truncate, wrapCells } from '../dist/shell/band.js'
+import type { BandView, Tone } from '../dist/shell/band.js'
+import { BOARD_ID, ciSuggestions, DIALOG_ID, glyphSvg, heldRows, HOME_TAB, hostName, ICON_CHAR, ICON_SVG, ICON_TONE, inputAction, paneRows, projectPath, sessionLabel, TAB_IDS, tabs, toolSuggestions } from '../dist/shell/board.js'
+import type { BoardRow, FlowEdgeRow, Glyph, Icon } from '../dist/shell/board.js'
 import { boardFailure, boardText, COMMAND_HINT, commandText, parseCommand, traceText } from '../dist/hosts/claude-code/command.js'
-import { afterNeeded, beforeDecision, checkoutProbe, isOwnTool, matchesUnit, paramsToFill } from '../dist/hosts/claude-code/fastpath.js'
-import type { BeforeDecision, CallFacts } from '../dist/hosts/claude-code/fastpath.js'
-import { inboxItems, othersWaiting, pendingList, shortReason } from '../dist/hosts/claude-code/inbox.js'
-import type { InboxItem } from '../dist/hosts/claude-code/inbox.js'
-import { BRIDGE_TIMEOUT_MS, decodeResponse, encodeRequest, SLOW_TIMEOUT_MS, unreadableText } from '../dist/hosts/claude-code/protocol.js'
-import type { BoardData, BridgeOp, BridgeRequest, BridgeResponse, CorrectionsView, ShellStatus, TodoCount } from '../dist/hosts/claude-code/protocol.js'
-import { bashExitCode, bridgeInput, contextOf, hasGitOperation, nodeMajor, toolArgs, touchedPath, writtenPath } from '../dist/hosts/claude-code/readers.js'
-import { answerGist, logExport, promptLine, sessionExport } from '../dist/hosts/claude-code/sessions.js'
-import type { PromptRecord } from '../dist/hosts/claude-code/sessions.js'
-import type { TurnMoved } from '../dist/hosts/claude-code/board.js'
-import { MADE_VIEW, type MadeView } from '../dist/hosts/claude-code/made.js'
-import type { MadeAll } from '../dist/hosts/claude-code/protocol.js'
-import type { MemoryList } from '../dist/memory-store.js'
+import { afterNeeded, beforeDecision, checkoutProbe, isOwnTool, matchesUnit, paramsToFill } from '../dist/shell/fastpath.js'
+import type { BeforeDecision, CallFacts } from '../dist/shell/fastpath.js'
+import { inboxItems, othersWaiting, pendingList, shortReason } from '../dist/shell/inbox.js'
+import type { InboxItem } from '../dist/shell/inbox.js'
+import { BRIDGE_TIMEOUT_MS, decodeResponse, encodeRequest, SLOW_TIMEOUT_MS, unreadableText } from '../dist/shell/protocol.js'
+import type { BoardData, BridgeOp, BridgeRequest, BridgeResponse, CorrectionsView, ShellStatus, TodoCount } from '../dist/shell/protocol.js'
+import { bashExitCode, bridgeInput, contextOf, hasGitOperation, nodeMajor, toolArgs, touchedPath, writtenPath } from '../dist/shell/readers.js'
+import { answerGist, logExport, promptLine, sessionExport } from '../dist/shell/sessions.js'
+import type { PromptRecord } from '../dist/shell/sessions.js'
+import type { TurnMoved } from '../dist/shell/board.js'
+import { MADE_VIEW, type MadeView } from '../dist/shell/made.js'
+import type { MadeAll } from '../dist/shell/protocol.js'
+import type { MemoryList } from '../dist/store/memory.js'
 import { fitToBudget, stepDown } from '../dist/hosts/claude-code/budget.js'
-import { hhmm } from '../dist/hosts/claude-code/time.js'
-import { dayKey, mergeBooks, noteUse, pruneBook, usageKeys, usesSince } from '../dist/hosts/claude-code/usage.js'
-import type { UsageBook } from '../dist/hosts/claude-code/usage.js'
+import { hhmm } from '../dist/shell/time.js'
+import { dayKey, mergeBooks, noteUse, pruneBook, usageKeys, usesSince } from '../dist/shell/usage.js'
+import type { UsageBook } from '../dist/shell/usage.js'
 import { DEFAULT_SETTINGS, settingsFrom } from '../dist/hosts/claude-code/settings.js'
 import type { Settings } from '../dist/hosts/claude-code/settings.js'
 import { statusShareText } from '../dist/hosts/claude-code/share.js'
@@ -85,10 +87,11 @@ import { isNewer, releaseNotesOf } from '../dist/hosts/claude-code/release-notes
 import { waitingNotices } from '../dist/hosts/claude-code/notices.js'
 import { asksJudgeRequest, judgementLine, judgeOptions, judgeRequest, JUDGEMENT_MS, readAsksJudgement, readJudgement } from '../dist/hosts/claude-code/judge.js'
 import type { Judgement, JudgeOption } from '../dist/hosts/claude-code/judge.js'
-import { langOf, wordsFor } from '../dist/hosts/claude-code/text.js'
-import type { T } from '../dist/hosts/claude-code/text.js'
+import { langOf, wordsFor } from '../dist/shell/text.js'
+import type { T } from '../dist/shell/text.js'
 import { act } from './act.tsx'
 import { drawHeading, drawJudges, drawPractice, drawPracticeBlock, drawPresses, drawStep } from './manual.tsx'
+import { loadOutward, outwardHold, outwardKept } from './outward.tsx'
 
 const shellAtom = atom({ plugin: 'gemworks', key: 'shell' } as const, null as GemworksJson)
 const problemAtom = atom({ plugin: 'gemworks', key: 'problem' } as const, null as string | null)
@@ -169,6 +172,10 @@ const localeAtom = atom({ plugin: 'gemworks', key: 'locale' } as const, null as 
 const workflowsAtom = atom({ plugin: 'gemworks', key: 'workflows' } as const, null as GemworksJson)
 const shareAtom = atom({ plugin: 'gemworks', key: 'share' } as const, { what: 'status', how: 'copy', strip: true } as GemworksJson)
 const versionAtom = atom({ plugin: 'gemworks', key: 'version' } as const, null as string | null)
+/** The Claude Code the session runs in, for the about dialog and the trace. */
+const engineAtom = atom({ plugin: 'gemworks', key: 'engine' } as const, null as string | null)
+/** The calls the module needs that the engine was found to lack (engine.ts); any, and the module lets everything through. */
+const engineGapAtom = atom({ plugin: 'gemworks', key: 'engineGap' } as const, [] as string[])
 /** The band's attention (attention.ts): the last reply, when it came, the prompt it answered, and what the band remembers. */
 const attentionAtom = atom({ plugin: 'gemworks', key: 'attention' } as const, null as GemworksJson)
 /** The repository as the bridge last read it for the band: branches ahead of their upstream, open pull requests. */
@@ -235,6 +242,7 @@ const memoryAskedAtom = atom({ plugin: 'gemworks', key: 'memoryAsked' } as const
 /** The flows of the flow tab whose practices are listed (`*` those for every flow); null: the first flow's. */
 const manualExpandedAtom = atom({ plugin: 'gemworks', key: 'manualExpanded' } as const, null as string[] | null)
 const manualMenuAtom = atom({ plugin: 'gemworks', key: 'manualMenu' } as const, null as string | null)
+const manualAnywhereAtom = atom({ plugin: 'gemworks', key: 'manualAnywhere' } as const, 0 as number)
 /** The work item unfolded under its row on the work items tab (its history). */
 const workUnfoldedAtom = atom({ plugin: 'gemworks', key: 'workUnfolded' } as const, null as string | null)
 /** The 好，做吧 the person pressed, on their way until their own turn ends (coach.ts GoneOn). */
@@ -379,6 +387,7 @@ async function bridge($: EngineInterface, op: BridgeOp, timeoutMs: number = BRID
   try {
     out = await $.process.run([node, `${$.plugin.root}/dist/gemworks.mjs`, 'hook'], { cwd: root, stdin: encodeRequest(request), timeoutMs })
   } catch (err) {
+    await noteEngineGap($, err)
     const now = await $.clock.now()
     missedSince ??= now
     if (now - missedSince >= QUIET_MS || op.op === 'board' || op.op === 'export') await update($, problemAtom, () => `gemworks：暂时没应答，不拦操作（${reasonOf(err)}）`)
@@ -625,6 +634,17 @@ async function attentionOnPrompt($: EngineInterface, said: string, typed = true)
       await update($, answeredAtom, () => [...new Set([...before, ...settled])])
       // Typed answers off (settings): a question is settled by its press alone.
       if (typed && open.length > 0 && (await readSettings($)).judge.enabled) $.clock.after(0, () => { void judgeOpenAsks($, open, said).catch(() => undefined) })
+    } else {
+      // The moment was the prompt's that began this turn: a press while it runs (the work items tab's 等你定) answers one
+      // still open, which leaves them at once and is answered for the turn's end. Unrecorded, the card stayed (pressed a
+      // second time) and the turn's end asked it again (2026-11-25).
+      const left = ((await read($, leftAsksAtom)) as Asked[] | null) ?? []
+      const open = openAfter(left, [], said)
+      if (open.length < left.length) {
+        const settled = left.filter((q) => !open.some((x) => x.question === q.question)).map((q) => q.question)
+        await update($, leftAsksAtom, () => open)
+        await update($, answeredAtom, (done) => [...new Set([...(((done as string[] | null) ?? [])), ...settled])])
+      }
     }
     const news = newsOf((await read($, factsAtReplyAtom)) as unknown as AttentionFacts | null, await factsNow($), t)
     return news.length > 0 ? [`[gemworks] since your last reply: ${news.join('; ')}`] : []
@@ -760,22 +780,24 @@ async function sessionsOnPrompt($: EngineInterface, text: string): Promise<strin
   return [decisionsContext(fresh, (d) => `${hostName(d.host)}${d.branch !== undefined ? ` · ${d.branch}` : ''}，${hhmm(d.at)}`)]
 }
 
-/** The model's note: the decisions into this session's log, under the turn under way. */
+/**
+ * The model's note: the decisions into this session's log, under the turn under way. A choice it says the person made
+ * is theirs only when their words are found in a prompt they gave in this session (readNote); status is left out.
+ */
 async function noteDecisions($: EngineInterface, event: unknown): Promise<ToolCallResult> {
   const args = toolArgs(event as Record<string, unknown>)
-  const offered = Array.isArray(args['decisions']) ? (args['decisions'] as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim() !== '').map((x) => x.trim()) : []
-  if (offered.length === 0) return { result: 'Nothing recorded: decisions is a list of short sentences.' }
-  // Status is no decision: git, the board and the journal hold what was pushed, synced, committed, or what a version does.
-  const status = offered.filter(isStatusLine)
-  const given = offered.filter((x) => !isStatusLine(x))
-  const leftOut = status.length === 0 ? '' : ` ${status.length} left out as status, which git, the board and the journal hold: ${status.map((x) => `"${x.slice(0, 60)}"`).join(', ')}.`
-  if (given.length === 0) return { result: `Nothing recorded:${leftOut} A decision is a choice the person made or a finding other sessions would rediscover.` }
+  // Read once with no prompts to tell an empty note at once; whose each choice is waits for the session's prompts.
+  if (readNote(args, []).decided.length === 0) return { result: noteReply(readNote(args, [])) }
   if ((await read($, sessionsDirAtom)) === null) return { result: 'Nothing recorded: this project has no shared session record yet (gemworks has not read the repository).' }
   const at = await nowIso($)
-  const events = await appendOwn($, (so) => given.map((text): SessionEvent => ({ t: 'decision', turn: currentTurn(so), at, text })))
+  let note: NoteRead = { decided: [], status: [], unfound: [] }
+  const events = await appendOwn($, (so) => {
+    note = readNote(args, personPrompts(so))
+    return note.decided.map((d): SessionEvent => ({ t: 'decision', turn: currentTurn(so), at, text: d.text, by: d.by, ...(d.said !== undefined ? { said: d.said } : {}) }))
+  })
   if (events.length === 0) return { result: 'Nothing recorded: the session record could not be written.' }
   await loadProjectSessions($)
-  return { result: `Recorded ${given.length} decision${given.length === 1 ? '' : 's'}; the project's other sessions will see ${given.length === 1 ? 'it' : 'them'}.${leftOut}` }
+  return { result: noteReply(note) }
 }
 
 /**
@@ -793,7 +815,7 @@ async function coachFlows($: EngineInterface): Promise<CoachFlow[]> {
   const readAt = async (path: string): Promise<string | undefined> => $.fs.read(path).then(String, () => undefined)
   for (const name of COACH_FLOWS) {
     // The project's own flow takes who judges a step, what it prevents and its buttons' words from the shipped one's step of the same id.
-    const shippedText = await readAt(`${$.plugin.root}/coach/${name}.geml`)
+    const shippedText = await readAt(`${$.plugin.root}/flows/starter/${name}.geml`)
     const shipped = shippedText !== undefined ? readCoachFlow(name, shippedText) : undefined
     const ownText = own !== undefined ? await readAt(`${own}/${name}.geml`) : undefined
     const repo = await read($, rootAtom)
@@ -931,6 +953,8 @@ async function loadGrowth($: EngineInterface): Promise<void> {
 
 async function proposalsKept($: EngineInterface): Promise<Proposal[]> { return ((await read($, proposalsAtom)) as unknown as Proposal[] | null) ?? [] }
 async function rulesKept($: EngineInterface): Promise<Rule[]> { return ((await read($, rulesAtom)) as unknown as Rule[] | null) ?? [] }
+/** The outward actions let through read again, after `change` (outward.tsx): for act, which loads only what this file declares. */
+async function outwardChanged($: EngineInterface, change: { forget?: string[] }): Promise<void> { await loadOutward($, change) }
 
 /** The proposals written back, and kept. */
 async function saveProposals($: EngineInterface, list: readonly Proposal[]): Promise<void> {
@@ -1003,7 +1027,7 @@ async function recordRule($: EngineInterface, event: unknown): Promise<ToolCallR
 async function ruleHold($: EngineInterface, tool: string, input: Record<string, unknown>): Promise<string | undefined> {
   const writes = CLAUDE_CODE_TOOLS.write.includes(tool)
   const target = typeof input['file_path'] === 'string' ? input['file_path'] : typeof input['notebook_path'] === 'string' ? input['notebook_path'] : ''
-  if (writes && isRulesFile(target)) return '规定只有定它的人能改：rules.geml 请你自己改。'
+  if (writes && isRulesFile(target)) return RULES_FILE_HELD
   const session = await $.session.id().catch(() => '')
   const item = turnItem(await workItems($), session)
   if (item === undefined) return undefined
@@ -1190,13 +1214,15 @@ async function recordPractices($: EngineInterface, event: unknown): Promise<Tool
   const session = await $.session.id().catch(() => '')
   const turn = currentTurn(parseLog(await ownLogText($, (await read($, sessionsDirAtom)) ?? '', session).catch(() => '')))
   const r = newPractices(given, kept, at, memory ? 'memory' : 'model', (n) => `p${stamp}${n}`, flows.map((f) => ({ name: f.name, steps: f.states.map((s) => s.id) })), { session, turn })
-  if (r.added.length === 0 && !memory) return { result: `Nothing recorded: ${r.errors.join('; ') || 'practices is a list'}.` }
+  // Held back or not, the answer lists the closest kept with how each fared: the ledger as last read.
+  const answer = practiceAnswer(r, kept, (await correctionsKept($))?.counts ?? {})
+  if (r.added.length === 0 && !memory) return { result: r.unreviewed.length > 0 ? answer.text : `Nothing recorded: ${r.errors.join('; ') || 'practices is a list'}.` }
   const res = await bridge($, { op: 'practice-add', practices: r.added, ...(memory ? { memory: true } : {}) }).catch(() => undefined)
   if (res === undefined || !res.ok) return { result: 'Nothing recorded: gemworks could not write the practices.' }
   if (res.practices !== undefined) await update($, practicesAtom, () => res.practices as unknown as GemworksJson)
   // A new practice may state a theme the person kept saying: the themes are linked again, behind.
   if (r.added.length > 0) $.clock.after(0, () => { void themeLedger($).catch(() => undefined) })
-  return { result: `Recorded ${r.added.length} practice${r.added.length === 1 ? '' : 's'}; they remind at their steps.${r.errors.length > 0 ? ` Left out: ${r.errors.join('; ')}.` : ''}` }
+  return { result: answer.text }
 }
 
 /** The work tool: the turn's work items, checked against the flows, into this session's log; the board shows them. */
@@ -1225,7 +1251,7 @@ async function recordWork($: EngineInterface, event: unknown): Promise<ToolCallR
   return { result: `Recorded ${said}.${errors.length > 0 ? ` Left out: ${errors.join('; ')}.` : ''}` }
 }
 
-/** The sign-off sheets of these work items written again (signoff.ts), in the person's language; nothing waits on it. */
+/** The sign-off sheets of these work items written again (store/signoffs.ts), in the person's language; nothing waits on it. */
 export function signoffAfter($: EngineInterface, ids: readonly string[]): void {
   if (ids.length === 0) return
   $.clock.after(0, () => {
@@ -1528,10 +1554,32 @@ async function retryStart($: EngineInterface): Promise<void> {
 }
 
 /** Register one tool or command; a refusal is noted for the band, and the start goes on. */
+/**
+ * A failure that says the engine lacks a call (engine.ts): one the module needs is kept, and from then on the module lets
+ * every call through and the band names what is gone; any other is only traced. Never throws.
+ */
+async function noteEngineGap($: EngineInterface, err: unknown): Promise<void> {
+  try {
+    const call = goneCallOf(err)
+    if (call === null) return
+    trace($, `engine lacks ${call}: ${failureText(err)}`)
+    if (!isNeeded(call)) return
+    const gone = (await read($, engineGapAtom)) ?? []
+    if (!gone.includes(call)) await update($, engineGapAtom, () => [...gone, call])
+  } catch { /* nothing to note it with */ }
+}
+
+/** The band's line for an engine that lacks calls the module needs, in the person's words; null while it lacks none. */
+async function engineGapLine($: EngineInterface, t: T): Promise<string | null> {
+  const gone = (await read($, engineGapAtom)) ?? []
+  return gone.length > 0 ? engineGapText(t, await read($, engineAtom), gone) : null
+}
+
 async function registerOne($: EngineInterface, name: string, register: () => Promise<unknown>): Promise<void> {
   try {
     await register()
   } catch (err) {
+    await noteEngineGap($, err)
     const reason = reasonOf(err)
     await update($, setupAtom, (was) => `${was ?? 'gemworks：没有注册上'} ${name}（${reason}）`)
   }
@@ -1548,13 +1596,15 @@ const FILE_GAP_MS = 300
 /**
  * The first start after the plugin is installed: every transcript of this
  * project's checkouts, this session's too, goes into the shared session record
- * and the work items' artifacts, one at a time in the background, the band
- * counting along; the store remembers it was done. Nothing here holds anything
- * up: a transcript that cannot be read is counted and passed over.
+ * (workflow or none: the record is the project's, as soon as the bridge names
+ * its directory) and the work items' artifacts, one at a time in the
+ * background, the band counting along; the store remembers it was done.
+ * Nothing here holds anything up: a transcript that cannot be read is counted
+ * and passed over.
  */
 async function initBackfill($: EngineInterface): Promise<void> {
   const dir = await read($, sessionsDirAtom)
-  if (dir === null || (await readShell($))?.status == null) return
+  if (dir === null) return
   const key = `init:${dir}`
   try { if ((await $.store.get(key)) === true) return } catch { return }
   const listed = await bridge($, { op: 'backfill-list' }, SLOW_TIMEOUT_MS).catch(() => undefined)
@@ -2215,7 +2265,7 @@ const RULE = '#8a898666'
 const HEADING = '#8a8986'
 /** A work item's step as a cell: met, the one it stands at (bold), not reached (dim), passed unmet (a warning). */
 const CELL_MARK = { met: '✓', here: '●', ahead: '○', skipped: '⚠' } as const
-const CELL_TONE = { met: {}, here: { bold: true as const }, ahead: { dimColor: true as const }, skipped: toneProps('warning') } as const
+const CELL_TONE = { met: {}, here: { weight: 'semibold' as const }, ahead: { dimColor: true as const }, skipped: toneProps('warning') } as const
 const SHADE = '#8a89861a'
 const SELECTED = '#2a6fdb24'
 /** A rule one CSS pixel high in the grey at 22%: wider than any slot, so drawn with no width it spans the slot it is in. */
@@ -2318,7 +2368,7 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
   switch (row.kind) {
     case 'section': return row.tucked === true ? drawHeading($, els, row, i) : (
       <Box key={row.key} gap={1} marginTop={i > 0 ? 1 : 0} {...(row.actions !== undefined ? { flexWrap: 'wrap' as const } : {})}>
-        {els.Svg !== undefined ? <Text color={HEADING} bold>{row.text}</Text> : <Text dimColor bold>{row.text}</Text>}
+        {els.Svg !== undefined ? <Text color={HEADING} weight="semibold">{row.text}</Text> : <Text dimColor weight="semibold">{row.text}</Text>}
         {row.count !== undefined && <Text dimColor>{String(row.count)}</Text>}
         {row.note !== undefined && <Text dimColor>{row.note}</Text>}
         {(row.fold !== undefined || row.actions !== undefined) && <Box flexGrow={1} />}
@@ -2332,8 +2382,10 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
       <Box key={row.key} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
         <Box gap={1}>
           {drawIcon(els, row.icon)}
-          {row.verb !== '' && <Text dimColor>{row.verb}</Text>}
-          <Box flexShrink={1} minWidth={0}><Text bold wrap="wrap">{row.title}</Text></Box>
+          {/* Its words in a box that never shrinks, the title wrapping instead: To decide went onto two lines beside a long
+              title, and a title made to give up more room (flexShrink) did not hold it on the desktop. */}
+          {row.verb !== '' && <Box flexShrink={0}><Text dimColor>{row.verb}</Text></Box>}
+          <Box flexShrink={1} minWidth={0}><Text weight="semibold" wrap="wrap">{row.title}</Text></Box>
           {row.tag !== undefined && row.tag !== '' && <Text dimColor>{row.tag}</Text>}
         </Box>
         {row.detail.map((d, n) => <Text key={`d${n}`} dimColor wrap="truncate-end">{d}</Text>)}
@@ -2349,8 +2401,8 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
         {row.action !== undefined
           ? <Button key={`go-${row.key}`} plain label={row.title} onPress={press($, row.action)} />
           : <Text {...toneProps(row.tone)} wrap="truncate-end">{row.title}</Text>}
-        <Box flexGrow={1} />
-        {row.tag !== '' && <Text dimColor>{row.tag}</Text>}
+        {/* The tag in the box that pushes it right, which never shrinks: a long title once squeezed 11 月 12 日 into a column. */}
+        <Box flexGrow={1} flexShrink={0} justifyContent="flex-end">{row.tag !== '' && <Text dimColor>{row.tag}</Text>}</Box>
         {row.link !== undefined && drawLink(els, `open-${row.key}`, row.link.href, row.link.label)}
         {row.extra !== undefined && <Button key={row.extra.key} plain dimColor label={row.extra.label} onPress={press($, row.extra.action)} />}
         {row.open !== undefined && (els.Svg !== undefined ? <Box flexShrink={0} alignItems="center">{drawGlyph(els, row.open ? 'unfold' : 'fold', 'dim', 15)}</Box> : <Text dimColor>{row.open ? '▾' : '▸'}</Text>)}
@@ -2360,10 +2412,9 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
       <Box key={row.key} flexDirection="column" paddingX={1} {...(row.current === true && els.Svg !== undefined ? { backgroundColor: SELECTED } : row.action !== undefined ? { hover: { backgroundColor: SHADE } } : {})}>
         <Box gap={2}>
           {row.action !== undefined
-            ? <Button key={`go-${row.key}`} plain onPress={press($, row.action)}><Text {...toneProps(row.tone)} {...(row.current === true ? { bold: true } : {})}>{row.title}</Text></Button>
-            : <Text {...toneProps(row.tone)} {...(row.current === true ? { bold: true } : {})} wrap="truncate-end">{row.title}</Text>}
-          <Box flexGrow={1} />
-          {row.tag !== '' && <Text dimColor>{row.tag}</Text>}
+            ? <Button key={`go-${row.key}`} plain onPress={press($, row.action)}><Text {...toneProps(row.tone)} {...(row.current === true ? { weight: 'semibold' as const } : {})}>{row.title}</Text></Button>
+            : <Text {...toneProps(row.tone)} {...(row.current === true ? { weight: 'semibold' as const } : {})} wrap="truncate-end">{row.title}</Text>}
+          <Box flexGrow={1} flexShrink={0} justifyContent="flex-end">{row.tag !== '' && <Text dimColor>{row.tag}</Text>}</Box>
           {row.link !== undefined && drawLink(els, `open-${row.key}`, row.link.href, row.link.label)}
         </Box>
         {row.action !== undefined
@@ -2439,7 +2490,7 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
     case 'text': return <Text key={`r${i}`} {...toneProps(row.tone)}>{row.text}</Text>
     case 'button': return <Button key={row.key} plain label={row.label} {...(row.primary ? { variant: 'primary' } : {})} onPress={press($, row.action)} />
     case 'buttons': return (
-      <Box key={`b${i}`} gap={2}>
+      <Box key={`b${i}`} gap={row.tight === true ? 1 : 2}>
         {row.end === true && <Box flexGrow={1} />}
         {row.items.map((b) => <Button key={b.key} label={b.label} {...(b.primary ? { variant: 'primary' } : {})} onPress={press($, b.action)} />)}
       </Box>
@@ -2468,7 +2519,7 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
     case 'work': return (
       <Box key={row.key} flexDirection="column" paddingX={1}>
         <Box gap={1}>
-          <Text {...toneProps(row.flow === 'bugfix' ? 'error' : row.flow === 'design' ? 'warning' : 'success')}>{els.Svg !== undefined ? row.tag : `[${row.tag}]`}</Text>
+          {row.tag !== '' && <Text {...toneProps(row.flow === 'bugfix' ? 'error' : row.flow === 'design' ? 'warning' : 'success')}>{els.Svg !== undefined ? row.tag : `[${row.tag}]`}</Text>}
           <Box flexShrink={1} minWidth={0}>{row.open !== undefined ? <Button key={row.open.key} plain label={row.title} onPress={press($, row.open.action)} /> : <Text wrap="truncate-end">{row.title}</Text>}</Box>
           <Box flexGrow={1} />
           {row.made !== undefined && <Button key={row.made.key} plain dimColor label={row.made.label} onPress={press($, row.made.action)} />}
@@ -2494,8 +2545,8 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
         <Box {...(toolWidth !== undefined && toolWidth > 0 ? { width: toolWidth } : {})} flexShrink={0} overflow="hidden">
           {row.action !== undefined ? <Button key={`open-${row.key}`} plain label={row.name} onPress={press($, row.action)} /> : <Text {...toneProps(row.tone)} wrap="truncate-end">{row.name}</Text>}
         </Box>
-        <Text dimColor>{row.use}</Text>
-        {row.guess !== '' && <Text {...toneProps('warning')}>{row.guess}</Text>}
+        {row.use !== '' && <Text dimColor>{row.use}</Text>}
+        {row.guess !== '' &&<Text {...toneProps('warning')}>{row.guess}</Text>}
         <Box flexGrow={1} />
         <Text {...toneProps(row.tone === 'normal' ? 'dim' : row.tone)}>{row.count}</Text>
       </Box>
@@ -2504,16 +2555,16 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
     case 'flow': return els.Svg !== undefined && row.svg !== '' ? <els.Svg key={row.key} source={row.svg} alt="flow" /> : drawFlow($, els, row)
     case 'image': return els.Svg !== undefined
       ? <els.Svg key={row.key} source={row.svg} alt={row.alt} {...(row.width !== undefined ? { width: row.width } : {})} />
-      : <Text key={row.key} bold>{row.alt}</Text>
+      : <Text key={row.key} weight="semibold">{row.alt}</Text>
     // A work item's way through its flow, in one line: the passed states ticked, the current one in the accent.
     case 'steps': return (
       <Box key={row.key} gap={1} flexWrap="wrap">
-        {row.steps.map((s, n) => <Text key={`s${n}`} {...(s.current ? { color: BRAND_RED, bold: true } : s.passed ? {} : { dimColor: true })}>{`${n > 0 ? '→ ' : ''}${s.title}${s.passed ? ' ✓' : ''}`}</Text>)}
+        {row.steps.map((s, n) => <Text key={`s${n}`} {...(s.current ? { color: BRAND_RED, weight: 'semibold' as const } : s.passed ? {} : { dimColor: true })}>{`${n > 0 ? '→ ' : ''}${s.title}${s.passed ? ' ✓' : ''}`}</Text>)}
       </Box>
     )
     case 'heading': return (
       <Box key={row.key} gap={1}>
-        <Text bold>{row.text}</Text>
+        <Text weight="semibold">{row.text}</Text>
         {row.sub !== '' && <Text dimColor>{row.sub}</Text>}
         {row.action !== undefined && <Box flexGrow={1} />}
         {row.action !== undefined && <Button key={row.action.key} plain label={row.action.label} onPress={press($, row.action.action)} />}
@@ -2549,7 +2600,8 @@ function drawRow($: EngineInterface, els: Els, row: BoardRow, i: number, toolWid
                 ? iconButton($, els, { key: `pick-${row.key}`, label: row.checkLabel ?? '', action: row.action }, row.check ? 'boxon' : 'box', { tone: row.check ? 'active' : 'dim', from: 'left', size: 15, tip: false })
                 : <Box flexShrink={0} alignItems="center" width={2}><Text> </Text></Box>)
               : row.fold === true && <Box flexShrink={0} alignItems="center">{drawGlyph(els, row.open ? 'unfold' : 'fold', 'dim', 15)}</Box>}
-            <Box width={Math.max(5, cellWidth(row.at))} flexShrink={0}><Button key={`at-${row.key}`} plain dimColor label={row.at} onPress={press($, row.action)} /></Box>
+            {/* Two cells over its words: a plain button pads its label, and 13:05 cut to 13… at five. */}
+            <Box width={cellWidth(row.at) + 2} flexShrink={0}><Button key={`at-${row.key}`} plain dimColor label={row.at} onPress={press($, row.action)} /></Box>
             {/* Its time, its words and what it did take the press, each a button labelled with them: no box laid over the row, which
                 costs the desktop elements it counts against its limit. */}
             <Box flexDirection="column" flexGrow={1} minWidth={0}>
@@ -2632,7 +2684,7 @@ function drawFlow($: EngineInterface, els: Els, row: Extract<BoardRow, { kind: '
             <Box gap={1} flexWrap="wrap">
               {rank.map((s) => (
                 <Box key={s.id} borderStyle={s.final ? 'double' : 'round'} {...(s.current ? { borderColor: BRAND_RED } : { borderDimColor: true })} paddingX={1}>
-                  <Text {...(s.current ? { color: BRAND_RED, bold: true } : {})}>{`${s.initial ? '● ' : ''}${s.current ? '▶ ' : ''}${s.title}`}</Text>
+                  <Text {...(s.current ? { color: BRAND_RED, weight: 'semibold' as const } : {})}>{`${s.initial ? '● ' : ''}${s.current ? '▶ ' : ''}${s.title}`}</Text>
                   {s.count > 0 && <Text dimColor>{` ${s.count}`}</Text>}
                 </Box>
               ))}
@@ -2683,7 +2735,7 @@ async function headerRows($: EngineInterface, t: T): Promise<Header> {
 
 /** The settings, upgrade, about and share dialogs as rows. */
 async function dialogRows($: EngineInterface, t: T, dialog: Dialog, columns: number, surface: string): Promise<BoardRow[]> {
-  // Drawn as the 2026-10-13 dialogs (docs/design/ui): a small grey label over each group, switches and one-of-several
+  // Drawn as grouped dialogs: a small grey label over each group, switches and one-of-several
   // whose whole row takes the press, a Select for a pick from a list, a shaded panel, facts in two columns, links on
   // one line. The terminal has a clipboard and desktop notifications; the desktop app gives a plugin neither.
   const terminal = surface === 'terminal'
@@ -2743,7 +2795,8 @@ async function dialogRows($: EngineInterface, t: T, dialog: Dialog, columns: num
   } else if (dialog === 'about') {
     rows.push({ kind: 'image', key: 'lockup', svg: LOCKUP_SVG, alt: 'Gemworks', width: 180 })
     rows.push(text(t('把写下一条提示词前要看的信息放在一处：工作进度、待决定事项、产物。流程用 GEML 编写，可替换、调整、导入。')))
-    rows.push({ kind: 'facts', key: 'facts', rows: [[t('插件'), `gemworks ${version}`], [t('许可'), LICENSE]] }, { kind: 'rule', key: 'rule-about' })
+    const engine = await read($, engineAtom)
+    rows.push({ kind: 'facts', key: 'facts', rows: [[t('插件'), `gemworks ${version}`], ...(engine !== null ? [['Claude Code', engine] as [string, string]] : []), [t('许可'), LICENSE]] }, { kind: 'rule', key: 'rule-about' })
     const zh = langOf(s.language, shell?.locale ?? locale ?? undefined) === 'zh'
     rows.push({ kind: 'linkrow', key: 'links', items: [
       { href: zh ? LINKS.docs.zh : LINKS.docs.other, label: t('说明文档') },
@@ -2870,6 +2923,7 @@ async function tabRows($: EngineInterface, e: { surface: string; props: { bodyCo
       items: await workItems($), flows: await coachFlowsKept($), focus: (await read($, coachFocusAtom)) as unknown as CoachFocus | null, asks: tab === 'items' ? await openAsks($) : [],
       own: await $.session.id().catch(() => ''), open: ((await read($, workOpenAtom)) ?? []) as WorkGroup[],
       practices: (await practicesKept($))?.list ?? [], expanded: (await read($, manualExpandedAtom)) as string[] | null, menu: (await read($, manualMenuAtom)) as string | null,
+      anywhereFrom: Number((await read($, manualAnywhereAtom)) ?? 0) || 0,
       unfolded: (await read($, workUnfoldedAtom)) as string | null, sessions: ((await read($, projectSessionsAtom)) as unknown as SessionSummary[] | null) ?? [],
       proposals: await proposalsKept($), rules: await rulesKept($), skipped: skippedSteps(await workItems($), await coachFlowsKept($), await proposalsKept($)),
       gone: await goneOnKept($), doing: await doingKept($),
@@ -2877,7 +2931,7 @@ async function tabRows($: EngineInterface, e: { surface: string; props: { bodyCo
     } } : {}),
     exportedFor, doneOpen, droppedOpen, sessionItem: sessionFlow as string | null, ...(tab === 'sessions' ? { moved: await movedOf($, t) } : {}), sessionLimit: await read($, turnsShownAtom), picked: ((await read($, pickedAtom)) as string[] | null) ?? [], tidying: (await read($, tidyingAtom)) === true, sessionRuns: (sessionRuns as unknown as string[] | null) ?? [],
     flowState, switching, workflows: workflows as unknown as { bundled: string[]; installed: string[] } | null,
-    usage, dismissed, toolQuery, toolMenu, toolNaming, toolsOpen: (toolsOpen as unknown as string[] | null) ?? [],
+    usage, dismissed, toolQuery, toolMenu, toolNaming, toolsOpen: (toolsOpen as unknown as string[] | null) ?? [], outward: await outwardKept($),
     exported, artifactMenu, docsOpen, ...(memory !== undefined ? { memory } : {}),
   })
   const here = await attention
@@ -2893,7 +2947,7 @@ function drawHeader($: EngineInterface, els: Els, head: Header | undefined, t: T
       {head !== undefined && (
         <Box gap={1} alignItems="center">
           {els.Svg !== undefined ? <els.Svg source={LOCKUP_SVG} alt="Gemworks" width={HEADER_LOCKUP.width} height={HEADER_LOCKUP.height} /> : <Text {...toneProps(MARK.tone)}>{MARK.text}</Text>}
-          {els.Svg === undefined && <Text bold>Gemworks</Text>}
+          {els.Svg === undefined && <Text weight="semibold">Gemworks</Text>}
           {head.version !== '' && (els.Svg !== undefined
             ? <Box key="version" borderStyle="round" borderColor={RULE} paddingX={1}><Text dimColor>{head.version}</Text></Box>
             : <Text dimColor>{head.version}</Text>)}
@@ -2909,16 +2963,16 @@ function drawHeader($: EngineInterface, els: Els, head: Header | undefined, t: T
       {head?.name !== undefined && (els.Svg !== undefined
         ? (
           <Box key="item-row" gap={1} alignItems="center" backgroundColor={SHADE} paddingX={1}>
-            <Text bold>{head.name}</Text>
-            {head.stage !== undefined && <Text bold color="inverseText" backgroundColor="text">{` ${head.stage} `}</Text>}
+            <Text weight="semibold">{head.name}</Text>
+            {head.stage !== undefined && <Text weight="semibold" color="inverseText" backgroundColor="text">{` ${head.stage} `}</Text>}
             {head.flow !== undefined && <Text dimColor>{head.flow}</Text>}
             <Box flexGrow={1} />
           </Box>
         )
         : (
           <Box gap={1}>
-            <Text bold>{head.name}</Text>
-            {head.stage !== undefined && <Text {...toneProps('brand')} bold>{head.stage}</Text>}
+            <Text weight="semibold">{head.name}</Text>
+            {head.stage !== undefined && <Text {...toneProps('brand')} weight="semibold">{head.stage}</Text>}
             {head.flow !== undefined && <Text dimColor>{head.flow}</Text>}
             <Box flexGrow={1} />
           </Box>
@@ -2958,6 +3012,12 @@ export const register: Register = (on) => {
       const manifest = JSON.parse(String(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`))) as { version?: unknown }
       if (typeof manifest.version === 'string') { const v = manifest.version; await update($, versionAtom, () => v); trace($, `loaded ${v} in ${e.cwd}`) }
     } catch { /* no manifest */ }
+    // The engine's version, for the about dialog and the trace. A call it lacks is found where it fails (noteEngineGap).
+    let engine: string | null = null
+    // Called, never read as a value: the engine refuses a module that reads $.noun.event; one from before version() throws.
+    try { engine = engineVersionOf(await $.session.version()) } catch { /* an engine from before version() */ }
+    await update($, engineAtom, () => engine)
+    trace($, `engine ${engine ?? 'unknown'}`)
     $.clock.after(0, () => { void probeCompose($) })
     await adoptPanes($)
     await startBridge($)
@@ -2969,6 +3029,8 @@ export const register: Register = (on) => {
     await update($, goneOnAtom, () => [])
     await update($, doingAtom, () => null)
     $.clock.after(0, () => { void loadFacts($) })
+    // The ledger, behind the start: the practice reminders beside the first prompt carry its counts.
+    $.clock.after(0, () => { void loadCorrections($).catch(() => undefined) })
     $.clock.every(120_000, () => { void loadFacts($) })
     $.clock.every(60_000, () => {
       $.ui.invalidate('ui.render')
@@ -2977,7 +3039,7 @@ export const register: Register = (on) => {
       void read($, tabAtom).then((tab) => (tab === 'flow' ? loadCorrections($) : undefined)).catch(() => undefined)
     })
     return next(e)
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // The clients driving the session (the desktop app, a phone over Remote Control): kept for the environment line.
   on('session.attach', async ($, e, next) => {
@@ -2987,7 +3049,7 @@ export const register: Register = (on) => {
       $.ui.invalidate('ui.render')
     } catch { /* the roster stays */ }
     return done
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
   on('session.detach', async ($, e, next) => {
     const done = await next(e)
     try {
@@ -2995,7 +3057,7 @@ export const register: Register = (on) => {
       $.ui.invalidate('ui.render')
     } catch { /* the roster stays */ }
     return done
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // A /clear ends the conversation the model read the stage and the standing instructions in: the next prompt delivers them again. What ran is stored.
   on('session.end', async ($, e, next) => {
@@ -3004,7 +3066,7 @@ export const register: Register = (on) => {
     try { await storeUsage($) } catch { /* kept for the session */ }
     await noteBoard($)
     return next(e)
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // A compaction may fold the first prompt's standing instructions away: the main loop's next prompt carries them again, where the system prompt
   // does not. A summary computed ahead of time (`precompute`) replaces nothing yet.
@@ -3012,19 +3074,23 @@ export const register: Register = (on) => {
     const done = await next(e)
     if (e.agentId === undefined && e.trigger !== 'precompute' && !('skip' in done)) { try { await update($, toldAtom, () => false) } catch { /* said again after the next /clear */ } }
     return done
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // Every tool call. A broken gemworks never blocks one: where next already ran, next(e) replays its result.
   on('tool.call', async ($, e, next) => {
+    // An engine without a call the module needs: every call goes through, and the band says why.
+    if (((await read($, engineGapAtom)) ?? []).length > 0) return next(e)
     const tool = String(e.tool)
     // What the turn did, for its end: a call that writes, runs, publishes or asks the person something.
     if (e.agentId === undefined && (CLAUDE_CODE_TOOLS.write.includes(tool) || CLAUDE_CODE_TOOLS.run.includes(tool) || tool === 'Artifact' || tool === `mcp__gemworks__${ASK_TOOL.name}`)) turnActed = true
     // How often each tool is used: every call is noted under its day as it starts, by the key the dictionary would give it, gemworks's own too.
     await noteUsage($, tool, toolArgs(e as unknown as Record<string, unknown>))
     if (isOwnTool(tool) || tool === `mcp__gemworks__${NOTE_TOOL.name}` || tool === `mcp__gemworks__${ARTIFACT_TOOL.name}` || tool === `mcp__gemworks__${ASK_TOOL.name}` || tool === `mcp__gemworks__${WORK_TOOL.name}` || tool === `mcp__gemworks__${PRACTICE_TOOL.name}` || tool === `mcp__gemworks__${PROPOSE_TOOL.name}` || tool === `mcp__gemworks__${RULE_TOOL.name}`) return next(e)
-    // A rule the person made holds a call while the step it requires is unmet; a check that fails lets the call through.
+    // A rule the person made holds a call while the step it requires is unmet; an outward action not let through is asked
+    // about (outward.tsx); a check that fails lets the call through.
     try {
-      const held = await ruleHold($, tool, toolArgs(e as unknown as Record<string, unknown>))
+      const args = toolArgs(e as unknown as Record<string, unknown>)
+      const held = (await ruleHold($, tool, args)) ?? (await outwardHold($, tool, args))
       if (held !== undefined) return { deny: `gemworks: ${held}` }
     } catch { /* never in the way on its own failure */ }
     await retryStart($)
@@ -3138,7 +3204,7 @@ export const register: Register = (on) => {
     }
     await settled(res)
     return withStage($, ran, res, e.agentId)
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // The three tools. Each hook is a function literal: the engine reads hooks statically and refuses one that is a call's result.
   on('tool.call', { tool: 'mcp__gemworks__status' }, ($, e) => serveVerb($, 'status', e)).catch(() => VERB_FAILED)
@@ -3158,7 +3224,7 @@ export const register: Register = (on) => {
     try { await update($, composedAtom, () => true) } catch { /* the next prompt may say it once more */ }
     const flows = await coachFlows($).catch(() => [] as CoachFlow[])
     return { ...done, sections: [...done.sections, { id: 'gemworks:sessions', text: SESSIONS_PROMPT, scope: 'session' as const }, { id: 'gemworks:ask', text: ASK_PROMPT, scope: 'session' as const }, ...(flows.length > 0 ? [{ id: 'gemworks:work', text: workPrompt(flows), scope: 'session' as const }, { id: 'gemworks:practice', text: PRACTICE_PROMPT, scope: 'session' as const }, { id: 'gemworks:growth', text: GROWTH_PROMPT, scope: 'session' as const }] : [])] }
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // A turn that changed things and reported no work item goes back once to report it; the next stop ends it whatever it did.
   // Nothing to record into (no project read yet, no flows) asks nothing.
@@ -3168,7 +3234,7 @@ export const register: Register = (on) => {
       return { block: WORK_REMINDER }
     }
     return next(e)
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // A main-loop turn's end: the first sentence of its answer goes on its prompt's row, as what the turn did.
   on('turn.complete', async ($, e, next) => {
@@ -3228,13 +3294,16 @@ export const register: Register = (on) => {
       } catch { /* the button stays */ }
     }
     // The first prompt of a conversation carries the standing instructions, where the system prompt did not.
-    const news = [...(await prefaceFor($)), ...(person ? [...(await attentionOnPrompt($, e.text)), ...(await sessionsOnPrompt($, e.text).catch(() => [] as string[]))] : [])]
+    // The record and the log keep the words the person typed, not the reminders the host put before them.
+    const heard = promptShown(e.text)
+    const news = [...(await prefaceFor($)), ...(person ? [...(await attentionOnPrompt($, e.text)), ...(await sessionsOnPrompt($, heard).catch(() => [] as string[]))] : [])]
     // The work items on the way, by id, so the turn's report updates them rather than reporting them anew.
     try { news.push(...workContext(await workItems($), await coachFlows($))) } catch { /* the model reports them anew */ }
     // The practices of the step this session's work item stands at; on a project's first start, the ask to move its memory onto the steps.
     try {
       const kept = await practicesKept($)
-      if (kept !== null) news.push(...practiceContext(await workItems($), await coachFlows($), kept.list, await $.session.id().catch(() => '')))
+      // Each with how often it was corrected, from the ledger as last read (none yet: the why alone; never waited for).
+      if (kept !== null) news.push(...practiceContext(await workItems($), await coachFlows($), kept.list, await $.session.id().catch(() => ''), (await correctionsKept($))?.counts ?? {}))
       if (person && kept !== null && !kept.memoryMoved && (await read($, memoryAskedAtom)) !== true) {
         const res = await bridge($, { op: 'memory' }).catch(() => undefined)
         const memory = res !== undefined && res.ok ? res.memory : undefined
@@ -3258,7 +3327,7 @@ export const register: Register = (on) => {
     if (person) {
       const s = (await readShell($))?.status
       const record: PromptRecord = {
-        id: `p${(await readPrompts($)).length + 1}-${Date.now().toString(36)}`, at: await nowIso($), text: e.text,
+        id: `p${(await readPrompts($)).length + 1}-${Date.now().toString(36)}`, at: await nowIso($), text: heard,
         ...(s?.item.kind === 'item' ? { item: s.item.id, itemTitle: s.title ?? s.item.id } : {}), ...(s?.state !== undefined ? { state: s.state.id } : {}),
         ...(s?.workflow !== undefined ? { flow: s.workflow.title } : {}),
         tools: 0, refusals: 0, entered: [], signals: [],
@@ -3300,7 +3369,7 @@ export const register: Register = (on) => {
     if (item === undefined || item.kind !== 'item' || item.id !== seen.item) return go(e)
     await update($, deliveredAtom, () => seen.key)
     return go({ ...e, context: [...(e.context ?? []), seen.text] })
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // A command that writes into the plugin's own folder (a developer copying a new build in): a reload is due.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
@@ -3317,7 +3386,7 @@ export const register: Register = (on) => {
       }
     } catch { /* nothing due */ }
     return done
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // The host stores the person's prompt as a row with an id, the same the transcript file holds: the sessions tab's newest record without one learns it, so a press can scroll to the row.
   on('session.append', { door: 'prompt' }, async ($, e, next) => {
@@ -3333,7 +3402,7 @@ export const register: Register = (on) => {
       })
     }
     return next(e)
-  }).catch(($, e, next) => next(e))
+  }).catch(async ($, e, next) => { await noteEngineGap($, next.error); return next(e) })
 
   // The band (spec §8.1): Gemworks's mark, the one thing that is the person's now with its options, how many more wait, the board.
   // Hovering the thing's name, or `还有 N 件`, shows it whole in the line's place: a card drawn over the line, never beyond it.
@@ -3362,7 +3431,7 @@ export const register: Register = (on) => {
         ? { text: t('正在了解这个项目以前的会话（{0}/{1}），只存在本机 .geml/ 目录', init.done, init.total), tone: 'dim' as const }
         : { text: `${t('初始化完毕。欢迎使用。')}${init.failed > 0 ? t('（{0} 个会话读不了）', init.failed) : ''}`, tone: 'normal' as const }
       view = bandView({
-        shell, problem: await read($, problemAtom), setup: await read($, setupAtom), notice, todo: (await read($, todoAtom)) as unknown as TodoCount | null,
+        shell, problem: (await engineGapLine($, t)) ?? (await read($, problemAtom)), setup: await read($, setupAtom), notice, todo: (await read($, todoAtom)) as unknown as TodoCount | null,
         inbox, timeline: board?.timeline ?? [], now: await nowIso($), t,
       })
       // Nothing waits on the person: the band names the work item this session was on last (coach.ts), not the stage the workflow holds.
@@ -3625,7 +3694,7 @@ export const register: Register = (on) => {
           {tabs(t).map((x) => els.Svg !== undefined
             ? iconButton($, els, { key: `tab-${x.id}`, label: x.label, action: { op: 'tab', tab: x.id } }, x.id, { tone: x.id === tab ? 'active' : 'dim', from: 'left' })
             : x.id === tab
-              ? <Button key={`tab-${x.id}`} plain onPress={press($, { op: 'tab', tab: x.id })}><Text bold underline>{x.label}</Text></Button>
+              ? <Button key={`tab-${x.id}`} plain onPress={press($, { op: 'tab', tab: x.id })}><Text weight="semibold" underline>{x.label}</Text></Button>
               : <Button key={`tab-${x.id}`} plain dimColor label={x.label} onPress={press($, { op: 'tab', tab: x.id })} />)}
         </Box>
         {hairline(els, 'rule-tabs')}
@@ -3686,12 +3755,12 @@ export const register: Register = (on) => {
   }).catch(() => ({ text: 'gemworks：命令没有完成，原因见输入框上方的状态带' }))
 }
 
-// What act.tsx, split from this module, uses of it.
+// What act.tsx and manual.tsx, split from this module, use of it.
 export {
   QUEUED_MATCH_MS, STORE_SETTINGS, TURNS_SHOWN, answerOf, appendOwn, attentionOnPrompt, bridge, checkLatest,
-  coachFlows, coachFlowsKept, correctionsKept, dismissedOf, exportText, gemlDir, loadBoard, loadCorrections,
+  coachFlows, coachFlowsKept, correctionsKept, dismissedOf, exportText, gemlDir, iconButton, loadBoard, loadCorrections,
   loadGrowth, loadMade, loadMemory, loadPractices, loadProjectSessions, loadWorkflows, nowIso, openBoard,
-  openDialog, openFile, otherSessionText, practicesKept, press, proposalsKept, readAttention, readBoard, readPrompts,
+  openDialog, openFile, otherSessionText, outwardChanged, practicesKept, press, proposalsKept, readAttention, readBoard, readPrompts,
   readSettings, reasonOf, rulesKept, saveProposals, saveRules, sessionText, setQueued, share, startBridge,
-  storePrompts, takeOption, themeLedger, trace, turnBusy, words, workItems, writeOwnFlow,
+  storePrompts, takeOption, themeLedger, trace, turnBusy, within, words, workItems, writeOwnFlow,
 }

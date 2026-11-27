@@ -16,7 +16,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { isMarkdownPath, parse } from "@geml/geml";
 import { appendOrCreate, exists, globExists, readText, realPath, withLock, writeAtomic } from "./host-fs.js";
 import { ghFacts as realGh, isLocalBranch, journalBaseOf, repoFacts as realRepo, treeFingerprint } from "./host-git.js";
-import { learnInFile, readDictionaryFile } from "./dictionary-io.js";
+import { learnInFile, readDictionaryFile } from "./store/dictionary.js";
 import { blockText } from "./core/blocks.js";
 import { commandOf } from "./core/command-line.js";
 import { bindingOf, normalizedCommand } from "./core/dictionary.js";
@@ -157,7 +157,7 @@ export function sideFlows(root, defaultPath) {
     });
 }
 /** Another work item's progress, from its journal (under `journalBase`) and its file; undefined while it has no journal. */
-export function itemProgress(root, journalBase, id, flows, defaultFile = "") {
+export function journalProgress(root, journalBase, id, flows, defaultFile = "") {
     if (!isSafeItemId(id))
         return undefined;
     const path = join(journalBase, journalPathFor(id));
@@ -731,7 +731,7 @@ export class Workspace {
         }
         const flows = new Map([[this.workflowFile, { sc: this.sc, title: this.title }]]);
         this.dependsRead = ids.map((id) => {
-            const p = itemProgress(this.o.root, this.journalBase, id, flows, this.workflowFile);
+            const p = journalProgress(this.o.root, this.journalBase, id, flows, this.workflowFile);
             return p === undefined ? { id, done: false, wrote: [] } : {
                 id, ...(p.title !== undefined ? { title: p.title } : {}), ...(p.flow !== undefined ? { flow: p.flow } : {}), done: p.final, since: p.since, at: p.at, wrote: p.wrote,
             };

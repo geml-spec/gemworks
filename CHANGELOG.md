@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.4.0] — 2026-11-27
+
+- **Five more hosts.** OpenCode, Devin (formerly Windsurf), TRAE and Kiro each
+  install with `gemworks <host> install`, and Antigravity installs gemworks as a
+  plugin from the `plugin` branch. A rule made with 改成规定 now holds calls on
+  every host that sees a call before it runs — all but Antigravity — not only in
+  Claude Code.
+
+- **Outward actions are asked about first.** In Claude Code, a push, a pull
+  request or a release, a package published, a deployment, a request that sends
+  data and an MCP tool that writes somewhere else are put to you before they
+  run, workflow or none: this time, always, or not. "Always" is a row in
+  `.geml/tools.geml`; the tools tab lists those rows, and deleting one brings
+  the question back.
+
+- **A decision says whose it is.** A choice the model records as yours is yours
+  only when your own words for it are in a prompt you gave in that session, or
+  you pressed it on the band; the rest is marked as the model's, and other
+  sessions see the two apart.
+
+- **The flow tab shows how the work goes.** It says how the flows apply and
+  which work stands at which step; what the project changed in a shipped flow,
+  with a step taken out crossed out and a press to put it back; how each flow
+  grew, a day at a time; and the flows the project grew for work the shipped
+  ones did not fit. A reference is imported from the + on the tab.
+
+- **Practices say how they fared.** The reminders beside a prompt say why each
+  practice was learned and how often you corrected the same thing before and
+  since. Before the model writes a practice it sees the five closest ones and
+  says whether its own is new or rewrites one.
+
+- **Starter flows alone are enough.** In a project with no workflow, the first
+  start reads past transcripts into the shared record, sign-off sheets are
+  written, and the tools tab lists the tools that ran.
+
+- **The sessions tab shows what you typed**, without the host's reminders, and
+  the English board reads right and fits a narrow pane.
+
+- **When a newer Claude Code drops a call gemworks needs**, the band says which
+  one and lets every tool call through; the about dialog names the Claude Code
+  version. `GEMWORKS_GIT_TIMEOUT_MS` sets each git and gh call's deadline, ten
+  seconds by default.
+
+- **A question answered while a turn runs is settled at once**, not asked
+  again. Also fixed: two prompts in the same second both reach the corrections
+  ledger; a worktree git pruned is no longer taken for a checkout; Pi's band
+  shows a work item whose flow was deleted at the step it reached, not as done;
+  the `.gitignore` gemworks writes into `.geml/` covers every file it keeps
+  there.
+
 ## [0.3.15] — 2026-11-11
 
 - **Two more hosts: Cursor and Qwen Code.** `gemworks cursor install` and

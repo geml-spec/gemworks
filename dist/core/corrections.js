@@ -112,7 +112,11 @@ export function hasPrompt(l, p) {
 export function addPrompts(l, given) {
     const prompts = [...l.prompts];
     let added = 0;
-    for (const p of given) {
+    for (const g of given) {
+        // A host labels each prompt as it comes, its id from the session and the second (promptId with nothing taken): one
+        // typed in the same second as another, at another moment and in other words, takes the next free id.
+        const clash = prompts.find((x) => x.id === g.id);
+        const p = clash !== undefined && clash.at !== g.at && norm(clash.text) !== norm(g.text) ? { ...g, id: promptId(g.session, g.at, new Set(prompts.map((x) => x.id))) } : g;
         if (hasPrompt({ prompts }, p))
             continue;
         prompts.push({ ...p, text: p.text.slice(0, TEXT_KEPT) });
@@ -309,6 +313,8 @@ export function unthemed(l, limit = THEMES_ASKED) {
 }
 /** The practices the themes are linked against, as one string: when it changes, the links are made again. */
 export const linkKey = (practices) => practices.filter((p) => p.deleted !== true).map((p) => p.id).sort().join(",");
+/** How many corrections said since a practice, where it reminds, make it one that does not hold: the flow tab's 失效 card, the reminder's not holding. */
+export const FAILING_AFTER = 2;
 const themesOf = (l, practice) => new Set(l.themes.filter((t) => t.practices.includes(practice)).map((t) => t.id));
 /** Whether a practice reminds where a correction was said: its own step, or every one. */
 const covers = (p, x) => (p.flow === "*" || p.flow === x.flow) && (p.step === "*" || p.step === x.step);
@@ -348,7 +354,7 @@ export function unchecked(l, practices, limit = CHECKS_ASKED) {
             continue;
         const mine = themesOf(l, p.id);
         const after = corrections.filter((x) => mine.has(x.theme) && x.at > p.at && covers(p, x));
-        if (after.length < 2)
+        if (after.length < FAILING_AFTER)
             continue;
         for (const x of after)
             if (x.checks?.[p.id] === undefined)
@@ -397,7 +403,7 @@ export function ledgerCards(l, practices, now, o = {}) {
     for (const p of live) {
         const mine = themesOf(l, p.id);
         const after = corrections.filter((x) => mine.has(x.theme) && x.at > p.at && covers(p, x) && x.checks?.[p.id] === true);
-        if (after.length < 2 || away(`failing:${p.id}`, after.length))
+        if (after.length < FAILING_AFTER || away(`failing:${p.id}`, after.length))
             continue;
         const instead = live.filter((q) => q.id !== p.id && q.at > p.at && [...themesOf(l, q.id)].some((t) => mine.has(t))).sort((a, b) => (a.at < b.at ? 1 : -1))[0];
         cards.push({ kind: "failing", key: `failing:${p.id}`, practice: p, n: after.length, quotes: quotesOf(after), ...(instead !== undefined ? { instead } : {}) });

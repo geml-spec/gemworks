@@ -3,22 +3,22 @@ import {
   dependsOf,
   docReader,
   fileUnitOf,
-  itemProgress,
+  journalProgress,
   loadWorkspace,
   openWorkspace,
   resolvePromptRef,
   resolveWorkflow,
   sideFlows,
   workflowNameOf
-} from "./gemworks-chunk-RYILVWZA.mjs";
-import "./gemworks-chunk-UEVNGPQ5.mjs";
-import "./gemworks-chunk-4A7KYSFU.mjs";
+} from "./gemworks-chunk-PIJJWG3W.mjs";
+import "./gemworks-chunk-YDF5DTZJ.mjs";
+import "./gemworks-chunk-LI5W7JF2.mjs";
 export {
   Workspace,
   dependsOf,
   docReader,
   fileUnitOf,
-  itemProgress,
+  journalProgress,
   loadWorkspace,
   openWorkspace,
   resolvePromptRef,

@@ -1,6 +1,6 @@
 import type { Asked } from "../../core/ask-tool.js";
-import { type CoachFlow, type WorkItem } from "./coach.js";
-import type { T } from "./text.js";
+import { type CoachFlow, type WorkItem } from "../../shell/coach.js";
+import type { T } from "../../shell/text.js";
 export interface Waiting {
     /** Every key that stands now: the next turn's `seen`. */
     keys: string[];

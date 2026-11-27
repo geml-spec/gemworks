@@ -1,5 +1,5 @@
-import { nextText, SEP, varSegment } from "./band.js";
-import { ZH } from "./text.js";
+import { nextText, SEP, varSegment } from "../../shell/band.js";
+import { ZH } from "../../shell/text.js";
 export const COMMAND_HINT = "[board [标签] | pause | resume | use <流程> | add [流程] | trace on|off]";
 /** The usage, in the language chosen. */
 export function usageText(t = ZH) {

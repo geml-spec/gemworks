@@ -8,6 +8,7 @@ import {
   forgetGitFacts,
   ghFacts,
   ghOncePerBranch,
+  gitTimeoutFrom,
   holdsCommit,
   isLocalBranch,
   journalBaseOf,
@@ -19,7 +20,7 @@ import {
   uncommittedBump,
   unkeptOf,
   worktreesOf
-} from "./gemworks-chunk-4A7KYSFU.mjs";
+} from "./gemworks-chunk-LI5W7JF2.mjs";
 export {
   beginGitRequest,
   branchesAhead,
@@ -30,6 +31,7 @@ export {
   forgetGitFacts,
   ghFacts,
   ghOncePerBranch,
+  gitTimeoutFrom,
   holdsCommit,
   isLocalBranch,
   journalBaseOf,

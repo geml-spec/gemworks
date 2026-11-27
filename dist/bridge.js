@@ -1,5 +1,5 @@
 // The Node side of the Claude Code shell. `gemworks hook` reads one request
-// (src/hosts/claude-code/protocol.ts) on stdin, runs it against the project's
+// (src/shell/protocol.ts) on stdin, runs it against the project's
 // workspace, and writes one answer line. Each request opens the workspace
 // afresh — a Workspace reads git's facts when it opens, and another process may
 // have written the journal or the dictionary since the last request — and
@@ -29,12 +29,13 @@ import { blockText } from "./core/blocks.js";
 import { BACKLOG_DOC, CONTEXT_DOC, EXPORTS_DIR, FLOW_FILE, GEML_DIR } from "./core/layout.js";
 import { TOOLS_FILE } from "./core/dictionary.js";
 import { renderDictionary } from "./core/dictionary-file.js";
+import { outwardAllowed } from "./store/dictionary.js";
 import { migrateLayout, projectDocOf, recordedPath, workflowAt } from "./project-home.js";
-import { updateOutline } from "./outline-store.js";
-import { copyPath, artifactsDir, forgetFiles, isUnder, readArtifactRows, recordBytes, recordFile, recordLink, syncDocs, syncWritten } from "./artifacts-store.js";
-import { deleteMemory, memoryDir, readMemory, setMemoryHook } from "./memory-store.js";
-import { changePractice, readPractices, sharePractices, writePractices } from "./practice-store.js";
-import { readLedger, updateLedger } from "./corrections-store.js";
+import { updateOutline } from "./store/outline.js";
+import { copyPath, artifactsDir, forgetFiles, isUnder, readArtifactRows, recordBytes, recordFile, recordLink, syncDocs, syncWritten } from "./store/artifacts.js";
+import { deleteMemory, memoryDir, readMemory, setMemoryHook } from "./store/memory.js";
+import { changePractice, readPractices, sharePractices, writePractices } from "./store/practices.js";
+import { readLedger, updateLedger } from "./store/corrections.js";
 import { addPrompts, applyChecks, applyThemes, claimThemes, dismiss, flowless, isCorrection, ledgerCards, linkKey, localDay, practiceCounts, unchecked, unthemed } from "./core/corrections.js";
 import { isDocPath, isGemlPath, isImagePath, isMadeForPeople, pageTitle, artifactsOfItem, UPLOAD_PREFIX } from "./core/artifacts.js";
 import { historyPathFor } from "@geml/geml";
@@ -48,15 +49,15 @@ import { exists, readText, withLock, writeAtomic } from "./host-fs.js";
 import { beginGitRequest, endGitRequest, branchesAhead, commitsOf, ghOncePerBranch, journalBaseOf, openPullRequests, pullRequestsByBranch, repoFacts, uncommittedBump, unkeptOf, worktreesOf } from "./host-git.js";
 import { formatLog, logName, nextTurn, parseLog, SESSIONS_DIR, SESSIONS_GITIGNORE, withEarlierTurns } from "./core/session-log.js";
 import { newTurns, queuedMessages, readTranscript, slugOf, transcriptEvents } from "./core/transcript.js";
-import { branchesElsewhere, markOpen } from "./session-store.js";
+import { branchesElsewhere, markOpen } from "./store/sessions.js";
 import { statSync } from "node:fs";
 import { mediaTodoCount } from "./media-todo.js";
 import { addWorkflow, bundledWorkflows, importWorkflow, projectWorkflows, suggestWorkflow, useWorkflow } from "./project.js";
 import { timelineOf } from "./timeline.js";
 import { flowPicture } from "./core/picture.js";
 import { runVerb } from "./verbs.js";
-import { writeSignoffs } from "./signoff.js";
-import { dependsOf, fileUnitOf, itemProgress, loadWorkspace, openWorkspace, resolveWorkflow, sideFlows, workflowNameOf } from "./workspace.js";
+import { writeSignoffs } from "./store/signoffs.js";
+import { dependsOf, fileUnitOf, journalProgress, loadWorkspace, openWorkspace, resolveWorkflow, sideFlows, workflowNameOf } from "./workspace.js";
 /**
  * gh is asked live only where its facts can have changed: refresh, the board,
  * and after a git operation (ghFacts finds the binary through GEMWORKS_GH). Any
@@ -314,7 +315,7 @@ function listItems(ws, root, workflowFile, prs) {
                 title = undefined;
             }
         }
-        const progress = itemProgress(root, ws.journalBase, id, flows, defaultFile ?? "");
+        const progress = journalProgress(root, ws.journalBase, id, flows, defaultFile ?? "");
         // Its own flow's statechart: the one at hand, or one read for it once this request.
         const flow = own === workflowFile ? { sc: ws.sc } : flows.get(own) ?? null;
         const sc = flow?.sc;
@@ -672,10 +673,11 @@ function ownTranscript(tr) {
 /**
  * One transcript: the pages it published, the files it wrote that git does
  * not keep and what the person gave with a prompt go under the work item of
- * each turn's branch (a branch-unit workflow; nothing otherwise); its turns go
- * into the session's log — written here for another session, handed back for
- * the session asking (`own`), which writes its own log. A session whose log
- * was written minutes ago is writing it still: left alone.
+ * each turn's branch (a branch-unit workflow; nothing otherwise, nor with no
+ * workflow); its turns go into the session's log — written here for another
+ * session, handed back for the session asking (`own`), which writes its own
+ * log. A session whose log was written minutes ago is writing it still: left
+ * alone.
  */
 function backfillOne(ws, root, req) {
     let tr;
@@ -689,7 +691,7 @@ function backfillOne(ws, root, req) {
         return { ok: false, reason: `${basename(req.file)} holds no session` };
     if (tr.id === "")
         tr = { ...tr, id: basename(req.file, ".jsonl") };
-    const home = ws.journalBase;
+    const home = ws?.journalBase ?? journalBaseOf(root);
     const dir = join(home, GEML_DIR, SESSIONS_DIR);
     mkdirSync(dir, { recursive: true });
     if (!exists(join(dir, ".gitignore")))
@@ -710,7 +712,7 @@ function backfillOne(ws, root, req) {
     // The artifacts: by each turn's branch, where the workflow's unit is the branch.
     let files = 0;
     let links = 0;
-    if (ws.sc.unit.kind === "branch") {
+    if (ws?.sc.unit.kind === "branch") {
         for (const turn of fresh.turns) {
             const item = turn.branch;
             if (item === undefined || item === "")
@@ -949,6 +951,10 @@ function answer(req) {
         const { practices, memoryMoved } = readPractices(root);
         return { v: 1, ok: true, shell: shellAt(req), practices: { list: practices, memoryMoved } };
     }
+    // The outward actions let through: the project's dictionary, with a workflow or none.
+    if (req.op === "outward") {
+        return { v: 1, ok: true, shell: shellAt(req), outward: outwardAllowed(root, { ...(req.allow !== undefined ? { allow: req.allow } : {}), ...(req.forget !== undefined ? { forget: req.forget } : {}) }) };
+    }
     // The person's ledger of corrections: theirs, not the project's; read against this project's practices.
     if (req.op === "corrections" || req.op === "corrections-add" || req.op === "corrections-themes" || req.op === "corrections-dismiss" || req.op === "corrections-check") {
         const now = new Date().toISOString();
@@ -985,6 +991,19 @@ function answer(req) {
         if (req.op === "artifact") {
             const r = recordArtifact(undefined, root, req);
             return r.ok ? { v: 1, ok: true, shell, text: r.text } : { v: 1, ok: false, error: r.reason, shell };
+        }
+        // Nor the sign-off sheets of the light flows' work items, written again after each work report.
+        if (req.op === "signoff") {
+            const lang = req.lang === "zh" || req.lang === "en" || req.lang === "ja" ? req.lang : undefined;
+            writeSignoffs(root, req.ids, ...(lang !== undefined ? [lang] : []));
+            return { v: 1, ok: true, shell };
+        }
+        // Nor the host's transcripts, read into that record on the first start.
+        if (req.op === "backfill-list")
+            return { v: 1, ok: true, shell, backfill: { sessions: transcriptFiles(root, transcriptsRoot(req)).map(({ file, id, size }) => ({ file, id, size })) } };
+        if (req.op === "backfill-one") {
+            const r = backfillOne(undefined, root, req);
+            return r.ok ? { v: 1, ok: true, shell, backfill: r.backfill } : { v: 1, ok: false, error: r.reason, shell };
         }
         return asks ? { v: 1, ok: false, error: opened.reason, shell } : { v: 1, ok: true, shell, ...record };
     }

@@ -1,25 +1,49 @@
 # Gemworks
 
-**A workbench right beside your agent chat.**
+**A self-evolving visual companion that makes your coding agent actually learn from you.**
 
-It works on the project with you: it keeps your artifacts in order, sums up what you've learned,
-remembers what you've decided, and lets your workflow grow on its own. Right inside the Claude Code you already use.
+No need to install another IDE—just plug it straight into the Claude Code, Codex, Cursor, or MCP
+client you're using. This lightweight plugin keeps progress, cross-session decisions, and versioned
+artifacts at a glance. As you work, it surfaces corrections only at the step they matter—without
+turning `CLAUDE.md` or `AGENTS.md` into a junk drawer—grows your workflow on its own, and lets you
+lock any habit into a hard guardrail with one click. And most importantly, it all runs locally—I
+know, local-first is what makes you feel truly in control.
 
 English | [中文](README.zh.md)
 
-<!-- Screenshot to come: the band and the board, at docs/images/band-and-board.png, then ![The band and the board](docs/images/band-and-board.png) -->
-
 ## What you see once it's installed
+
+<table>
+  <tr>
+    <td><img src="docs/images/en/overview.png" width="620" alt="The band above the prompt and the board on the right"></td>
+    <td><img src="docs/images/en/items.png" width="320" alt="The board's Work items tab"></td>
+    <td><img src="docs/images/en/flow.png" width="320" alt="The board's Flow tab"></td>
+    <td><img src="docs/images/en/artifacts.png" width="320" alt="The board's Artifacts tab"></td>
+    <td><img src="docs/images/en/sessions.png" width="320" alt="The board's Session tab"></td>
+    <td><img src="docs/images/en/tools.png" width="320" alt="The board's Tools tab"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The band above the prompt, the board on the right</sub><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+    <td align="center"><sub>Work items: where each piece of work stands, what it still needs</sub><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+    <td align="center"><sub>Flow: the pitfall each step guards against, its practices</sub><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+    <td align="center"><sub>Artifacts: the files, pages and links you made, by date</sub><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+    <td align="center"><sub>Session: what was asked in each turn, what was done</sub><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+    <td align="center"><sub>Tools: which tools ran these two days, and how often</sub><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+  </tr>
+</table>
 
 - **One line above the prompt**: what you're working on, which step it has reached, what is waiting
   for you to decide, and what the model will do next. When a decision is yours, the options are buttons;
   you can also just type your answer.
+
+  <img src="docs/images/en/band.png" width="560" alt="The band above the prompt">
+
 - **A board** with five tabs:
   - **Session**: every session in this project, what was asked in each turn and what was done.
-  - **Items**: where each piece of work stands and what it still needs.
+  - **Work items**: where each piece of work stands and what it still needs.
   - **Artifacts**: the files, commits, pages and links you made, listed by version, one click to open.
   - **Flow**: the steps of each flow, the pitfall each step guards against, and the practices attached to it.
-  - **Tools**: which tool may be used at which step (advanced; you can leave it alone).
+  - **Tools**: which tools ran these two days and how often, and which outward actions (push, publish and the like) you let run unasked; with a workflow, you can also classify a tool to limit which step may use it.
 - **How much it has learned, and how many proposals wait**: when it learns something from your
   corrections, this line tells you.
 
@@ -151,5 +175,6 @@ the other three are described in [docs/workflows.md](docs/workflows.md).
 
 - **Command line**: `gemworks` (short: `gwx`) shows the state, moves stages and exports the record from a terminal; see [docs/cli.md](docs/cli.md).
 - **Development**: the project layout and how to build and test it; see [docs/development.md](docs/development.md).
+  What each part does, where it is built and why: [docs/design.zh.md](docs/design.zh.md) (in Chinese).
 - **License**: AGPL-3.0-only. Using it asks nothing of you; if you change the code and distribute it,
   or let others use your changed version over a network, publish your changed source under the AGPL.

@@ -2,7 +2,7 @@
 // the picture on the clipboard, and the person pastes it into the prompt (a plugin cannot put a picture there). The
 // button and its words say which key pastes, so nobody has to remember the capture's shortcut. Pure and Node-free:
 // the hooks module runs the commands, one after another until one starts.
-import { ZH } from "./text.js";
+import { ZH } from "../../shell/text.js";
 /**
  * The ways on a platform (win32, darwin, linux, as Node names them), in order. Windows starts Snipping Tool's region capture (the one
  * Win+Shift+S starts) and macOS `screencapture` (interactive, to the clipboard); Linux has whichever of the common

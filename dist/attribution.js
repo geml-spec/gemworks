@@ -16,7 +16,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { exists, realPath } from "./host-fs.js";
 import { checkoutOf, journalBaseOf } from "./host-git.js";
 import { changesDirectory, commandDirs, commandOf, isDirectoryChange, pathWords, personOnlyRefusal, signalHeads, simpleCommands } from "./core/command-line.js";
-import { writtenPath } from "./hosts/claude-code/readers.js";
+import { writtenPath } from "./shell/readers.js";
 import { resolveWorkflow } from "./workspace.js";
 const SESSION = { kind: "session" };
 const ELSEWHERE = { kind: "elsewhere" };

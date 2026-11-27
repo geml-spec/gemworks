@@ -23,7 +23,19 @@ export interface CoachEdge {
     label: string;
     back: boolean;
 }
-/** A flow: its name (the file's), its title, its states and ways; `diff` how a project's own flow differs from the shipped one, by step titles. */
+/** A step of the shipped flow that a project's own flow lacks: what it is, and the project's step it would come back after. */
+export interface MissingStep {
+    id: string;
+    title: string;
+    need: string;
+    judge: Judge;
+    prevents: string;
+    after: string;
+}
+/**
+ * A flow: its name (the file's), its title, its states and ways; `diff` how a project's own flow differs from the
+ * shipped one, by step titles; `missing` the shipped flow's steps it lacks, each with where it would go back.
+ */
 export interface CoachFlow {
     name: string;
     title: string;
@@ -33,6 +45,7 @@ export interface CoachFlow {
         added: string[];
         removed: string[];
     };
+    missing?: MissingStep[];
 }
 export type ItemEvent = Extract<SessionEvent, {
     t: "item";

@@ -1,13 +1,13 @@
 import { waitingOf } from "../../core/board-page.js";
 import { PI_TOOLS } from "../../core/host-tools.js";
 import { practicesAt } from "../../core/practices.js";
-import { currentTurn, decisionsContext, NOTE_TOOL, SESSIONS_PROMPT } from "../../core/session-log.js";
+import { currentTurn, decisionsContext, NOTE_TOOL, noteReply, SESSIONS_PROMPT } from "../../core/session-log.js";
 import { itemProgress, turnItem, WORK_REMINDER } from "../../core/work.js";
-import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, workItemsAt } from "../../loop.js";
-import { readPractices } from "../../practice-store.js";
-import { labelPrompt } from "../../ledger-run.js";
+import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, ruleHold, workItemsAt } from "../../loop.js";
+import { readPractices } from "../../store/practices.js";
+import { labelPrompt } from "./ledger-run.js";
 import { typedWords } from "../../core/corrections.js";
-import { appendSession, decisionsFor, hostLabel, readSessions, recordAnswer, recordDecisions, recordPrompt } from "../../session-store.js";
+import { appendSession, decisionsFor, hostLabel, readSessions, recordAnswer, recordNote, recordPrompt } from "../../store/sessions.js";
 export const PI_HOST = "pi";
 /** A width in terminal cells: the wide East Asian characters take two. */
 export function cells(text) {
@@ -28,10 +28,13 @@ export function fit(text, width) {
     }
     return `${out}…`;
 }
+/** An item's flow and the step it stands at; on a flow that is gone, the step it was recorded at. */
 const where = (item, flows) => {
     const flow = flows.find((f) => f.name === item.flow);
-    const here = flow !== undefined ? itemProgress(item, flow).here : null;
-    return `${flow?.title ?? item.flow} · ${here !== null ? flow?.states.find((s) => s.id === here)?.title ?? here : "完成"}`;
+    if (flow === undefined)
+        return `${item.flow} · ${item.state}`;
+    const here = itemProgress(item, flow).here;
+    return `${flow.title} · ${here !== null ? flow.states.find((s) => s.id === here)?.title ?? here : "完成"}`;
 };
 /** The steps of an item's flow on one line: met ones ticked, the one it stands at marked. */
 function stepsOf(item, flow) {
@@ -89,7 +92,7 @@ export function boardLines(d, width = 100) {
     if (decided.length > 0) {
         out.push("", "别的会话的决定");
         for (const x of decided)
-            out.push(fit(`  ${x.text}（${hostLabel(x.host)}，${new Date(x.at).toTimeString().slice(0, 5)}）`, width));
+            out.push(fit(`  ${x.by === "person" ? "你定" : "模型记"}：${x.text}（${hostLabel(x.host)}，${new Date(x.at).toTimeString().slice(0, 5)}）`, width));
     }
     return out;
 }
@@ -192,6 +195,13 @@ export function attachLoop(pi, cwd) {
         safe(() => { appendSession(cwd, PI_HOST, id, () => []); });
         band(ctx);
     });
+    // A rule of the light flows holds a call, workflow or none (loop.ts ruleHold); a workflow's gate is the extension's.
+    pi.on("tool_call", (event) => {
+        if (session === undefined)
+            return undefined;
+        const held = ruleHold(cwd, session, event.toolName, event.input, PI_TOOLS);
+        return held !== undefined ? { block: true, reason: held } : undefined;
+    });
     // Each run: the person's prompt into the record, and the loop in the system prompt.
     pi.on("before_agent_start", (event, ctx) => {
         if (session === undefined)
@@ -268,10 +278,10 @@ export function attachLoop(pi, cwd) {
                 const args = (params ?? {});
                 let text;
                 if (tool.name === NOTE_TOOL.name) {
-                    const n = recordDecisions(cwd, PI_HOST, id, Array.isArray(args["decisions"]) ? args["decisions"].filter((x) => typeof x === "string") : []);
-                    if (n === 0)
-                        throw new Error("Nothing recorded: decisions is a list of short sentences.");
-                    text = `Recorded ${n} decision${n === 1 ? "" : "s"}; the project's other sessions will see ${n === 1 ? "it" : "them"}.`;
+                    const note = recordNote(cwd, PI_HOST, id, args);
+                    if (note.decided.length === 0)
+                        throw new Error(noteReply(note));
+                    text = noteReply(note);
                 }
                 else {
                     const r = await callLoopTool(cwd, PI_HOST, id, tool.name, args);

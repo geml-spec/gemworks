@@ -5,17 +5,17 @@ import z from "@deepseek-ai/schemastery";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { POWERSHELL_TOOLS, powershellFencedRefusal, powershellPersonOnlyRefusal } from "./powershell.js";
 import { appendOrCreate, exists, readText, realPath } from "../../host-fs.js";
-import { readDictionaryFile } from "../../dictionary-io.js";
+import { readDictionaryFile } from "../../store/dictionary.js";
 import { commandOf } from "../../core/command-line.js";
 import { DSH_TOOLS } from "../../core/host-tools.js";
 import { writtenProjectPath } from "../../core/written.js";
-import { decisionsContext, NOTE_TOOL, SESSIONS_PROMPT } from "../../core/session-log.js";
-import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordDecisions, recordFile, recordPrompt } from "../../session-store.js";
+import { decisionsContext, NOTE_TOOL, noteReply, SESSIONS_PROMPT } from "../../core/session-log.js";
+import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordNote, recordPrompt } from "../../store/sessions.js";
 import { readJournal } from "../../core/journal.js";
 import { actOnSession, boardReply, coachBoardReply, readQuery } from "./board.js";
-import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, workItemsAt } from "../../loop.js";
-import { readPractices } from "../../practice-store.js";
-import { readSessions } from "../../session-store.js";
+import { callLoopTool, coachFlowsAt, LOOP_TOOLS, loopContext, loopPrompt, proposalsAt, ruleHold, workItemsAt } from "../../loop.js";
+import { readPractices } from "../../store/practices.js";
+import { readSessions } from "../../store/sessions.js";
 import { hasErrors, loadStatechart } from "../../core/statechart.js";
 import { metaFor, openRun, Supervisor } from "../../core/supervisor.js";
 import { docReader, resolveWorkflow, workflowNameOf } from "../../workspace.js";
@@ -80,7 +80,7 @@ export function apply(ctx, config) {
     });
 }
 /**
- * One agent in the project's shared session record (session-store.ts): its
+ * One agent in the project's shared session record (store/sessions.ts): its
  * prompts as each turn opens, its answer as the turn closes (the text the
  * stream carried), the files its write tools wrote and the commits its
  * commands made, the decisions the model notes with `gemworks_note`; and the
@@ -127,6 +127,11 @@ export function recordSession(agent, recorded) {
         if (said !== "" || made)
             safe(() => recordAnswer(cwd, host, id, said, made));
     });
+    // A rule of the light flows holds the call, workflow or none (loop.ts ruleHold).
+    agent.ctx.on("tools/pre-execute", async (exec, next) => {
+        const held = ruleHold(cwd, id, exec.name, isRecord(exec.arguments) ? exec.arguments : {}, DSH_TOOLS);
+        return held !== undefined ? { kind: "deny", reason: held } : next();
+    });
     agent.ctx.on("tools/result", (exec, result) => {
         const input = isRecord(exec.arguments) ? exec.arguments : undefined;
         if (DSH_TOOLS.run.includes(exec.name)) {
@@ -141,14 +146,13 @@ export function recordSession(agent, recorded) {
     agent.ctx.tools.register(defineTool({
         name: `gemworks_${NOTE_TOOL.name}`,
         description: NOTE_TOOL.description,
-        parameters: { decisions: { type: "array", items: { type: "string" }, required: true, description: "The conclusions and decisions, one short sentence each." } },
+        parameters: dshParameters(NOTE_TOOL.inputSchema),
         output: { schema: { type: "object", additionalProperties: false, properties: { text: { type: "string" } } }, render: (_args, value) => [{ type: "text", text: JSON.stringify(value) }] },
         execute: (async (args) => {
-            const given = Array.isArray(args["decisions"]) ? args["decisions"].filter((d) => typeof d === "string") : [];
-            const n = recordDecisions(cwd, host, id, given);
-            if (n === 0)
-                throw new Error("Nothing recorded: decisions is a list of short sentences.");
-            return { text: `Recorded ${n} decision${n === 1 ? "" : "s"}; the project's other sessions will see ${n === 1 ? "it" : "them"}.` };
+            const note = recordNote(cwd, host, id, args);
+            if (note.decided.length === 0)
+                throw new Error(noteReply(note));
+            return { text: noteReply(note) };
         }),
     }));
     agent.ctx.systemPrompt.section({ name: "gemworks:sessions", order: 401, text: () => SESSIONS_PROMPT.replace("gemworks `note` tool", "`gemworks_note` tool") });

@@ -50,8 +50,10 @@ function isEvent(v) {
     switch (e["t"]) {
         case "session": return typeof e["id"] === "string" && typeof e["host"] === "string";
         case "prompt":
-        case "answer":
-        case "decision": return typeof e["turn"] === "number" && typeof e["text"] === "string";
+        case "answer": return typeof e["turn"] === "number" && typeof e["text"] === "string";
+        case "decision": return typeof e["turn"] === "number" && typeof e["text"] === "string"
+            && (e["by"] === undefined || e["by"] === "person" || e["by"] === "model") && (e["said"] === undefined || typeof e["said"] === "string")
+            && (e["pressed"] === undefined || typeof e["pressed"] === "boolean");
         case "file": return typeof e["turn"] === "number" && typeof e["path"] === "string";
         case "commit": return typeof e["turn"] === "number" && typeof e["sha"] === "string" && typeof e["subject"] === "string";
         case "ask": return typeof e["turn"] === "number" && typeof e["question"] === "string" && Array.isArray(e["options"]) && e["options"].every((o) => typeof o === "string")
@@ -122,6 +124,8 @@ export function summarize(events) {
         }
         return found;
     };
+    /** The decisions whose events do not say whose they are: written before `by` was. */
+    const unsaid = new Set();
     for (const e of events) {
         if (e.at > s.last)
             s.last = e.at;
@@ -143,10 +147,14 @@ export function summarize(events) {
             case "answer":
                 turn(e.turn, e.at).answer = e.text;
                 break;
-            case "decision":
+            case "decision": {
                 turn(e.turn, e.at).decisions.push(e.text);
-                s.decisions.push({ turn: e.turn, at: e.at, text: e.text });
+                // Whose it is when the event does not say: settled below, once every prompt of the session is read.
+                s.decisions.push({ turn: e.turn, at: e.at, text: e.text, by: e.by ?? "model", ...(e.said !== undefined ? { said: e.said } : {}), ...(e.pressed === true ? { pressed: true } : {}) });
+                if (e.by === undefined)
+                    unsaid.add(s.decisions.length - 1);
                 break;
+            }
             case "file":
                 if (!s.files.some((f) => f.path === e.path))
                     s.files.push({ path: e.path, at: e.at, ...(e.branch !== undefined ? { branch: e.branch } : {}) });
@@ -168,8 +176,83 @@ export function summarize(events) {
             }
         }
     }
+    // An earlier decision is the person's press when its words are one of their prompts; a model's note otherwise.
+    if (unsaid.size > 0) {
+        const prompts = new Set(personPrompts(events).map((p) => p.trim()));
+        for (const n of unsaid) {
+            const d = s.decisions[n];
+            if (prompts.has(d.text.trim())) {
+                d.by = "person";
+                d.pressed = true;
+            }
+        }
+    }
+    for (const d of s.decisions) {
+        if (d.by !== "person")
+            continue;
+        const tn = turn(d.turn, d.at);
+        tn.byPerson = [...(tn.byPerson ?? []), d.text];
+    }
     s.turns.sort((a, b) => a.turn - b.turn);
     return s;
+}
+/** The prompts the person gave in a session: the ones they typed or pressed, not a scheduled task's or another session's. */
+export function personPrompts(events) {
+    return events.flatMap((e) => (e.t === "prompt" && e.kind === undefined ? [e.text] : []));
+}
+/** Words as they are compared with a prompt: full-width forms folded, quotes left out, spaces collapsed, ASCII case ignored. */
+const loose = (s) => s.normalize("NFKC").replace(/[「」『』“”‘’"'`]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+/** Whether `said` is the person's own words: found in one of the prompts they gave. */
+export function saidByPerson(said, prompts) {
+    const words = loose(said);
+    return words !== "" && prompts.some((p) => loose(p).includes(words));
+}
+/**
+ * The note tool's arguments read against the person's prompts in this session: `decisions` are the model's, `theirs`
+ * the person's when their words (`said`) are found in one of those prompts, the model's otherwise. A line that records
+ * status rather than a decision is left out.
+ */
+export function readNote(args, prompts) {
+    const a = typeof args === "object" && args !== null && !Array.isArray(args) ? args : {};
+    const out = { decided: [], status: [], unfound: [] };
+    const take = (text, by, said) => {
+        if (isStatusLine(text)) {
+            out.status.push(text);
+            return;
+        }
+        out.decided.push({ text, by, ...(said !== undefined ? { said } : {}) });
+    };
+    for (const x of Array.isArray(a["decisions"]) ? a["decisions"] : []) {
+        if (typeof x === "string" && x.trim() !== "")
+            take(x.trim(), "model");
+    }
+    for (const x of Array.isArray(a["theirs"]) ? a["theirs"] : []) {
+        if (typeof x !== "object" || x === null)
+            continue;
+        const r = x;
+        const text = typeof r["text"] === "string" ? r["text"].trim() : "";
+        const said = typeof r["said"] === "string" ? r["said"].trim() : "";
+        if (text === "")
+            continue;
+        if (said !== "" && saidByPerson(said, prompts))
+            take(text, "person", said);
+        else {
+            const before = out.decided.length;
+            take(text, "model");
+            if (out.decided.length > before)
+                out.unfound.push(text);
+        }
+    }
+    return out;
+}
+/** What the note tool answers, on every host alike. */
+export function noteReply(r) {
+    const leftOut = r.status.length === 0 ? "" : ` ${r.status.length} left out as status, which git, the board and the journal hold: ${r.status.map((x) => `"${x.slice(0, 60)}"`).join(", ")}.`;
+    const n = r.decided.length;
+    if (n === 0)
+        return `Nothing recorded:${leftOut} \`decisions\` is a list of short sentences, \`theirs\` the person's choices, each with their own words in \`said\`.`;
+    const unfound = r.unfound.length === 0 ? "" : ` ${r.unfound.length} recorded as yours, not the person's: their words were not found in a prompt they gave in this session (${r.unfound.map((x) => `"${x.slice(0, 60)}"`).join(", ")}).`;
+    return `Recorded ${n} decision${n === 1 ? "" : "s"}; the project's other sessions will see ${n === 1 ? "it" : "them"}.${unfound}${leftOut}`;
 }
 /** How close in time two prompts with the same words are one prompt recorded twice (live, and read back from the transcript): the same moment, seconds apart; a person repeats a sentence minutes apart. */
 export const SAME_PROMPT_MS = 30_000;
@@ -201,9 +284,14 @@ export function decisionsSince(sessions, ownId, since, limit = 12) {
     for (const s of sessions) {
         if (s.id === ownId)
             continue;
-        for (const d of s.decisions)
-            if (since === null || d.at > since)
-                out.push({ text: d.text, at: d.at, session: s.id, host: s.host, ...(s.branch !== undefined ? { branch: s.branch } : {}) });
+        for (const d of s.decisions) {
+            if (since !== null && d.at <= since)
+                continue;
+            out.push({
+                text: d.text, at: d.at, session: s.id, host: s.host, ...(s.branch !== undefined ? { branch: s.branch } : {}),
+                by: d.by === "person" ? "person" : "model", ...(d.said !== undefined ? { said: d.said } : {}), ...(d.pressed === true ? { pressed: true } : {}),
+            });
+        }
     }
     out.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
     return out.slice(-limit);
@@ -229,16 +317,30 @@ export function filesBySession(sessions) {
 /** The tool every host lists for the model to record a turn's conclusions and decisions in its session's log. */
 export const NOTE_TOOL = {
     name: "note",
-    description: "Record this turn's decisions in the project's shared session record, so the project's other sessions (on other branches, worktrees and tools) know them. A decision is a choice the person made, or you made for them, that changes what comes next; or a finding the other sessions would otherwise discover again. Never status (what was pushed, synced, committed, merged, built, or what a version does), progress or plans: git, the board and the journal hold those. Call it once before the turn ends, each decision a short sentence that stands on its own.",
+    description: "Record this turn's decisions in the project's shared session record, so the project's other sessions (on other branches, worktrees and tools) know them. A decision is a choice that changes what comes next, or a finding the other sessions would otherwise discover again. A choice the person made goes in `theirs`, with their own words for it in `said` as they gave them in a prompt of this session: it is recorded as the person's only when those words are found there, and as yours otherwise. Your own conclusions, findings and the choices you made for them go in `decisions`. Never status (what was pushed, synced, committed, merged, built, or what a version does), progress or plans: git, the board and the journal hold those. Call it once before the turn ends, each decision a short sentence that stands on its own.",
     inputSchema: {
         type: "object",
-        properties: { decisions: { type: "array", items: { type: "string" }, description: "The conclusions and decisions, one short sentence each." } },
-        required: ["decisions"],
+        properties: {
+            decisions: { type: "array", items: { type: "string" }, description: "Your own conclusions, findings and the choices you made for the person, one short sentence each." },
+            theirs: {
+                type: "array",
+                items: {
+                    type: "object",
+                    properties: {
+                        text: { type: "string", description: "The choice, one short sentence." },
+                        said: { type: "string", description: "The person's own words for it, as they gave them in a prompt of this session." },
+                    },
+                    required: ["text", "said"],
+                    additionalProperties: false,
+                },
+                description: "The choices the person made, each with their own words.",
+            },
+        },
         additionalProperties: false,
     },
 };
 /** What the model is told once, in the system prompt, about the project's other sessions. */
-export const SESSIONS_PROMPT = "Gemworks: this project is worked on in several sessions at once, on other branches, worktrees and tools. When a turn reaches a decision the other sessions should know — a choice the person made that changes what comes next, or a finding they would otherwise discover again — record it with the gemworks `note` tool before the turn ends, one short sentence each; never status (pushed, synced, committed, what a version does) or plans. Decisions the other sessions recorded arrive beside the person's prompts, marked [gemworks].";
+export const SESSIONS_PROMPT = "Gemworks: this project is worked on in several sessions at once, on other branches, worktrees and tools. When a turn reaches a decision the other sessions should know — a choice the person made that changes what comes next, or a finding they would otherwise discover again — record it with the gemworks `note` tool before the turn ends, one short sentence each: the person's choices with their own words, yours and your findings apart; never status (pushed, synced, committed, what a version does) or plans. Decisions the other sessions recorded arrive beside the person's prompts, marked [gemworks]: the person's own apart from the ones only a model recorded, which are for reference and not the person's word.";
 /**
  * Whether a line records status rather than a decision: a version and what
  * it does, something pushed, synced, committed, merged, released or built, a
@@ -260,7 +362,17 @@ export function isStatusLine(text) {
 export function isDeferral(label) {
     return /^(暂不|先不|稍后|以后|回头|不急|改天|later|not now|skip|defer)/i.test(label.trim());
 }
-/** The other sessions' decisions as the line beside a prompt says them. */
+/**
+ * The other sessions' decisions as the line beside a prompt says them: the person's first, with how they gave each; then
+ * the ones only a model recorded, marked as reference — a model's note is never passed on as the person's word.
+ */
 export function decisionsContext(decisions, label) {
-    return ["[gemworks] 本项目其他会话记下的决定：", ...decisions.map((d) => `- ${d.text}（${label(d)}）`)].join("\n");
+    const theirs = decisions.filter((d) => d.by === "person");
+    const models = decisions.filter((d) => d.by !== "person");
+    // How the person gave it: their press, or their words, cut short.
+    const how = (d) => (d.pressed === true ? "用户按的 · " : d.said !== undefined ? `用户说「${[...d.said].length > 24 ? `${[...d.said].slice(0, 24).join("")}…` : d.said}」· ` : "");
+    return [
+        ...(theirs.length > 0 ? ["[gemworks] 本项目其他会话里用户定的：", ...theirs.map((d) => `- ${d.text}（${how(d)}${label(d)}）`)] : []),
+        ...(models.length > 0 ? ["[gemworks] 本项目其他会话的模型记下的，用户没说过，只作参考：", ...models.map((d) => `- ${d.text}（${label(d)}）`)] : []),
+    ].join("\n");
 }

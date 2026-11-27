@@ -38,6 +38,13 @@ export interface Transcript {
 }
 /** The folder under ~/.claude/projects that holds a directory's transcripts: every character but letters, digits and `-` becomes `-`. */
 export declare function slugOf(path: string): string;
+/**
+ * The words of a prompt the person sees: the host's reminders and notices stripped (a reminder cut short, its words
+ * clipped to be kept, runs to the end); nothing when only those were there.
+ */
+export declare function promptWords(text: string): string;
+/** The words a prompt shows: what the person typed; a prompt that was only the host's reminder, the reminder's own words. */
+export declare function promptShown(text: string): string;
 /** A message the person typed while a turn ran: its record's uuid, its words, when it was sent. */
 export interface QueuedMessage {
     uuid: string;

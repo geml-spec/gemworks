@@ -18,21 +18,21 @@ import { readJournal, renderJournalMarkdown, verifyJournal } from "./core/journa
 import { canonical } from "./core/snapshot.js";
 import { addWorkflow, useWorkflow } from "./project.js";
 import { handleRequest } from "./bridge.js";
-import { runCodex } from "./codex.js";
-import { installAntigravity, runAntigravity } from "./antigravity.js";
-import { installCursor, runCursor } from "./cursor.js";
-import { installQwen, runQwen } from "./qwen.js";
-import { installOpencode, runOpencode } from "./opencode.js";
-import { installDevin, runDevin } from "./devin.js";
-import { installTrae, mcpEntry as traeMcpEntry, runTrae } from "./trae.js";
-import { installKiro, runKiro } from "./kiro.js";
+import { runCodex } from "./hosts/codex/adapter.js";
+import { installAntigravity, runAntigravity } from "./hosts/antigravity/adapter.js";
+import { installCursor, runCursor } from "./hosts/cursor/adapter.js";
+import { installQwen, runQwen } from "./hosts/qwen/adapter.js";
+import { installOpencode, runOpencode } from "./hosts/opencode/adapter.js";
+import { installDevin, runDevin } from "./hosts/devin/adapter.js";
+import { installTrae, mcpEntry as traeMcpEntry, runTrae } from "./hosts/trae/adapter.js";
+import { installKiro, runKiro } from "./hosts/kiro/adapter.js";
 import { serveMcp } from "./mcp.js";
-import { decodeRequest } from "./hosts/claude-code/protocol.js";
+import { decodeRequest } from "./shell/protocol.js";
 import { docReader, openWorkspace, resolvePromptRef, resolveWorkflow } from "./workspace.js";
 import { defaultPeriods, LABEL_GUIDE, localDay, parsePeriod, report, reportText } from "./core/corrections.js";
-import { addLabelled, labelledRows, readLedger, recordedUnlabelled, unlabelledPrompts } from "./corrections-store.js";
-import { readSessions } from "./session-store.js";
-import { cellWidth } from "./hosts/claude-code/band.js";
+import { addLabelled, labelledRows, readLedger, recordedUnlabelled, unlabelledPrompts } from "./store/corrections.js";
+import { readSessions } from "./store/sessions.js";
+import { cellWidth } from "./shell/band.js";
 const USAGE = [
     "usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmark|advance|pause|resume|rollback|run|hook|mcp> ...",
     "  check <workflow.geml>                   static checks of the workflow and its tool dictionary (exit 1 on errors)",
