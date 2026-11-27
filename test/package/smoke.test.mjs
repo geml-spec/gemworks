@@ -132,4 +132,5 @@ test("CI counts coverage: npm run coverage in a job of its own, failing below sc
   assert.match(script, /"--check-coverage", "--lines", String\(LINES\), "--branches", String\(BRANCHES\)/, "the floors fail the run, not just the report");
   assert.match(script, /"--include", "src\/\*\*", "--exclude-after-remap"/, "counted against src/, through the source maps");
   assert.match(script, /finally \{\s+const rebuilt = build\(false\)/, "dist/ is built again without source maps, whatever the run did: a map left there would ship");
+  assert.match(script, /function maps\(dir = dist\) \{\s+if \(!existsSync\(dir\)\) return \[\];/, "a fresh checkout, as CI's, has no dist/ to clear of maps yet");
 });

@@ -10,7 +10,7 @@
 //
 // The report is coverage/coverage-summary.json, beside the text summary printed at the end.
 import { spawnSync } from "node:child_process";
-import { readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,8 +29,9 @@ function node(args, env = {}) {
   return r.status ?? 1;
 }
 
-/** Every source map under dist/. */
+/** Every source map under dist/; none before the first build (a fresh checkout, as CI's). */
 function maps(dir = dist) {
+  if (!existsSync(dir)) return [];
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? maps(join(dir, e.name)) : e.name.endsWith(".map") ? [join(dir, e.name)] : []);
 }
 
