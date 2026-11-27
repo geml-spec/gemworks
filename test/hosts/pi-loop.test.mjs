@@ -42,6 +42,12 @@ test("widths: a wide character takes two cells, a cut line ends in an ellipsis w
   assert.ok(cut.endsWith("…"));
 });
 
+test("an open item whose flow is gone shows the step it was recorded at, not that it is done", () => {
+  const item = { id: "a1", flow: "gone", title: "修一个", state: "fix", needs: "", goal: "", status: "open", at: "2026-11-27T00:00:00Z", session: "s-1", met: [], next: "" };
+  const d = { flows: [], items: [item], waiting: [], practices: [], decisions: [], asks: [] };
+  assert.deepEqual(bandLines(d, "s-1"), ["gemworks · #a1 修一个 · gone · fix  /gemworks 看板"]);
+});
+
 test("the band and the board say the same things: the item and its step, what waits on the person and what to say, the step's practice", () => {
   const root = gitRepo();
   const empty = piLoopData(root, "s-1");

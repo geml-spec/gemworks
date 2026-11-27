@@ -50,10 +50,12 @@ export function fit(text: string, width: number): string {
   return `${out}…`;
 }
 
+/** An item's flow and the step it stands at; on a flow that is gone, the step it was recorded at. */
 const where = (item: WorkItem, flows: readonly CoachFlow[]): string => {
   const flow = flows.find((f) => f.name === item.flow);
-  const here = flow !== undefined ? itemProgress(item, flow).here : null;
-  return `${flow?.title ?? item.flow} · ${here !== null ? flow?.states.find((s) => s.id === here)?.title ?? here : "完成"}`;
+  if (flow === undefined) return `${item.flow} · ${item.state}`;
+  const here = itemProgress(item, flow).here;
+  return `${flow.title} · ${here !== null ? flow.states.find((s) => s.id === here)?.title ?? here : "完成"}`;
 };
 
 /** The steps of an item's flow on one line: met ones ticked, the one it stands at marked. */
