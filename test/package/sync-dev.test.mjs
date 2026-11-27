@@ -35,6 +35,20 @@ test("syncs into a folder holding this plugin, a folder not there yet, or one ho
   assert.deepEqual([read(watched, "dist/a.js"), read(watched, ".claude-plugin/types/claude-code/index.d.ts")], ["new", "engine"]);
 });
 
+test("removes what the checkout no longer holds, and keeps what the copy leaves out and the engine's types", () => {
+  const from = folder("gemworks", { "hooks/modules.json": "modules", "hooks/register.tsx": "module", "src/now.ts": "now", "flows/x": "a file now" });
+  // hooks/hooks.json, deleted from the checkout in 0.3.18, stayed beside hooks/modules.json and the engine loaded neither.
+  const copy = folder("gemworks", {
+    "hooks/hooks.json": "stale", "hooks/modules.json": "modules", "src/old.ts": "stale", "spec/a/b.md": "stale",
+    "flows/x/y.geml": "a folder once", "node_modules/geml/index.js": "dependency", ".geml/project.geml": "working data",
+    "gemworks-0.1.0.tgz": "pack", ".claude-plugin/types/claude-code/index.d.ts": "engine",
+  });
+  syncDev(from, copy);
+  assert.deepEqual([has(copy, "hooks/hooks.json"), has(copy, "src/old.ts"), has(copy, "spec")], [false, false, false]);
+  assert.deepEqual([read(copy, "hooks/modules.json"), read(copy, "hooks/register.tsx"), read(copy, "src/now.ts"), read(copy, "flows/x")], ["modules", "module", "now", "a file now"]);
+  assert.deepEqual([read(copy, "node_modules/geml/index.js"), read(copy, ".geml/project.geml"), read(copy, "gemworks-0.1.0.tgz"), read(copy, ".claude-plugin/types/claude-code/index.d.ts")], ["dependency", "working data", "pack", "engine"]);
+});
+
 test("refuses a folder holding another plugin, or anything but a plugin, and leaves every file of it as it was", () => {
   const from = checkout();
   // CLAUDE_CODE_PLUGIN_DIRS named gemsbang's folder first: a copy into it overwrote its manifest and its dist.
