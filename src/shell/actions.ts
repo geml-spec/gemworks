@@ -78,7 +78,7 @@ export type BoardAction =
   | { op: "artifact-menu"; key: string | null }
   /** The 产物 tab (made.ts): one work item's artifacts alone, there (null: every one's); narrow it to one kind, or every one; list the next page. */
   | { op: "made-item"; id: string | null }
-  | { op: "made-kind"; kind: "all" | "link" | "doc" | "file" | "image" }
+  | { op: "made-kind"; kind: "all" | "online" | "link" | "doc" | "file" | "image" }
   | { op: "made-more" }
   /** Close a merged work item: its worktree and its local branch removed, by the model, once the person said yes. */
   | { op: "close-item"; id: string; worktree?: string }

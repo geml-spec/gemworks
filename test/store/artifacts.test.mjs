@@ -153,6 +153,20 @@ test("a link's versions read again — a resumed or forked session's transcript 
   assert.deepEqual(readArtifactRows(home).map((r) => r.version), ["1", "2", "3"]);
 });
 
+test("an online document a turn wrote: the next version by count, once a turn however often the turn wrote it; one artifact by its address, named as last named", () => {
+  const home = repo();
+  const url = "https://acme.sg.larksuite.com/docx/Vf6UdiUTvoIESpxu04hlTT20gzd";
+  const first = "2026-10-20T01:00:00.000Z";
+  recordLink(home, "feat/x", { url, at: first, numbered: true });
+  recordLink(home, "feat/x", { url, at: first, numbered: true });
+  recordLink(home, "feat/x", { name: "迁移方案", url, at: "2026-10-20T02:00:00.000Z", numbered: true });
+  const rows = recordLink(home, "feat/x", { url, at: "2026-10-20T03:00:00.000Z", numbered: true });
+  assert.deepEqual(rows.map((r) => [r.name, r.version]), [[url, "1"], ["迁移方案", "2"], ["迁移方案", "3"]], "the turn that wrote it twice is one version; a name once given is kept");
+  const made = artifactsOfItem(rows, "feat/x");
+  assert.deepEqual(made.map((p) => [p.name, p.versions.length]), [["迁移方案", 3]], "one artifact by its address, though its first version had no name");
+  assert.equal(recordLink(home, "other", { url, at: first, numbered: true }).filter((r) => r.item === "other")[0].version, "1", "each work item counts its own");
+});
+
 test("board: what the work item made, under what waits on the person — links, documents in git, files with copies, its code in one line", () => {
   const NOW = "2026-10-20T12:00:00+08:00";
   const t = wordsFor("zh");
@@ -173,6 +187,18 @@ test("board: what the work item made, under what waits on the person — links, 
     "文档 · 3 · 在 git 里", "README.md||12 次提交 · 今天", "spec/workflow.md||3 次提交 · 今天", "[其余 1 份]",
     "文件 · 1 · 不在 git 里，存了副本", "s.geml||.geml/exports · 20 KB · 2 版 · 今天",
     "代码|39 个提交 · 改了 313 个文件|",
+  ]);
+  // The online documents first, under their own heading, each opened by its kind; one known only by its address named by its kind and id.
+  const sheet = "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUv/edit";
+  const online = { ...artifacts, made: { ...made, links: [
+    { kind: "link", name: "迁移方案", open: "https://acme.sg.larksuite.com/docx/Vf6UdiUTvoIESpxu04hlTT20gzd", versions: [{ version: "3", at: NOW, size: null }] },
+    { kind: "link", name: sheet, open: sheet, versions: [{ version: "1", at: NOW, size: null }] },
+    ...made.links,
+  ] } };
+  assert.deepEqual(words(artifactRows(online, "feat/x", { t, columns: 80, now: NOW, menu: null, docsOpen: false })).slice(0, 6), [
+    "产物 · feat/x",
+    "在线文档 · 2", "迁移方案||第 3 版 · 今天|飞书文档 ↗", "Google 表格 1AbC…StUv||第 1 版 · 今天|Google 表格 ↗",
+    "链接 · 1", "Gemworks 界面示意||第 55 版 · 今天|打开 ↗",
   ]);
   const open = artifactRows(artifacts, "feat/x", { t, columns: 80, now: NOW, menu: "file:.geml/exports/s.geml", docsOpen: true });
   // Each a press that opens it on the machine: a file: link is drawn as plain text on a remote surface and opens nothing.

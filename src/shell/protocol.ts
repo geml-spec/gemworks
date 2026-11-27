@@ -80,9 +80,10 @@ export type BridgeOp =
    * An artifact of the current work item gemworks did not see made: a link (a
    * publish tool's result; `page` the published file, whose title names it)
    * or a file's version (a generated picture). Answers `text`. With no
-   * workflow work item, it goes under `item`, the one the turn is on.
+   * workflow work item, it goes under `item`, the one the turn is on. An
+   * `online` link is an online document the turn wrote: its next version.
    */
-  | { op: "artifact"; kind: "link" | "image" | "file"; where: string; name?: string; version?: string; page?: string; data?: string; mediaType?: string; item?: string }
+  | { op: "artifact"; kind: "link" | "image" | "file"; where: string; name?: string; version?: string; page?: string; data?: string; mediaType?: string; item?: string; online?: true }
   /**
    * Write a file under `.geml/exports/`, or `to` where the person said (a
    * folder, or a file ending in the format's extension; `~` the home, a
@@ -448,7 +449,7 @@ export function decodeRequest(text: string): BridgeRequest | { error: string } {
       && (v["to"] === undefined || (str("to") && v["to"] !== "")) && (v["kind"] !== "text" || str("text")),
     artifact: () => (v["kind"] === "link" || v["kind"] === "image" || v["kind"] === "file") && str("where")
       && (v["name"] === undefined || str("name")) && (v["version"] === undefined || str("version")) && (v["page"] === undefined || str("page"))
-      && (v["data"] === undefined || str("data")) && (v["mediaType"] === undefined || str("mediaType")),
+      && (v["data"] === undefined || str("data")) && (v["mediaType"] === undefined || str("mediaType")) && (v["online"] === undefined || (v["online"] === true && v["kind"] === "link")),
     artifacts: () => (v["elsewhere"] === undefined || (Array.isArray(v["elsewhere"]) && (v["elsewhere"] as unknown[]).every((p) => typeof p === "string")))
       && (v["notMade"] === undefined || (Array.isArray(v["notMade"]) && (v["notMade"] as unknown[]).every((p) => typeof p === "string"))),
     attention: () => v["session"] === undefined || (str("session") && v["session"] !== ""),

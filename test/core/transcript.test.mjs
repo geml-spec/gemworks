@@ -59,6 +59,26 @@ test("a transcript: the person's prompts become turns with the last answer, the 
   assert.equal(readTranscript(rec({ type: "attachment", timestamp: "2026-10-20T01:00:00Z" })).turns.length, 0, "a session with no prompt: no turns");
 });
 
+test("a transcript: the online documents a turn wrote are its links, once each, named as last named; a read, a failure, an error are not", () => {
+  const doc = "https://acme.sg.larksuite.com/docx/Vf6UdiUTvoIESpxu04hlTT20gzd";
+  const lines = [
+    user("u1", "2026-10-20T01:00:01Z", "把方案写进飞书"),
+    assistant("2026-10-20T01:00:05Z", [{ type: "tool_use", id: "c1", name: "Bash", input: { command: 'lark-cli docs +create --title "迁移方案" --content x' } }]),
+    result("2026-10-20T01:00:06Z", "c1", `{ "ok": true, "data": { "document": { "url": "${doc}" } } }`),
+    assistant("2026-10-20T01:00:07Z", [{ type: "tool_use", id: "c2", name: "Bash", input: { command: "lark-cli docs +update --doc Vf6U --content y" } }]),
+    result("2026-10-20T01:00:08Z", "c2", `{ "ok": true, "data": { "document": { "url": "${doc}" } } }`),
+    assistant("2026-10-20T01:00:09Z", [{ type: "tool_use", id: "c3", name: "Bash", input: { command: "lark-cli docs +fetch --doc Vf6U" } }]),
+    result("2026-10-20T01:00:10Z", "c3", `{ "ok": true, "data": { "document": { "url": "https://acme.sg.larksuite.com/docx/Read0nly12345678" } } }`),
+    assistant("2026-10-20T01:00:11Z", [{ type: "tool_use", id: "c4", name: "Bash", input: { command: "lark-cli sheets +batch --url https://acme.sg.larksuite.com/sheets/Fail0000000000" } }]),
+    result("2026-10-20T01:00:12Z", "c4", '{ "ok": false, "error": { "type": "missing_scope" } }'),
+    assistant("2026-10-20T01:00:13Z", [{ type: "tool_use", id: "c5", name: "mcp__lark-mcp__docx_builtin_import", input: { markdown: "x", file_name: "Plan" } }]),
+    rec({ type: "user", timestamp: "2026-10-20T01:00:14Z", message: { content: [{ type: "tool_result", tool_use_id: "c5", is_error: true, content: "https://acme.sg.larksuite.com/docx/Err00000000000" }] } }),
+    assistant("2026-10-20T01:00:15Z", [{ type: "text", text: "写好了。" }]),
+  ];
+  const [turn] = readTranscript(lines.join("\n") + "\n").turns;
+  assert.deepEqual(turn.links, [{ url: doc, online: true, title: "迁移方案" }]);
+});
+
 test("a scheduled task's session is marked by the task's name; its events carry it, each prompt its uuid and the backfilled mark, the answer whole", () => {
   const long = "x".repeat(10_000);
   const lines = [

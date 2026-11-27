@@ -45,6 +45,7 @@ import type { NoteRead, SeenRun, SessionEvent, SessionSummary } from '../dist/co
 import { checkRequest, flowRequest, labelRequest, linkKey, promptId, readChecks, readFlowDraft, readLabels, readThemes, themeRequest, typedWords } from '../dist/core/corrections.js'
 import type { LabelledPrompt } from '../dist/core/corrections.js'
 import { ARTIFACT_TOOL, isMadeForPeople, publishedLink } from '../dist/core/artifact-tool.js'
+import { mayWriteOnlineDoc, onlineDocWrites } from '../dist/core/online-docs.js'
 import { ASK_PROMPT, ASK_TOOL, askedOf } from '../dist/core/ask-tool.js'
 import { COACH_FLOWS, coachBand, goneOnAfterTurn, itemProgress, readCoachFlow, stripText, turnItem, turnWords, WORK_REMINDER, WORK_TOOL, workContext, workEvents, workItemsOf, workPrompt } from '../dist/shell/coach.js'
 import type { CoachFlow, CoachFocus, Doing, GoneOn, WorkGroup, WorkItem } from '../dist/shell/coach.js'
@@ -121,6 +122,7 @@ const docsOpenAtom = atom({ plugin: 'gemworks', key: 'docsOpen' } as const, fals
 const madeAllAtom = atom({ plugin: 'gemworks', key: 'madeAll' } as const, null as GemworksJson)
 const madeViewAtom = atom({ plugin: 'gemworks', key: 'madeView' } as const, MADE_VIEW as { kind: string; shown: number; item: string | null })
 const madeElsewhereAtom = atom({ plugin: 'gemworks', key: 'madeElsewhere' } as const, [] as string[])
+const madeOnlineAtom = atom({ plugin: 'gemworks', key: 'madeOnline' } as const, [] as { url: string; name?: string }[])
 /** The project paths this turn wrote, made for a person: with no workflow journal to hold them, what the turn's end versions. */
 const madeHereAtom = atom({ plugin: 'gemworks', key: 'madeHere' } as const, [] as string[])
 /** Files handed to git commit as its message this turn: not artifacts, taken out again at the turn's end. */
@@ -1288,20 +1290,35 @@ async function artifactItem($: EngineInterface): Promise<{ item?: string } | und
 
 /** A turn's end, on a work item: the files it wrote that git does not keep get a version where their content changed. */
 async function artifactsOnTurn($: EngineInterface): Promise<void> {
-  const [on, made, drafts, here] = await Promise.all([artifactItem($), read($, madeElsewhereAtom), read($, notMadeAtom), read($, madeHereAtom)])
+  const [on, made, drafts, here, docs] = await Promise.all([artifactItem($), read($, madeElsewhereAtom), read($, notMadeAtom), read($, madeHereAtom), read($, madeOnlineAtom)])
   const elsewhere = ((made as unknown) as string[] | null) ?? []
   const notMade = ((drafts as unknown) as string[] | null) ?? []
   const written = ((here as unknown) as string[] | null) ?? []
+  const online = docs ?? []
   if (elsewhere.length > 0) await update($, madeElsewhereAtom, () => [] as unknown as GemworksJson)
   if (notMade.length > 0) await update($, notMadeAtom, () => [] as string[])
   if (written.length > 0) await update($, madeHereAtom, () => [] as string[])
+  if (online.length > 0) await update($, madeOnlineAtom, () => [])
   // A turn on no work item made nothing that is one's.
   if (on === undefined) return
   // The workflow item's journal names what it wrote; with the coach's item, the turn's own list does.
   const own = on.item !== undefined && written.length > 0 ? { written } : {}
   await bridge($, { op: 'artifacts', ...on, ...own, ...(elsewhere.length > 0 ? { elsewhere } : {}), ...(notMade.length > 0 ? { notMade } : {}) }, SLOW_TIMEOUT_MS).catch(() => undefined)
+  // Each online document the turn wrote: its next version.
+  for (const d of online) await bridge($, { op: 'artifact', ...on, kind: 'link', where: d.url, online: true, ...(d.name !== undefined ? { name: d.name } : {}) }).catch(() => undefined)
   // What the turn recorded shows on an open board now: nothing else reads the board again while the stage stays put.
   try { if ((await $.ui.panes()).some((p) => p.id === BOARD_ID)) await reloadBoardLater($) } catch { /* read when next opened */ }
+}
+
+/** The online documents a turn wrote so far with the ones a call just wrote: once each, by address, named as last named. */
+function mergeOnline(was: readonly { url: string; name?: string }[], docs: readonly { url: string; name?: string }[]): { url: string; name?: string }[] {
+  const out = was.map((d) => ({ ...d }))
+  for (const d of docs) {
+    const same = out.find((x) => x.url === d.url)
+    if (same === undefined) out.push(d.name !== undefined ? { url: d.url, name: d.name } : { url: d.url })
+    else if (d.name !== undefined) same.name = d.name
+  }
+  return out
 }
 
 /** What the person gave with a prompt (images, documents): their bytes, as the conversation holds them, among the work item's artifacts. */
@@ -3141,6 +3158,11 @@ export const register: Register = (on) => {
     // A visual drawn inline is kept as a page: it has no file or link of its own.
     if (isVisualTool(tool) && ran.isError !== true) $.clock.after(0, () => { void keepVisual($, input).catch(() => undefined) })
     if (tool === 'Artifact' && ran.isError !== true) { const said = ran.text ?? (typeof ran.result === 'string' ? ran.result : undefined); $.clock.after(0, () => { void publishedArtifact($, said, input).catch(() => undefined) }) }
+    // An online document the call wrote (a Lark doc, a Google sheet): one of the work item's artifacts at the turn's end, one version a turn.
+    if (ran.isError !== true && mayWriteOnlineDoc(tool, input)) {
+      const docs = onlineDocWrites(tool, input, ran.text ?? (typeof ran.result === 'string' ? ran.result : ''))
+      if (docs.length > 0) $.clock.after(0, () => { void update($, madeOnlineAtom, (was) => mergeOnline(was ?? [], docs)).catch(() => undefined) })
+    }
     const wrotePath = touchedPath(tool, input, root ?? '')
     // A file written in another checkout is that checkout's work item, never the session's current one.
     if (!elsewhere && wrotePath !== undefined && matchesUnit(policy, wrotePath, (await readShell($))?.units ?? [])) await update($, lastFileAtom, () => wrotePath)

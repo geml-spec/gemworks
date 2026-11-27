@@ -92,14 +92,18 @@ export function withArtifacts(source: string | null, rows: readonly ArtifactRow[
 /** An artifact: its kind and name, its versions oldest first (its rows). */
 export interface Artifact { kind: ArtifactKind; name: string; versions: ArtifactRow[] }
 
-/** A work item's artifacts from the table's rows, by kind and name; the newest version last within each; the most recently changed first. */
+/**
+ * A work item's artifacts from the table's rows, by kind and name — a link by its address, named as its newest
+ * version is; the newest version last within each; the most recently changed first.
+ */
 export function artifactsOfItem(rows: readonly ArtifactRow[], item: string): Artifact[] {
   const by = new Map<string, Artifact>();
   for (const r of rows) {
     if (r.item !== item) continue;
-    const key = `${r.kind}\0${r.name}`;
+    const key = `${r.kind}\0${r.kind === "link" ? r.where : r.name}`;
     const p = by.get(key) ?? { kind: r.kind, name: r.name, versions: [] };
     p.versions.push(r);
+    p.name = r.name;
     by.set(key, p);
   }
   const last = (p: Artifact): string => p.versions.at(-1)?.at ?? "";

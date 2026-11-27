@@ -3,6 +3,7 @@
 // surface's elements and runs a button's action.
 import { bindingOf, type DictRow } from "../core/dictionary.js";
 import { isOutwardKey } from "../core/outward.js";
+import { onlineDocOf, onlineDocShort } from "../core/online-docs.js";
 import type { Status } from "../workspace.js";
 import type { BoardAction, BoardTab, JournalFilter, Pressable } from "./actions.js";
 import type { MemoryList } from "../store/memory.js";
@@ -826,11 +827,17 @@ export function artifactRows(p: Artifacts | undefined, current: string | undefin
   const line = (...parts: string[]): string => parts.filter((x) => x !== "").join(" · ");
   const rows: BoardRow[] = [{ kind: "section", key: "artifacts", text: t("产物 · {0}", current) }];
   const label = (s: string): void => { rows.push(text(s, columns, "dim")); };
-  if (m.links.length > 0) {
-    label(t("链接 · {0}", m.links.length));
-    for (const l of m.links) {
+  // The online documents (a Lark doc, a Google sheet) first, each opened by its kind; then the other links.
+  const online = m.links.filter((l) => onlineDocOf(l.open) !== undefined);
+  const plain = m.links.filter((l) => onlineDocOf(l.open) === undefined);
+  for (const [list, heading] of [[online, t("在线文档 · {0}", online.length)], [plain, t("链接 · {0}", plain.length)]] as const) {
+    if (list.length === 0) continue;
+    label(heading);
+    for (const l of list) {
       const v = l.versions[0];
-      rows.push({ kind: "entry", key: `artifact-link:${l.open}`, title: l.name, tag: "", tone: "normal", detail: line(v !== undefined && v.version !== "" ? t("第 {0} 版", v.version) : "", v !== undefined ? when(v.at) : ""), link: { href: l.open, label: t("打开 ↗") } });
+      const word = onlineDocOf(l.open)?.word;
+      const title = word !== undefined && l.name === l.open ? `${t(word)} ${onlineDocShort(l.open)}` : l.name;
+      rows.push({ kind: "entry", key: `artifact-link:${l.open}`, title, tag: "", tone: "normal", detail: line(v !== undefined && v.version !== "" ? t("第 {0} 版", v.version) : "", v !== undefined ? when(v.at) : ""), link: { href: l.open, label: word !== undefined ? `${t(word)} ↗` : t("打开 ↗") } });
     }
   }
   if (m.docs.length > 0) {

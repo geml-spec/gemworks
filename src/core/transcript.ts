@@ -4,6 +4,7 @@
 // written, the pages published, what they gave with a prompt. Pure: the bridge
 // reads the file and writes the log.
 import { publishedLink } from "./artifact-tool.js";
+import { mayWriteOnlineDoc, onlineDocWrites } from "./online-docs.js";
 import type { SessionEvent } from "./session-log.js";
 
 /** One turn of a transcript: a prompt and what followed it before the next. */
@@ -22,8 +23,8 @@ export interface TranscriptTurn {
   answerAt?: string;
   /** The files Write, Edit and NotebookEdit wrote, in order, once each. */
   files: string[];
-  /** The pages the Artifact tool published. */
-  links: { url: string; version?: string; title?: string }[];
+  /** The pages the Artifact tool published, and the online documents the turn wrote (`online`, once each). */
+  links: { url: string; version?: string; title?: string; online?: true }[];
   /** Pictures and documents the person gave with the prompt: their bytes as the transcript holds them. */
   uploads: { name?: string; mediaType?: string; data: string }[];
 }
@@ -42,7 +43,7 @@ export function slugOf(path: string): string {
   return path.replace(/[^A-Za-z0-9-]/g, "-");
 }
 
-type Block = { type?: unknown; text?: unknown; name?: unknown; id?: unknown; input?: unknown; tool_use_id?: unknown; content?: unknown; source?: unknown };
+type Block = { type?: unknown; text?: unknown; name?: unknown; id?: unknown; input?: unknown; tool_use_id?: unknown; content?: unknown; source?: unknown; is_error?: unknown };
 type Rec = {
   type?: unknown; uuid?: unknown; timestamp?: unknown; cwd?: unknown; gitBranch?: unknown; sessionId?: unknown;
   isSidechain?: unknown; isMeta?: unknown; isCompactSummary?: unknown; origin?: { kind?: unknown } | null;
@@ -131,6 +132,12 @@ export function readTranscript(text: string): Transcript | undefined {
             const link = publishedLink(resultText(r));
             const title = str(call.input["title"]);
             if (link !== undefined && !call.turn.links.some((l) => l.url === link.url && l.version === link.version)) call.turn.links.push({ ...link, ...(title !== undefined ? { title } : {}) });
+          } else if (r.is_error !== true) {
+            for (const d of onlineDocWrites(call.tool, call.input, resultText(r))) {
+              const was = call.turn.links.find((l) => l.online === true && l.url === d.url);
+              if (was === undefined) call.turn.links.push({ url: d.url, online: true, ...(d.name !== undefined ? { title: d.name } : {}) });
+              else if (d.name !== undefined) was.title = d.name;
+            }
           }
         }
         continue;
@@ -166,7 +173,7 @@ export function readTranscript(text: string): Transcript | undefined {
         if (tool === "Write" || tool === "Edit" || tool === "NotebookEdit") {
           const path = str(input["file_path"]) ?? str(input["notebook_path"]);
           if (path !== undefined && !current.files.includes(path)) current.files.push(path);
-        } else if (tool === "Artifact" && str(b.id) !== undefined) {
+        } else if ((tool === "Artifact" || mayWriteOnlineDoc(tool, input)) && str(b.id) !== undefined) {
           pending.set(str(b.id) as string, { turn: current, tool, input });
         }
       }

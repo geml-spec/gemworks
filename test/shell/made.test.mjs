@@ -44,6 +44,28 @@ test("the 产物 tab: a press per kind that has some, by day newest first, each 
   assert.equal(en.find((r) => r.kind === "entry").tag, "File");
 });
 
+test("online documents (a Lark doc, a Google sheet) are a kind of their own: their press, their kind on each, and a name from the address when none was given", () => {
+  const lark = "https://acme.sg.larksuite.com/docx/Vf6UdiUTvoIESpxu04hlTT20gzd";
+  const sheet = "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUv/edit";
+  const all = { entries: [
+    entry({ kind: "link", name: "迁移方案", open: lark, versions: 6, version: "6", at: "2026-10-29T11:00:00.000Z" }),
+    entry({ kind: "link", name: sheet, open: sheet, version: "1", at: "2026-10-29T10:30:00.000Z" }),
+    entry({ kind: "link", name: "样稿", open: "https://claude.ai/artifact/X", version: "8", at: "2026-10-29T10:10:00.000Z" }),
+    entry({ name: "a.html" }),
+  ] };
+  const rows = madeTabRows(all, MADE_VIEW, none, t, NOW);
+  assert.deepEqual(rows[0].items.map((b) => b.label), ["全部 4", "文件 1", "在线文档 2", "链接 1"], "a link that is an online document counts under its own press, not under 链接");
+  const entries = rows.filter((r) => r.kind === "entry");
+  assert.deepEqual(entries.slice(0, 3).map((r) => [r.title, r.link.label]), [["迁移方案", "飞书文档 ↗"], ["Google 表格 1AbC…StUv", "Google 表格 ↗"], ["样稿", "链接 ↗"]]);
+  assert.match(entries[0].detail, / · 6 版 · /);
+  const online = madeTabRows(all, { ...MADE_VIEW, kind: "online" }, none, t, NOW);
+  assert.deepEqual(online.filter((r) => r.kind === "entry").map((r) => r.title), ["迁移方案", "Google 表格 1AbC…StUv"]);
+  assert.deepEqual(madeTabRows(all, { ...MADE_VIEW, kind: "link" }, none, t, NOW).filter((r) => r.kind === "entry").map((r) => r.title), ["样稿"]);
+  const en = madeTabRows(all, MADE_VIEW, none, wordsFor("en"), NOW);
+  assert.deepEqual(en[0].items.map((b) => b.label), ["All 4", "Files 1", "Online docs 2", "Links 1"]);
+  assert.deepEqual(en.filter((r) => r.kind === "entry").slice(0, 2).map((r) => [r.title, r.link.label]), [["迁移方案", "Lark Doc ↗"], ["Google Sheet 1AbC…StUv", "Google Sheet ↗"]]);
+});
+
 test("nothing but documents in git: the 产物 tab lists those rather than nothing, and a work item's 产物 n counts them", () => {
   const all = { entries: [entry({ kind: "doc", name: "README.md" }), entry({ kind: "doc", name: "a.md" })] };
   const rows = madeTabRows(all, MADE_VIEW, none, t, NOW);
