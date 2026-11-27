@@ -1,4 +1,4 @@
-// The only module that touches the file system. Everything under core/ is pure.
+// Locks, atomic writes and globs over the file system. Everything under core/ is pure.
 import { randomBytes } from "node:crypto";
 import {
   appendFileSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync,

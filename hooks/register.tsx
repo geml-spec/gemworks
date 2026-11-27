@@ -1,9 +1,10 @@
 // Gemworks's Claude Code shell. This module runs with no Node and no DOM: from
 // the latest policy snapshot it decides whether a tool call can matter to the
 // workflow, and asks the bundled CLI (dist/gemworks.mjs: one JSON request on
-// stdin, one JSON answer on stdout) only when it can. It never writes a
-// project file — journals, .geml/context.geml, the dictionary, the backlog and
-// the exports belong to the CLI, which writes them under locks. Gemworks fails
+// stdin, one JSON answer on stdout) only when it can. The files written under a
+// lock — journals, .geml/context.geml, the dictionary, the backlog, the
+// artifacts table — belong to the CLI; the session record, the proposals, the
+// rules and the project's own starter flows this module writes whole itself. Gemworks fails
 // open: when Node is missing, the bridge fails or times out, or an answer does
 // not parse, the call goes through, nothing is recorded, and the band says
 // what is wrong; a start that got no answer is tried again by a later tool
@@ -18,9 +19,9 @@
 // The one question asked here, with $.ui.ask, is about a tool that is not its
 // use's preferred one; the answer goes through the bridge into the dictionary.
 //
-// What the person sees (spec §8): the band above the prompt — the G mark, the
-// words, the one or two actions the moment needs, the pending count — and the
-// board's six tabs, each drawn from the pure modules under
+// What the person sees (spec §8): the band above the prompt — the mark, the
+// one thing that is the person's now with up to three options, how many more
+// wait — and the board's five tabs, each drawn from the pure modules under
 // src/hosts/claude-code/ and run through `act`. The settings live in the
 // plugin's store; the words follow the chosen language.
 import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
@@ -2734,7 +2735,7 @@ async function headerRows($: EngineInterface, t: T): Promise<Header> {
 
 /** The settings, upgrade, about and share dialogs as rows. */
 async function dialogRows($: EngineInterface, t: T, dialog: Dialog, columns: number, surface: string): Promise<BoardRow[]> {
-  // Drawn as the 2026-10-13 dialogs (docs/design/ui): a small grey label over each group, switches and one-of-several
+  // Drawn as grouped dialogs: a small grey label over each group, switches and one-of-several
   // whose whole row takes the press, a Select for a pick from a list, a shaded panel, facts in two columns, links on
   // one line. The terminal has a clipboard and desktop notifications; the desktop app gives a plugin neither.
   const terminal = surface === 'terminal'

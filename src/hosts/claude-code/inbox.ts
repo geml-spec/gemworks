@@ -1,4 +1,4 @@
-// The inbox (spec §8.2, 待处理): everything only a person can do, each with its
+// What waits on the person (spec §8.1, §8.2), at the top of the work items tab: everything only a person can do, each with its
 // actions, from the shell's status and the journal's timeline. Pure and
 // Node-free: the hooks module draws the items and runs the actions.
 import type { Lesson } from "../../core/dictionary.js";

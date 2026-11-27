@@ -146,8 +146,18 @@ test("git sees none of gemworks's own files in the home, the artifacts table and
   mkdirSync(join(root, ".geml", "artifacts"), { recursive: true });
   writeFileSync(join(root, ".geml", "artifacts.geml"), "=== meta\ntitle = \"Gemworks artifacts\"\n===\n");
   writeFileSync(join(root, ".geml", "artifacts", "ab.md"), "a copy");
+  // The rest of what gemworks keeps for itself in the home: the project's own flows, practices, rules and proposals,
+  // the sign-off sheets, the references, the GEML board and the trace.
+  for (const dir of ["coach", "signoffs", "references"]) mkdirSync(join(root, ".geml", dir), { recursive: true });
+  for (const file of ["coach/feature.geml", "practices.geml", "rules.geml", "proposals.geml", "signoffs/a1.geml", "references/team.geml", "board.geml", "trace.log"]) {
+    writeFileSync(join(root, ".geml", file), "x");
+  }
   assert.equal(git(root, "status", "--porcelain", "--untracked-files=all").stdout, "");
-  const before = ["# gemworks's own files: local, never committed", ".gitignore", "context.geml", "exports/", "journals/", "project.geml", "sessions/", "tools.geml", "workflows/", "*.lock", ""].join("\n");
+  // The list as it stood before those joined it is gemworks's too: it becomes the current one.
+  writeFileSync(join(root, ".geml", ".gitignore"), ["# gemworks's own files: local, never committed", ".gitignore", "artifacts.geml", "artifacts/", "context.geml", "exports/", "journals/", "project.geml", "sessions/", "tools.geml", "workflows/", "*.lock", ""].join("\n"));
+  migrateLayout(root, tmp(), root);
+  assert.equal(read(join(root, ".geml", ".gitignore")), GITIGNORE, "the list from before the home's own files joined is replaced");
+  const before =["# gemworks's own files: local, never committed", ".gitignore", "context.geml", "exports/", "journals/", "project.geml", "sessions/", "tools.geml", "workflows/", "*.lock", ""].join("\n");
   writeFileSync(join(root, ".geml", ".gitignore"), before);
   migrateLayout(root, tmp(), root);
   assert.equal(read(join(root, ".geml", ".gitignore")), GITIGNORE, "the list gemworks wrote before is replaced");

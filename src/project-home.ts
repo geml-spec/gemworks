@@ -29,11 +29,12 @@ function inside(dir: string, path: string): boolean {
 export const homeOf = (root: string): string => journalBaseOf(root);
 
 /** What git is told to leave alone in a `.geml/` directory: gemworks's own files, local and never committed, this list among them. */
-export const GITIGNORE = ["# gemworks's own files: local, never committed", ".gitignore", "artifacts.geml", "artifacts/", "context.geml", "exports/", "journals/", "project.geml", "sessions/", "tools.geml", "workflows/", "*.lock", ""].join("\n");
+export const GITIGNORE = ["# gemworks's own files: local, never committed", ".gitignore", "artifacts.geml", "artifacts/", "board.geml", "coach/", "context.geml", "exports/", "journals/", "practices.geml", "project.geml", "proposals.geml", "references/", "rules.geml", "sessions/", "signoffs/", "tools.geml", "trace.log", "workflows/", "*.lock", ""].join("\n");
 /** The lists gemworks wrote before: replaced where one is as it was written and git does not track it. */
 const EARLIER_GITIGNORES = [
   "journals/\ncontext.geml\n*.lock\n",
   ["# gemworks's own files: local, never committed", ".gitignore", "context.geml", "exports/", "journals/", "project.geml", "sessions/", "tools.geml", "workflows/", "*.lock", ""].join("\n"),
+  ["# gemworks's own files: local, never committed", ".gitignore", "artifacts.geml", "artifacts/", "context.geml", "exports/", "journals/", "project.geml", "sessions/", "tools.geml", "workflows/", "*.lock", ""].join("\n"),
 ];
 
 /** Give a `.geml/` directory its .gitignore when it has none, and the current list where it has one gemworks wrote before. */

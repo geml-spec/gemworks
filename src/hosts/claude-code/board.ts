@@ -1,4 +1,4 @@
-// The board's six tabs (spec §8.2) as rows of text, buttons, links and
+// The board's five tabs (spec §8.2) as rows of text, buttons, links and
 // fields. Pure and Node-free: the hooks module lays the rows out with the
 // surface's elements and runs a button's action.
 import { bindingOf, type DictRow } from "../../core/dictionary.js";
@@ -157,7 +157,7 @@ const iconSvg = (k: Icon): string =>
 export const ICON_SVG: Readonly<Record<Icon, string>> = { ask: iconSvg("ask"), done: iconSvg("done"), warn: iconSvg("warn") };
 
 /**
- * The pane's line icons, drawn as the design draws them (docs/design/ui/2026-10-13-gemworks-ui): a tab's, a dialog's,
+ * The pane's line icons: a tab's, a dialog's,
  * and each kind of journal entry's. Only where the surface draws pictures; elsewhere the words stand alone.
  */
 export type Glyph = BoardTab | "share" | "settings" | "upgrade" | "about" | "radio" | "radioon" | "artifact" | "evidence" | "move" | "refused" | "start" | "waits" | "done" | "board" | "capture" | "split" | "delete" | "locate" | "unfold" | "fold" | "spread" | "gather" | "plus" | "box" | "boxon" | "go";

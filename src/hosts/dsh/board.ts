@@ -3,9 +3,10 @@
 // session's supervision — its statechart, its Supervisor over the session's
 // journal, its dictionary — stands where the Claude Code bridge has a
 // workspace: the status, the policy and the board data come from the same
-// functions, so the two boards say the same things in the same words. Five of
-// the six tabs: the sessions tab is a person's prompts with Claude Code's row
-// actions over its transcript, and dsh keeps its own sessions. A press the
+// functions, so the two boards say the same things in the same words. Four
+// tabs: work items, the journal (which the Claude Code board no longer shows),
+// flow and tools; no sessions tab, since that one is a person's prompts with
+// Claude Code's row actions over its transcript, and dsh keeps its own sessions. A press the
 // host cannot run is not drawn: a button row keeps only the ops of this host.
 // Pure but for the dictionary file a lesson is written to: the plugin reads
 // the journal file and serves the routes.
