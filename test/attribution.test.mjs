@@ -14,7 +14,7 @@ import { readJournal } from "../dist/core/journal.js";
 import { gitRepo, hook, withWorkflow } from "./helpers/repo.mjs";
 
 const WS_DEV = fileURLToPath(new URL("./fixtures/ws-dev/", import.meta.url));
-const VIDEO = fileURLToPath(new URL("../workflows/video/", import.meta.url));
+const VIDEO = fileURLToPath(new URL("../flows/strict/video/", import.meta.url));
 
 const git = (root, ...a) => {
   const r = spawnSync("git", ["-C", root, ...a], { encoding: "utf8" });

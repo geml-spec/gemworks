@@ -4,10 +4,10 @@
 // the plugin module, which draws every other row and calls these: each file the plugin ships stays under the 256 KiB
 // Anthropic's plugin directory reads whole.
 import type { EngineInterface } from 'claude-code'
-import type { BoardRow } from '../dist/hosts/claude-code/board.js'
+import type { BoardRow } from '../dist/shell/board.js'
 import type { Judge } from '../dist/core/progress.js'
-import { toneProps } from '../dist/hosts/claude-code/band.js'
-import type { Tone } from '../dist/hosts/claude-code/band.js'
+import { toneProps } from '../dist/shell/band.js'
+import type { Tone } from '../dist/shell/band.js'
 import { iconButton, press } from './register.tsx'
 
 type Els = { Box: any; Text: any; Button: any; Svg?: any }

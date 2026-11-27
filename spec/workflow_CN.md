@@ -129,7 +129,7 @@ profile = "geml-statechart/v1"
 ===
 ```
 
-`Bash(wrangler deploy)` 是前缀，所以带 `--env production` 的部署和根本不带 `--env` 的部署都匹配它，后者按 production 算；`wrangler deploy --env staging` 归字面部分更长的那个键。内置的词典（本仓库的 `workflows/dev/tools.geml`）每种写法多一行：`wrangler` 前面加 `npx`、`pnpm`、`bunx`，`test` 另有 `pnpm test`、`yarn test`、`cargo test`、`pytest`、`go test`。
+`Bash(wrangler deploy)` 是前缀，所以带 `--env production` 的部署和根本不带 `--env` 的部署都匹配它，后者按 production 算；`wrangler deploy --env staging` 归字面部分更长的那个键。内置的词典（本仓库的 `flows/strict/dev/tools.geml`）每种写法多一行：`wrangler` 前面加 `npx`、`pnpm`、`bunx`，`test` 另有 `pnpm test`、`yarn test`、`cargo test`、`pytest`、`go test`。
 
 ### 2.2 构件
 

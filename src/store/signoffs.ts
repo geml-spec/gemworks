@@ -11,8 +11,8 @@ import { boardLang } from "./board.js";
 import { signoffPage, type SignoffCommit } from "../core/signoff-page.js";
 import type { SessionEvent } from "../core/session-log.js";
 import { journalBaseOf } from "../host-git.js";
-import { flowsIn } from "../hosts/claude-code/coach.js";
-import { wordsFor, type Lang } from "../hosts/claude-code/text.js";
+import { flowsIn } from "../shell/coach.js";
+import { wordsFor, type Lang } from "../shell/text.js";
 import { coachFlowsAt, gemlHome, workItemsAt } from "../loop.js";
 import { readSessionLogs } from "./sessions.js";
 

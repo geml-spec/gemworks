@@ -258,7 +258,7 @@ npm run walkthrough
 ```
 
 它会起一个**真的** pi agent 会话，对着一个临时项目（里面有个挂掉的测试），由一个
-脚本化的模型（`examples/scripted-model.js`）驱动，所以不需要任何凭证，而且每次输出
+脚本化的模型（`scripts/walkthrough/scripted-model.js`）驱动，所以不需要任何凭证，而且每次输出
 一样。除了模型，其它全是真的——pi agent 自己的循环、它的工具管线，`bash` 是真跑的，
 写下 `tests-pass` 的是真实的退出码。它会打印每一步模型试了什么、流程拒绝的那几次调用
 后来怎样了、以及最后那本 journal；要是有一次被拒的调用跑了，它以退出码 1 结束。想判断

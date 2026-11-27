@@ -44,11 +44,11 @@ Gemworks 让你正在用的 coding agent（Claude Code、Codex、Cursor、Pi 等
 |---|---|---|
 | 核心 | 状态图、监督器、信号、日志、工具词典、工作项、做法、规定、提议、纠正账本、会话记录；纯函数 | `src/core/` |
 | Node 一侧 | 加锁读写、git 与 gh 的事实、bridge、落盘 | `src/` 根目录、`src/store/` |
-| Claude Code 插件 | 状态带、看板、对话框、问人、拦截 | `hooks/`、`src/hosts/claude-code/` |
+| Claude Code 插件 | 状态带、看板、对话框、问人、拦截 | `hooks/`、`src/shell/`（各宿主共用的界面层）、`src/hosts/claude-code/` |
 | 其他宿主 | Codex、Cursor、Qwen Code、OpenCode、Devin、TRAE、Kiro、Antigravity 的钩子适配器；DeepSeek Harness、Pi 的进程内适配器 | `src/hosts/<宿主>/` |
 | MCP 服务器 | 给只接 MCP 的宿主 | `src/mcp.ts` |
 | 命令行 | `gemworks`（简写 `gwx`）：人的操作、各宿主的钩子入口与安装、纠正账本 | `src/cli.ts` |
-| 内置流程 | 十条起步流程、四个固化流程模板 | `coach/`、`workflows/` |
+| 内置流程 | 十条起步流程、四个固化流程模板 | `flows/starter/`、`flows/strict/` |
 
 流程市场（目录、预览、安装）搁置，见 §10。
 
@@ -501,10 +501,11 @@ Stagehand 分两层：核心只写文件，宿主负责把文件交给模型。
 | `src/core/` | 宿主无关的纯模块：状态图、监督器、信号、日志、工具词典、工作项、做法、规定、提议、纠正账本、会话记录，以及 GEML 看板页、验收单页这些页面。只用 `node:crypto` 算哈希 |
 | `src/` 根目录 | Node 一侧：`bridge.ts`（插件经命令行发来的请求）、`workspace.ts`（加锁执行一次操作）、`host-git.ts`（git 与 gh 的事实）、`host-fs.ts`（锁、原子写、glob）、`loop.ts`（Node 宿主上的工作循环工具和规定检查）、`mcp.ts`、`cli.ts`、`project.ts` 与 `project-home.ts`（项目、流程文件、旧布局迁移） |
 | `src/store/` | 落盘：产物、GEML 看板文件、纠正账本、工具词典、Claude Code 记忆、项目大纲、做法、会话记录、验收单 |
-| `src/hosts/claude-code/` | Claude Code 插件的纯部分：状态带、看板各页的行、文案表、协议、快路径。看板行、快路径和协议别的宿主也在用 |
+| `src/shell/` | 各宿主共用的界面层，纯的：状态带、看板各页的行、工作项与流程页、文案表、bridge 的协议、快路径、读工具结果的函数；DeepSeek Harness、Pi、各钩子宿主和 CLI 都在用 |
+| `src/hosts/claude-code/` | 只有 Claude Code 插件用的纯部分：`/gemworks` 命令、打字回答的判定、提醒、设置、分享、升级说明、截图、面板元素预算、对引擎接口的检查 |
 | `hooks/` | 插件模块本身：`register.tsx`（钩子与渲染）、`act.tsx`（按钮动作）、`manual.tsx`（流程页的做法与步骤块）、`outward.tsx`（外发操作问询）。它从 `dist/` 导入编译好的纯模块 |
 | `src/hosts/<宿主>/` | 其他宿主的适配器。有钩子的宿主是 `adapter.ts`（读写、起进程）加 `hook.ts`（纯的事件读取器）；Devin、Kiro、OpenCode、Qwen Code、TRAE 共用 `src/hosts/hooked.ts`；`dsh/`、`pi/` 是进程内加载的两家 |
-| `coach/`、`workflows/` | 内置流程（§7） |
+| `flows/` | 内置流程：`starter/` 是起步流程，`strict/` 是固化流程模板（§7） |
 | `skills/`、`host-skills/` | Claude Code 读的技能；只读一个目录的宿主读的技能，geml 插件的两个技能也在这里 |
 | `test/` | node:test 测试，目录跟着 `src/` 走（§9） |
 
@@ -516,7 +517,7 @@ Stagehand 分两层：核心只写文件，宿主负责把文件交给模型。
 
 ## 7. 内置流程
 
-gemworks 带两组流程：`coach/` 里的十条起步流程（§7.5），和 `workflows/` 里的四个固化流程模板——开发（`dev`）、视频（`video`）、事项（`matter`）、编码（`coding`）。固化流程模板由 `gemworks init --template <名字>`（不写时是 `coding`）或 `/gemworks add <名字>` 装进项目的 `.geml/workflows/<名字>.geml`，它的起步词典同时并进 `.geml/tools.geml`。项目还没有固化流程时，`/gemworks` 按项目的样子建议一个：有 `episodes/` 目录或 geml-media 文档建议视频，有部署配置建议开发，有构建清单建议编码，都没有建议开发。
+gemworks 带两组流程：`flows/starter/` 里的十条起步流程（§7.5），和 `flows/strict/` 里的四个固化流程模板——开发（`dev`）、视频（`video`）、事项（`matter`）、编码（`coding`）。固化流程模板由 `gemworks init --template <名字>`（不写时是 `coding`）或 `/gemworks add <名字>` 装进项目的 `.geml/workflows/<名字>.geml`，它的起步词典同时并进 `.geml/tools.geml`。项目还没有固化流程时，`/gemworks` 按项目的样子建议一个：有 `episodes/` 目录或 geml-media 文档建议视频，有部署配置建议开发，有构建清单建议编码，都没有建议开发。
 
 ### 7.1 开发流程
 
@@ -686,9 +687,9 @@ script ─→ assets ─→ cut ─→ render ─→ review ─→ publish ─�
 
 ### 8.4 插件模块接线
 
-插件模块运行在没有 Node、没有 DOM 的环境里，`$.fs` 只能整份读写，不能追加、改名或加锁。要加锁写的文件（journal、上下文文档、backlog、工具词典、产物表）只由 Node 一侧写；两侧之间是一座桥：`node <插件目录>/dist/gemworks.mjs hook`，stdin 一个 JSON 请求，stdout 一行 JSON 应答，不论应答说什么退出码都是 0。请求按用途分三组：固化流程的（`status`、`refresh`、`before`、`after`、`verb`、`learn`、`mark`、`advance`、`pause`、`resume`、`rollback`、`bind`、`new-item`、`use`、`add`、`import`、`board`、`export`）；工作循环与记录的（`practices`、`practice-add`、`practice-set`、`practice-share`、`corrections` 及 `corrections-add`、`-check`、`-dismiss`、`-themes`，`artifacts`、`artifact`、`made`、`signoff`、`backfill-list`、`backfill-one`、`turn-ids`、`memory`、`memory-set`、`memory-delete`）；状态带的（`attention`、`outward`）。CLI 每个请求都重新打开工作区，请求只带调用的命令与路径，不带文件内容。请求与应答的类型只在不依赖 Node 的 `src/hosts/claude-code/protocol.ts` 里定义一次。`before`、`after` 与 `verb` 请求带上这次调用的起始目录，CLI 按 §5.7 归属。
+插件模块运行在没有 Node、没有 DOM 的环境里，`$.fs` 只能整份读写，不能追加、改名或加锁。要加锁写的文件（journal、上下文文档、backlog、工具词典、产物表）只由 Node 一侧写；两侧之间是一座桥：`node <插件目录>/dist/gemworks.mjs hook`，stdin 一个 JSON 请求，stdout 一行 JSON 应答，不论应答说什么退出码都是 0。请求按用途分三组：固化流程的（`status`、`refresh`、`before`、`after`、`verb`、`learn`、`mark`、`advance`、`pause`、`resume`、`rollback`、`bind`、`new-item`、`use`、`add`、`import`、`board`、`export`）；工作循环与记录的（`practices`、`practice-add`、`practice-set`、`practice-share`、`corrections` 及 `corrections-add`、`-check`、`-dismiss`、`-themes`，`artifacts`、`artifact`、`made`、`signoff`、`backfill-list`、`backfill-one`、`turn-ids`、`memory`、`memory-set`、`memory-delete`）；状态带的（`attention`、`outward`）。CLI 每个请求都重新打开工作区，请求只带调用的命令与路径，不带文件内容。请求与应答的类型只在不依赖 Node 的 `src/shell/protocol.ts` 里定义一次。`before`、`after` 与 `verb` 请求带上这次调用的起始目录，CLI 按 §5.7 归属。
 
-- **快路径**：每个应答都带一份状态与策略快照（读一遍 journal 与工具词典得出）。调用前由纯函数（`fastpath.ts`）判断：人专属命令与封路用途的命令请 CLI 记录并拒绝；只切换工作项的命令行放行；其余按 §5.3，全部能当场判定的不起子进程；模型没用首选时用 `$.ui.ask` 问人，答案经 `learn` 写进词典；带默认参数的工具，插件模块补上缺的参数。读命令行用的是监督器自己的扫描函数（`src/core/command-line.ts`），快路径与 CLI 判断得完全一样，`test/claude-code/fastpath-parity.test.mjs` 对着工作区钉住这一点。调用后只在会改变状态、策略或 journal 时起 `after`。调用可能落在别的检出时快路径不按会话的策略放行，交给 CLI 定夺。
+- **快路径**：每个应答都带一份状态与策略快照（读一遍 journal 与工具词典得出）。调用前由纯函数（`fastpath.ts`）判断：人专属命令与封路用途的命令请 CLI 记录并拒绝；只切换工作项的命令行放行；其余按 §5.3，全部能当场判定的不起子进程；模型没用首选时用 `$.ui.ask` 问人，答案经 `learn` 写进词典；带默认参数的工具，插件模块补上缺的参数。读命令行用的是监督器自己的扫描函数（`src/core/command-line.ts`），快路径与 CLI 判断得完全一样，`test/shell/fastpath-parity.test.mjs` 对着工作区钉住这一点。调用后只在会改变状态、策略或 journal 时起 `after`。调用可能落在别的检出时快路径不按会话的策略放行，交给 CLI 定夺。
 - **git 信号**在会话开始、看板打开与刷新、结果带 `gitOperation` 的调用之后重读，连同 `gh`；命令行运行了 `git` 或 `gh` 而结果不带 `gitOperation` 时只重读 git 自己的事实。
 - **上下文**：阶段变了，新的 `#current` 放进这次工具结果的 `context`；主线程的调用记下已交给模型的 `item@rev`，子 agent 的不记。`prompt.submit` 时 `item@rev` 与已交的不同、且是当前工作项，把 `#current` 放进 `context`。换了工作项时连同交接行（§5.7）。
 - **失败放行**：Node 缺失、桥接失败或超时（每次 15 秒；`refresh`、`board`、`use`、`add` 45 秒）、应答无法解析时，调用照常执行、什么都不记，状态带显示原因；任何决定两秒内定不下来就放行。会话开始时没找到 Node，之后的工具调用、提交或 `/gemworks` 时再找；找到了却没拿到应答，至多一分钟重试一次。每个会拦截的钩子都带 `.catch`：钩子自己出错时调用照常执行。Node 的候选依次是 PATH 上的 `node`、shell 找到的、各安装器的默认位置，每个探测 10 秒，第一个主版本 ≥ 22 的就是。
@@ -735,7 +736,7 @@ script ─→ assets ─→ cut ─→ render ─→ review ─→ publish ─�
 ### 8.7 设置与词条表
 
 - 设置（§8.2 对话框）存在插件的 `$.store`（`settings`），`settings.ts` 读写：语言、各项提醒、打字回答、学习、诊断记录；缺的、类型不对的字段取默认。
-- **词条表** `text.ts`：键是中文原文（带 `{0}` 空位），值是英文与日文；`wordsFor(lang)` 给出 `t(key, …args)`，没有译文的键回落到中文。语言：设置里选了就用它；「跟随系统」按 CLI 报告的 locale，其次 `LANG`（`zh*` 中文、`ja*` 日文、其余英文），都没有时中文。状态带、看板、对话框、提醒与 `/gemworks` 的回答都经 `t`；流程自己的标题、说明与变量名照作者写的。`test/claude-code/text.test.mjs` 扫描每个 `t("…")`，钉住每个键都有英文和日文、空位一致。
+- **词条表** `text.ts`：键是中文原文（带 `{0}` 空位），值是英文与日文；`wordsFor(lang)` 给出 `t(key, …args)`，没有译文的键回落到中文。语言：设置里选了就用它；「跟随系统」按 CLI 报告的 locale，其次 `LANG`（`zh*` 中文、`ja*` 日文、其余英文），都没有时中文。状态带、看板、对话框、提醒与 `/gemworks` 的回答都经 `t`；流程自己的标题、说明与变量名照作者写的。`test/shell/text.test.mjs` 扫描每个 `t("…")`，钉住每个键都有英文和日文、空位一致。
 
 ### 8.8 还没有的
 
@@ -800,8 +801,8 @@ Pi 的扩展分两块。**工作循环**（`src/hosts/pi/loop.ts`）总是在：
 ## 9. 测试策略
 
 - **纯函数各有单测**：核心全是纯函数——每条静态检查、每种信号、三种推进来源、工具词典的判定与学习、用途封路、journal 加锁与续链、工作项与进度、做法、规定、提议、纠正账本、会话记录；Claude Code 插件的纯部分（状态带、看板各页、待处理、会话页、分享、设置、时间与词条表、`/gemworks` 的文字）也是，含中日韩字符宽度。
-- **目录跟着 `src/` 走**：`test/` 下是 node:test 测试（`*.test.mjs`），跑的是编译后的 `dist/`，分 `core/`、`claude-code/`、`hosts/`、`store/`、`workflows/`（内置流程从头走到尾）、`package/`（包里发出去的东西），`src/` 根目录模块的测试在 `test/` 顶层。`node test/all.mjs` 分几条并行跑全部，也可以只跑点名的几个文件。
-- **钉住格式与一致**：[`checks.json`](checks.json) 钉住静态检查，`test/core/checks-conformance.test.mjs` 逐例重放；`test/claude-code/fastpath-parity.test.mjs` 对着工作区钉住快路径——工作区会拒绝或记录的调用都请 `before`，会改变状态、策略或 journal 的调用都请 `after`；`test/claude-code/actions.test.mjs` 钉住看板的每个按钮动作在 `act()` 里都有处理分支。
+- **目录跟着 `src/` 走**：`test/` 下是 node:test 测试（`*.test.mjs`），跑的是编译后的 `dist/`，分 `core/`、`shell/`、`claude-code/`、`hosts/`、`store/`、`flows/`（内置流程从头走到尾）、`package/`（包里发出去的东西），`src/` 根目录模块的测试在 `test/` 顶层。`node test/all.mjs` 分几条并行跑全部，也可以只跑点名的几个文件。
+- **钉住格式与一致**：[`checks.json`](checks.json) 钉住静态检查，`test/core/checks-conformance.test.mjs` 逐例重放；`test/shell/fastpath-parity.test.mjs` 对着工作区钉住快路径——工作区会拒绝或记录的调用都请 `before`，会改变状态、策略或 journal 的调用都请 `after`；`test/shell/actions.test.mjs` 钉住看板的每个按钮动作在 `act()` 里都有处理分支。
 - **桥接与宿主**：bridge 经打包后的 `dist/gemworks.mjs` 在临时 git 仓库里逐个请求测（`gh` 用 `GEMWORKS_GH` 指向的替身）；各钩子宿主的适配器按真实事件经 bundle 驱动；DeepSeek Harness 用一个真的 dsh agent 走工具管线；Pi 用一个按 Pi 接口写的替身，`pi-parity` 测试让替身和真 Pi 的形状保持一致；`gemworks mcp` 逐条消息测。
 - **插件模块**：`test/claude-code/hooks.test.ts` 由 `claude plugin test` 在引擎的测试宿主里按真实事件顺序驱动（会话开始、工具调用写信号、自动边推进、结果里带上新阶段、看板按钮、桥接坏掉与错误应答与没有 Node 时放行、注册被拒、各界面上的状态带与看板等），桥接由测试脚本应答。另有三个检查：`hooks-types` 拿引擎写出的插件 API 声明对插件模块做类型检查，并且不许用到声明里标为弃用的调用（有理由保留的回退写在例外表里）；`hooks-purity` 沿插件模块的静态 import 链检查，不许任何需要 Node 的东西进来；`hooks-split` 检查包里除图片、字体以外的每个文件都不到 256 KiB、整个插件不超过 512 个文件，这是 Anthropic 插件目录的上限。
 - **门与 CI**：同步一次试用版之前，四道门各跑一次：`npm run build`、`claude plugin validate .`、`claude plugin test .`、`node test/all.mjs` 加这次改动碰到的测试文件；类型检查找不到声明时算失败，不算跳过。CI 在每次推送到 main 时，在 Linux、macOS、Windows 三个平台上跑全部 node:test 测试；Linux 上另跑覆盖率（`npm run coverage`：c8 经源码映射按 `src/` 计，行低于 95%、分支低于 85% 就失败）；`engine.yml` 在最新版 Claude Code 上跑 `claude plugin validate` 和 `claude plugin test`，每周一也跑一次，引擎接口变了一周之内就会发现。

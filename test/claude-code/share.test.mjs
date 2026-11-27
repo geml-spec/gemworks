@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { statusShareText } from "../../dist/hosts/claude-code/share.js";
-import { wordsFor } from "../../dist/hosts/claude-code/text.js";
+import { wordsFor } from "../../dist/shell/text.js";
 
 const t = wordsFor("zh");
 const next = (over) => ({ judge: "machine", approval: false, reads: [], missing: [], holds: true, note: "", ...over });

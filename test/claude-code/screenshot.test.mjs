@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { captureFailed, captureHint, capturesFor, offersCapture, pasteKey } from "../../dist/hosts/claude-code/screenshot.js";
-import { wordsFor } from "../../dist/hosts/claude-code/text.js";
+import { wordsFor } from "../../dist/shell/text.js";
 
 test("each system's own region capture, to the clipboard: Windows and macOS built in, Linux whichever tool is installed", () => {
   assert.deepEqual(capturesFor("win32").map((c) => c.argv), [["explorer.exe", "ms-screenclip:"]]);

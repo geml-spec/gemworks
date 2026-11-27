@@ -1,5 +1,5 @@
 // The Node side of the Claude Code shell. `gemworks hook` reads one request
-// (src/hosts/claude-code/protocol.ts) on stdin, runs it against the project's
+// (src/shell/protocol.ts) on stdin, runs it against the project's
 // workspace, and writes one answer line. Each request opens the workspace
 // afresh — a Workspace reads git's facts when it opens, and another process may
 // have written the journal or the dictionary since the last request — and
@@ -53,16 +53,16 @@ import { formatLog, logName, nextTurn, parseLog, SESSIONS_DIR, SESSIONS_GITIGNOR
 import { newTurns, queuedMessages, readTranscript, slugOf, transcriptEvents, type Transcript } from "./core/transcript.js";
 import { branchesElsewhere, markOpen } from "./store/sessions.js";
 import { statSync } from "node:fs";
-import type { HostInfo } from "./hosts/claude-code/env.js";
+import type { HostInfo } from "./shell/env.js";
 import { mediaTodoCount } from "./media-todo.js";
 import { addWorkflow, bundledWorkflows, importWorkflow, projectWorkflows, suggestWorkflow, useWorkflow } from "./project.js";
 import { timelineOf } from "./timeline.js";
 import { flowPicture } from "./core/picture.js";
 import { runVerb } from "./verbs.js";
 import { writeSignoffs } from "./store/signoffs.js";
-import type { Lang } from "./hosts/claude-code/text.js";
+import type { Lang } from "./shell/text.js";
 import { dependsOf, fileUnitOf, journalProgress, loadWorkspace, openWorkspace, resolveWorkflow, sideFlows, workflowNameOf, type FlowCache, type Opened, type ShellView, type Workspace } from "./workspace.js";
-import type { Backfill, BoardData, BoardItem, BridgeRequest, BridgeResponse, CorrectionsView, Made, MadeAll, MadeAllEntry, MadeEntry, Artifacts, ShellStatus, TimelineEntry, TodoCount } from "./hosts/claude-code/protocol.js";
+import type { Backfill, BoardData, BoardItem, BridgeRequest, BridgeResponse, CorrectionsView, Made, MadeAll, MadeAllEntry, MadeEntry, Artifacts, ShellStatus, TimelineEntry, TodoCount } from "./shell/protocol.js";
 
 type Answered = Extract<BridgeResponse, { ok: true }>;
 

@@ -11,14 +11,14 @@ import { basename, dirname, isAbsolute, join } from "node:path";
 import { GEML_DIR } from "../core/layout.js";
 import { boardPage, type BoardAsk } from "../core/board-page.js";
 import type { ArtifactRow } from "../core/artifacts.js";
-import { BROWSER_PROGID_ARGV, browserCommandArgv, browserExeOf, fileUrl, openersFor, progIdOf } from "../hosts/claude-code/open-file.js";
+import { BROWSER_PROGID_ARGV, browserCommandArgv, browserExeOf, fileUrl, openersFor, progIdOf } from "../shell/open-file.js";
 import { readArtifactRows } from "./artifacts.js";
 import { journalBaseOf } from "../host-git.js";
 import { coachFlowsAt, gemlHome, proposalsAt, workItemsAt } from "../loop.js";
 import { readPractices } from "./practices.js";
 import { decisionsFor, hostLabel, readSessions } from "./sessions.js";
-import { langOf, wordsFor, type Lang } from "../hosts/claude-code/text.js";
-import { flowsIn } from "../hosts/claude-code/coach.js";
+import { langOf, wordsFor, type Lang } from "../shell/text.js";
+import { flowsIn } from "../shell/coach.js";
 
 export const BOARD_FILE = "board.geml";
 

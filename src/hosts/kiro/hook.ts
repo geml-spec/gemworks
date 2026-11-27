@@ -5,7 +5,7 @@
 // `grep`, `glob`, `web_fetch`, `web_search`, `subagent`, `todo`, and an MCP tool `mcp_<server>_<tool>`. A name is read
 // with its case and underscores folded, so every spelling lands on Claude Code's name. Pure: the CLI side
 // (src/hosts/kiro/adapter.ts) does the rest.
-import type { CallFacts } from "../claude-code/fastpath.js";
+import type { CallFacts } from "../../shell/fastpath.js";
 import { exitCodeIn } from "../codex/hook.js";
 
 const fold = (tool: string): string => tool.toLowerCase().replace(/[_-]/g, "");

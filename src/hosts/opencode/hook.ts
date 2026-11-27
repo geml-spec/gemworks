@@ -4,7 +4,7 @@
 // dictionaries speak Claude Code's names, so a call is handed over as Claude Code would have made it. A shell call's
 // result carries its exit status in `output.exit`. Pure: the CLI side (src/hosts/opencode/adapter.ts) and the plugin OpenCode loads
 // do the rest.
-import type { CallFacts } from "../claude-code/fastpath.js";
+import type { CallFacts } from "../../shell/fastpath.js";
 import { exitCodeIn, patchPaths } from "../codex/hook.js";
 
 /** OpenCode's shell tool. */

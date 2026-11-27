@@ -91,11 +91,11 @@ size at which Anthropic's plugin directory holds a version for a reviewer
 (`test/claude-code/hooks-split.test.mjs`). `hooks/register.tsx` and what is split from it — `hooks/act.tsx` (what a
 press does), `hooks/manual.tsx` (the flow tab's practice and step blocks) and
 `hooks/outward.tsx` (asking before an outward action) — run with no Node: they import only Node-free modules
-from `dist/hosts/claude-code/` and `dist/core/`, and `test/claude-code/hooks-purity.test.mjs`
+from `dist/shell/`, `dist/hosts/claude-code/` and `dist/core/`, and `test/claude-code/hooks-purity.test.mjs`
 walks that closure. The hooks tests are `test/claude-code/hooks.test.ts`, which
 `claude plugin test` runs (it does not descend into `node_modules`); the
 node:test suite, every `*.test.mjs` under `test/`, covers the rest, including
-`test/claude-code/fastpath-parity.test.mjs`, which holds the plugin's fast path to what the
+`test/shell/fastpath-parity.test.mjs`, which holds the plugin's fast path to what the
 workspace would refuse, record and ask about, and
 `test/core/checks-conformance.test.mjs`, which replays
 `spec/checks.json`.
@@ -126,10 +126,11 @@ is the Node side of `gemworks hook`: it opens the workspace afresh for every
 request (git's facts are read when it opens, and another process may have
 written the journal or the dictionary since) and answers every request, a
 throw included; `src/attribution.ts` says which checkout and work item a call
-acts in. `src/hosts/claude-code/` is the Node-free side the hooks module
-imports: the request and answer types, the fast path, the readers of Claude
-Code's tool results, and the words of the band, the board and `/gemworks` as
-pure functions. `src/mcp.ts` serves the same verbs (`src/verbs.ts`) and the
+acts in. `src/shell/` is the Node-free side the hooks module and the
+other hosts import: the request and answer types, the fast path, the readers of
+tool results, and the words of the band and the board, as pure functions;
+`src/hosts/claude-code/` holds what only the Claude Code plugin uses, `/gemworks`
+and the settings among them. `src/mcp.ts` serves the same verbs (`src/verbs.ts`) and the
 work loop's tools (`src/loop.ts`) over stdio MCP; `src/hosts/codex/adapter.ts`,
 `src/hosts/cursor/adapter.ts` and `src/hosts/antigravity/adapter.ts` are the hooks of those
 hosts; Qwen Code, OpenCode, Devin, TRAE and Kiro decide in `src/hosts/hooked.ts`, each

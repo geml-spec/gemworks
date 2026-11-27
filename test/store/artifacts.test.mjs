@@ -11,8 +11,8 @@ import { copyName, COPY_LIMIT, isMadeForPeople, pageTitle, artifactsOfItem, read
 import { publishedLink } from "../../dist/core/artifact-tool.js";
 import { readArtifactRows, recordFile, recordLink, syncDocs, syncWritten } from "../../dist/store/artifacts.js";
 import { listRevisions } from "@geml/geml/dist/history.js";
-import { artifactRows, sizeText } from "../../dist/hosts/claude-code/board.js";
-import { wordsFor } from "../../dist/hosts/claude-code/text.js";
+import { artifactRows, sizeText } from "../../dist/shell/board.js";
+import { wordsFor } from "../../dist/shell/text.js";
 import { gitRepo, hook, withWorkflow } from "../helpers/repo.mjs";
 import { fileURLToPath } from "node:url";
 

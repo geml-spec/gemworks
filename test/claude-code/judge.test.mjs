@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { asksJudgeRequest, judgementLine, judgeOptions, judgeRequest, readAsksJudgement, readJudgement } from "../../dist/hosts/claude-code/judge.js";
-import { wordsFor } from "../../dist/hosts/claude-code/text.js";
+import { wordsFor } from "../../dist/shell/text.js";
 
 const t = wordsFor("zh");
 const advance = (to, label, file) => ({ key: `asks-${to}`, label, action: { op: "advance", to, ...(file ? { file } : {}), say: `${label}：x` } });

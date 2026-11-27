@@ -30,7 +30,7 @@ import { appendSession, readSessions } from "./store/sessions.js";
 import { writeSignoffs } from "./store/signoffs.js";
 
 /** The flows the package ships, beside `dist/`. */
-export const SHIPPED_COACH = fileURLToPath(new URL("../coach/", import.meta.url));
+export const SHIPPED_COACH = fileURLToPath(new URL("../flows/starter/", import.meta.url));
 
 /** What a loop tool answers: whether it recorded anything, and the line the model reads. */
 export interface LoopResult { ok: boolean; text: string }

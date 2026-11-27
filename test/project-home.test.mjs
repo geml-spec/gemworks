@@ -21,7 +21,7 @@ import { realPath } from "../dist/host-fs.js";
 import { gitRepo, withWorkflow } from "./helpers/repo.mjs";
 
 const tmp = () => realPath(mkdtempSync(join(tmpdir(), "gemworks-home-")));
-const DEV = fileURLToPath(new URL("../workflows/dev/", import.meta.url));
+const DEV = fileURLToPath(new URL("../flows/strict/dev/", import.meta.url));
 const read = (p) => readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 // gh is never asked here: the item and its workflow are what is under test.
 const NO_GH = () => ({ available: false, reason: "gh is not installed" });
@@ -216,7 +216,7 @@ test("add, import and use write into the home: one file per workflow, its tools 
   assert.equal(read(join(root, ".geml", ".gitignore")), GITIGNORE);
   assert.deepEqual(addWorkflow(root, "dev", { activate: false }).code, 1, "a name the project has");
   const other = tmp();
-  cpSync(fileURLToPath(new URL("../workflows/matter/", import.meta.url)), join(other, "matter"), { recursive: true });
+  cpSync(fileURLToPath(new URL("../flows/strict/matter/", import.meta.url)), join(other, "matter"), { recursive: true });
   const imported = importWorkflow(root, join(other, "matter"));
   assert.equal(imported.ok, true, imported.reason);
   assert.equal(imported.activated, false, "the project has a default");

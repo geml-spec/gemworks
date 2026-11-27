@@ -18,7 +18,7 @@ import { checkoutOf, journalBaseOf, type Checkout } from "./host-git.js";
 import { changesDirectory, commandDirs, commandOf, isDirectoryChange, pathWords, personOnlyRefusal, signalHeads, simpleCommands } from "./core/command-line.js";
 import type { Lesson } from "./core/dictionary.js";
 import type { HostTools } from "./core/host-tools.js";
-import { writtenPath } from "./hosts/claude-code/readers.js";
+import { writtenPath } from "./shell/readers.js";
 import { resolveWorkflow, type BeforeView, type ShellView, type StageChange, type Workspace } from "./workspace.js";
 
 /**

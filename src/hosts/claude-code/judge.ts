@@ -4,9 +4,9 @@
 // last answer's first sentence and the prompt, and answers which, and how
 // sure; a sure answer is taken (and can be undone), an unsure one is asked.
 // Pure and Node-free: the hooks module calls the model and runs the action.
-import type { BoardAction } from "./actions.js";
-import type { InboxItem } from "./inbox.js";
-import type { T } from "./text.js";
+import type { BoardAction } from "../../shell/actions.js";
+import type { InboxItem } from "../../shell/inbox.js";
+import type { T } from "../../shell/text.js";
 
 /** An option the judgement may pick: the thing waiting, the option's words, and what pressing it does. */
 export interface JudgeOption { key: string; title: string; verb: string; label: string; action: BoardAction }

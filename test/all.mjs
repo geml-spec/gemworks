@@ -41,7 +41,7 @@ process.env.GEMWORKS_OPEN_BOARD ??= "0";
 // milliseconds alone have passed ten seconds and failed tests that pass run alone.
 process.env.GEMWORKS_GIT_TIMEOUT_MS ??= "30000";
 
-// Every *.test.mjs under test/, in the folders that follow src/ (core/, claude-code/, hosts/, store/, workflows/,
+// Every *.test.mjs under test/, in the folders that follow src/ (core/, shell/, claude-code/, hosts/, store/, flows/,
 // package/) and at the top; fixtures/ and helpers/ hold no tests.
 const NOT_TESTS = new Set(["fixtures", "helpers"]);
 const testsUnder = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>

@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { COACH_FLOWS, readCoachFlow } from "../../dist/hosts/claude-code/coach.js";
+import { COACH_FLOWS, readCoachFlow } from "../../dist/shell/coach.js";
 import { waitingNotices } from "../../dist/hosts/claude-code/notices.js";
-import { wordsFor } from "../../dist/hosts/claude-code/text.js";
+import { wordsFor } from "../../dist/shell/text.js";
 
 const t = wordsFor("zh");
-const flows = COACH_FLOWS.map((name) => readCoachFlow(name, readFileSync(new URL(`../../coach/${name}.geml`, import.meta.url), "utf8")));
+const flows = COACH_FLOWS.map((name) => readCoachFlow(name, readFileSync(new URL(`../../flows/starter/${name}.geml`, import.meta.url), "utf8")));
 const m = (step) => ({ step, at: "2026-11-06T09:00:00Z", turn: 1 });
 const item = (over) => ({ id: "a1", flow: "bugfix", title: "回退后状态带消失", state: "confirm", needs: "", goal: "", status: "open", at: "2026-11-06T10:00:00Z", session: "s1", met: [m("reproduce"), m("fix"), m("verify")], next: "", ...over });
 const ask = (question) => ({ question, options: ["是", "否"] });

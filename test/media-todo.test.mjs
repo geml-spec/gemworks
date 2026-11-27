@@ -6,13 +6,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { declaresMedia, mediaTodoCount } from "../dist/media-todo.js";
-import { TODO_CAP } from "../dist/hosts/claude-code/protocol.js";
+import { TODO_CAP } from "../dist/shell/protocol.js";
 import { openWorkspace } from "../dist/workspace.js";
 import { NO_TOOLS } from "../dist/core/host-tools.js";
 import { BUNDLE, gitRepo, hook, withWorkflow } from "./helpers/repo.mjs";
 
 const GEML = fileURLToPath(import.meta.resolve("@geml/geml/dist/cli.js"));
-const DEV = fileURLToPath(new URL("../workflows/dev/", import.meta.url));
+const DEV = fileURLToPath(new URL("../flows/strict/dev/", import.meta.url));
 const EPISODE = [
   "=== meta", 'title   = "第 1 集"', 'profile = "geml-media/v1"', "===", "",
   "=== media-text {#s01 .prompt shot=1}", "清晨的码头，雾很浓。", "===", "",

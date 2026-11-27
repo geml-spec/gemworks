@@ -7,18 +7,19 @@ the published `@geml/geml` parser and nothing else at runtime.
 ## Layout
 
 - `src/core/` — host-agnostic: statecharts, the tool dictionary, policy, journals, session logs, work items.
-- `src/hosts/claude-code/` — the Claude Code plugin's pure parts (band, board, coach, text); `hooks/register.tsx` is
-  the plugin module itself and imports them from `dist/`.
+- `src/shell/` — the shell every host shares, pure: the band, the board's rows, coach, the text table, the bridge's
+  protocol, the fast path. `src/hosts/claude-code/` — what only the Claude Code plugin uses; `hooks/register.tsx` is
+  the plugin module itself and imports both from `dist/`.
 - `src/hosts/<host>/` — the other hosts' adapters: for a host with hooks, `adapter.ts` beside the pure event reader
   `hook.ts` (`src/hosts/hooked.ts` holds what five of them share); `dsh/` and `pi/` for the two that load gemworks
   in-process. `codex/`, `hooks.json` and `mcp_config.json` are Codex's and Antigravity's install files.
 - `src/bridge.ts` — the Node side the plugin asks through the CLI (git, gh, files).
 - `src/store/` — what the Node side keeps on disk: artifacts, session records, practices, corrections, the dictionary,
   sign-off sheets, the GEML board page.
-- `workflows/`, `coach/` — bundled flows; `skills/` is what Claude Code loads, `host-skills/` what the hosts that read
+- `flows/` — the bundled flows, `starter/` and `strict/`; `skills/` is what Claude Code loads, `host-skills/` what the hosts that read
   one folder load (the geml plugin's two skills are copies there).
-- `test/` — node:test suites over `dist/` (`*.test.mjs`) in folders that follow `src/`: `core/`, `claude-code/`,
-  `hosts/`, `store/`, `workflows/` (the bundled flows end to end), `package/` (what the package ships), and the tests of
+- `test/` — node:test suites over `dist/` (`*.test.mjs`) in folders that follow `src/`: `core/`, `shell/`,
+  `claude-code/`, `hosts/`, `store/`, `flows/` (the bundled flows end to end), `package/` (what the package ships), and the tests of
   `src/`'s own modules at the top. `test/claude-code/hooks.test.ts` is the `claude plugin test` suite for the module.
 
 ## Build and check
@@ -32,8 +33,8 @@ claude plugin test .
 node test/all.mjs test/claude-code/hooks-types.test.mjs test/<area>/<module>.test.mjs …   # the files the change touches
 ```
 
-The last gate runs the test file of each module the change touched (`src/hosts/claude-code/board.ts` →
-`test/claude-code/board.test.mjs`, `src/store/sessions.ts` → `test/store/sessions.test.mjs`), and `hooks-split` and
+The last gate runs the test file of each module the change touched (`src/shell/board.ts` →
+`test/shell/board.test.mjs`, `src/store/sessions.ts` → `test/store/sessions.test.mjs`), and `hooks-split` and
 `hooks-purity` as well when `hooks/` changed. The whole suite
 (`node test/all.mjs`) runs on CI, on all three platforms, on every push to main; a red CI run is fixed before anything
 else goes to main. On this machine the whole suite takes four to seven minutes and, when the machine is busy, a git call

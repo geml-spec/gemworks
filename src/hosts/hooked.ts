@@ -26,9 +26,9 @@ import { currentTurn, decisionsContext, SESSIONS_PROMPT } from "../core/session-
 import { isOwnTool } from "../core/verb-specs.js";
 import { WORK_REMINDER } from "../core/work.js";
 import { exists, readText } from "../host-fs.js";
-import { afterNeeded, beforeDecision, paramsToFill, type CallFacts } from "./claude-code/fastpath.js";
-import type { BridgeOp, BridgeResponse } from "./claude-code/protocol.js";
-import { contextOf } from "./claude-code/readers.js";
+import { afterNeeded, beforeDecision, paramsToFill, type CallFacts } from "../shell/fastpath.js";
+import type { BridgeOp, BridgeResponse } from "../shell/protocol.js";
+import { contextOf } from "../shell/readers.js";
 import { isWrapped, unwrapCommand, wrapCommand } from "./codex/hook.js";
 import type { Status } from "../workspace.js";
 import { boardHasWork, openBoardOnce, writeBoard } from "../store/board.js";

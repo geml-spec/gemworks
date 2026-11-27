@@ -27,12 +27,12 @@ import { installDevin, runDevin } from "./hosts/devin/adapter.js";
 import { installTrae, mcpEntry as traeMcpEntry, runTrae } from "./hosts/trae/adapter.js";
 import { installKiro, runKiro } from "./hosts/kiro/adapter.js";
 import { serveMcp } from "./mcp.js";
-import { decodeRequest, type BridgeResponse } from "./hosts/claude-code/protocol.js";
+import { decodeRequest, type BridgeResponse } from "./shell/protocol.js";
 import { docReader, openWorkspace, resolvePromptRef, resolveWorkflow, type Workspace } from "./workspace.js";
 import { defaultPeriods, LABEL_GUIDE, localDay, parsePeriod, report, reportText, type Period } from "./core/corrections.js";
 import { addLabelled, labelledRows, readLedger, recordedUnlabelled, unlabelledPrompts } from "./store/corrections.js";
 import { readSessions } from "./store/sessions.js";
-import { cellWidth } from "./hosts/claude-code/band.js";
+import { cellWidth } from "./shell/band.js";
 
 const USAGE = [
   "usage: gemworks <check|snapshot|verify|export|init|use|migrate|status|mark|unmark|advance|pause|resume|rollback|run|hook|mcp> ...",

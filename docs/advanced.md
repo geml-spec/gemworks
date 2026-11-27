@@ -300,7 +300,7 @@ npm run walkthrough
 ```
 
 That starts a REAL pi agent session against a throwaway project with a failing
-test, driven by a scripted model (`examples/scripted-model.js`) so it needs no
+test, driven by a scripted model (`scripts/walkthrough/scripted-model.js`) so it needs no
 credentials and says the same thing every time. Everything else is real — pi
 agent's loop, its tool pipeline, the `bash` calls actually run, the exit status
 that writes `tests-pass`. It prints what the model tried at each step, what

@@ -77,10 +77,10 @@ npm run test:claude   # 构建，再 claude plugin validate 与 claude plugin te
 `dist/gemworks-*.mjs`，`@geml/geml` 原样拷进 `dist/vendor/geml/`，装上的插件不需要再装依赖。
 包里每个文件都不到 256 KiB——到了这个大小，Anthropic 插件目录会把那一版扣下等人工审——由
 `test/claude-code/hooks-split.test.mjs` 守着。`hooks/register.tsx` 和从它拆出来的 `hooks/act.tsx`（按钮按下后
-做什么）、`hooks/manual.tsx`（流程页的做法与步骤块）、`hooks/outward.tsx`（外发操作前先问）在没有 Node 的环境里运行：它们只 import `dist/hosts/claude-code/` 与 `dist/core/` 下不依赖
+做什么）、`hooks/manual.tsx`（流程页的做法与步骤块）、`hooks/outward.tsx`（外发操作前先问）在没有 Node 的环境里运行：它们只 import `dist/shell/`、`dist/hosts/claude-code/` 与 `dist/core/` 下不依赖
 Node 的模块，`test/claude-code/hooks-purity.test.mjs` 沿着这条 import 链逐个检查。hooks 的测试是 `test/claude-code/hooks.test.ts`，
 由 `claude plugin test` 跑（它不进 `node_modules`）；其余由 `test/` 下各个 `*.test.mjs` 的 node:test 测，其中
-`test/claude-code/fastpath-parity.test.mjs` 把插件的快路径钉在 workspace 会拒绝、会记录、会询问的
+`test/shell/fastpath-parity.test.mjs` 把插件的快路径钉在 workspace 会拒绝、会记录、会询问的
 范围上，`test/core/checks-conformance.test.mjs` 回放
 `spec/checks.json`。
 
@@ -102,9 +102,9 @@ peer，只装了一家 harness 的人绝不能被解析到另一家的包上，�
 Claude Code 外壳也按这条规矩分在桥的两侧。`src/bridge.ts` 是 `gemworks hook` 的 Node
 一侧：每个请求都重新打开 workspace（打开时读 git 的事实，而且别的进程可能在两次请求之间
 写过 journal 或词典），并且每个请求都给应答，抛了异常也一样；`src/attribution.ts` 说
-一次调用作用在哪个检出、哪个工作项。`src/hosts/claude-code/` 是 hooks 模块 import 的、
-不依赖 Node 的一侧：请求与应答的类型、快路径、读 Claude Code 工具结果的函数，以及
-状态带、看板与 `/gemworks` 的文字——都是纯函数。`src/mcp.ts` 用 stdio MCP 提供同样的
+一次调用作用在哪个检出、哪个工作项。`src/shell/` 是 hooks 模块和别的宿主 import 的、
+不依赖 Node 的一侧：请求与应答的类型、快路径、读工具结果的函数，以及
+状态带与看板的文字——都是纯函数；`src/hosts/claude-code/` 放只有 Claude Code 插件用的，`/gemworks` 和设置都在里面。`src/mcp.ts` 用 stdio MCP 提供同样的
 动词（`src/verbs.ts`）和工作循环的工具（`src/loop.ts`）；`src/hosts/codex/adapter.ts`、
 `src/hosts/cursor/adapter.ts` 与 `src/hosts/antigravity/adapter.ts` 是这三家的 hooks；Qwen Code、OpenCode、Devin、TRAE、Kiro 在
 `src/hosts/hooked.ts` 里判定，各自的文件夹只读写自家的事件；`src/store/board.ts` 写出它们和 `gemworks mcp` 打开的

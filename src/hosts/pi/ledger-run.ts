@@ -10,8 +10,8 @@
 // corrections pending`.
 import { checkRequest, flowRequest, labelRequest, linkKey, promptId, readChecks, readFlowDraft, readLabels, readThemes, themeRequest, type LabelledPrompt } from "../../core/corrections.js";
 import { newProposals } from "../../core/growth.js";
-import type { CorrectionsView } from "../claude-code/protocol.js";
-import { langOf, wordsFor } from "../claude-code/text.js";
+import type { CorrectionsView } from "../../shell/protocol.js";
+import { langOf, wordsFor } from "../../shell/text.js";
 import { handleRequest } from "../../bridge.js";
 import { coachFlowsAt, proposalsAt, saveProposals } from "../../loop.js";
 

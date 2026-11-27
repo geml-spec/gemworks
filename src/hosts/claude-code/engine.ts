@@ -7,7 +7,7 @@
 // a needed call gone has the band say so while the module lets every call through. Calls whose absence costs one
 // feature (a toast, a notification, the small model) are not needed here: the module already does without them.
 // Pure and Node-free.
-import type { T } from "./text.js";
+import type { T } from "../../shell/text.js";
 
 /**
  * The calls the module needs: the bridge, the session record, the settings, its tools, its timers, its redraws. Each a

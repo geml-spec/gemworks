@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { COACH_FLOWS, manualRows, readCoachFlow } from "../../dist/hosts/claude-code/coach.js";
-import { applyToFlow, expireEvent, expiring, flowText, isRulesFile, newFlow, newProposals, parseProposals, parseRules, proposalsText, ruleAsk, ruleRefusal, rulesText, skippedSteps, stepId } from "../../dist/hosts/claude-code/growth.js";
-import { wordsFor } from "../../dist/hosts/claude-code/text.js";
+import { COACH_FLOWS, manualRows, readCoachFlow } from "../../dist/shell/coach.js";
+import { applyToFlow, expireEvent, expiring, flowText, isRulesFile, newFlow, newProposals, parseProposals, parseRules, proposalsText, ruleAsk, ruleRefusal, rulesText, skippedSteps, stepId } from "../../dist/shell/growth.js";
+import { wordsFor } from "../../dist/shell/text.js";
 
 const t = wordsFor("zh");
-const flows = COACH_FLOWS.map((name) => readCoachFlow(name, readFileSync(new URL(`../../coach/${name}.geml`, import.meta.url), "utf8")));
+const flows = COACH_FLOWS.map((name) => readCoachFlow(name, readFileSync(new URL(`../../flows/starter/${name}.geml`, import.meta.url), "utf8")));
 const flow = (name) => flows.find((f) => f.name === name);
 const m = (step, over = {}) => ({ step, at: "2026-10-26T09:00:00Z", turn: 1, ...over });
 const item = (over) => ({ id: "a1", flow: "bugfix", title: "导出跳过不留", state: "verify", needs: "", goal: "", status: "open", at: "2026-10-26T10:00:00Z", session: "s1", met: [m("reproduce"), m("fix")], next: "", ...over });
@@ -95,7 +95,7 @@ test("the manual shows the proposals on their flow and a new kind of work on top
 
 test("a flow exported is one GEML file: its route reads back as the flow, its practices and rules ride along, the person's own stay home", async () => {
   const { parsePractices } = await import("../../dist/core/practices.js");
-  const { exportText, referenceName } = await import("../../dist/hosts/claude-code/growth.js");
+  const { exportText, referenceName } = await import("../../dist/shell/growth.js");
   const practices = [
     { id: "p1", flow: "bugfix", step: "fix", text: "先读契约", why: "10-22", at: "x", by: "model", layer: "project", session: "s1", turn: 3 },
     { id: "p2", flow: "bugfix", step: "fix", text: "回复用中文", why: "", at: "x", by: "memory", layer: "personal" },
@@ -111,7 +111,7 @@ test("a flow exported is one GEML file: its route reads back as the flow, its pr
 });
 
 test("a reference offers back each step it has that the project's flow lacks, after the step before it; a kind of work the project lacks, as a new one; not twice", async () => {
-  const { referenceProposals } = await import("../../dist/hosts/claude-code/growth.js");
+  const { referenceProposals } = await import("../../dist/shell/growth.js");
   const ref = applyToFlow(flow("feature"), { kind: "add-step", after: "verify", step: { id: "gates", title: "过三道门", need: "三项都过", judge: "fact", prevents: "带着类型错发出去" } });
   const offered = referenceProposals(ref, "team-x", flows, [], "x", (n) => `f${n}`);
   assert.deepEqual(offered.map((p) => [p.kind, p.flow, p.after, p.step.id, p.by, p.ref]), [["add-step", "feature", "verify", "gates", "reference", "team-x"]]);
@@ -138,7 +138,7 @@ test("practices shared with the team move into the repository's .gemworks/; the 
 });
 
 test("the manual offers to share and export each flow, to share a step's practice or write one for every time into CLAUDE.md, and a field to import a reference", async () => {
-  const { inputAction } = await import("../../dist/hosts/claude-code/board.js");
+  const { inputAction } = await import("../../dist/shell/board.js");
   const practices = [{ id: "p1", flow: "bugfix", step: "fix", text: "先读契约", why: "", at: "x", by: "person", layer: "project" }, { id: "p2", flow: "*", step: "*", text: "回复用中文", why: "", at: "x", by: "person", layer: "personal" }];
   const rows = manualRows([item({})], flows, practices, t, { focus: null, expanded: ["bugfix", "*"] });
   // Each in a menu under a ⋯: the flow's on its heading, a practice's on its row.

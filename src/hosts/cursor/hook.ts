@@ -11,7 +11,7 @@
 // Claude Code would have made it: `Shell` as `Bash`, a file-writing tool as
 // `Write` or `Edit` with its path in `file_path`. Pure: the CLI side
 // (src/hosts/cursor/adapter.ts) does the files and the workspace.
-import type { CallFacts } from "../claude-code/fastpath.js";
+import type { CallFacts } from "../../shell/fastpath.js";
 import { exitCodeIn } from "../codex/hook.js";
 
 export interface CursorEvent {

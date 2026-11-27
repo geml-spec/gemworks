@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { REQUIRED_CALLS, engineGapText, engineVersionOf, failureText, goneCallOf, isNeeded } from "../../dist/hosts/claude-code/engine.js";
-import { wordsFor } from "../../dist/hosts/claude-code/text.js";
+import { wordsFor } from "../../dist/shell/text.js";
 
 test("the calls the module needs: the bridge, the session record, the settings, its tools, its timers, its redraws", () => {
   assert.deepEqual(REQUIRED_CALLS, ["process.run", "fs.read", "fs.write", "store.get", "store.set", "tool.register", "clock.after", "ui.invalidate"]);

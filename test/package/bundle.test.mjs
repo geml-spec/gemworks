@@ -11,7 +11,7 @@ import { copyBundle } from "../helpers/repo.mjs";
 // The CLI the Claude Code plugin starts: dist/gemworks.mjs, the gemworks-*.mjs files it loads, and the parser
 // copied into dist/vendor/geml/ (scripts/bundle.mjs).
 const DIST = fileURLToPath(new URL("../../dist/", import.meta.url));
-const CODING = fileURLToPath(new URL("../../workflows/coding/flow.geml", import.meta.url));
+const CODING = fileURLToPath(new URL("../../flows/strict/coding/flow.geml", import.meta.url));
 const OWN = readdirSync(DIST).filter((f) => f === "gemworks.mjs" || /^gemworks-.*\.mjs$/.test(f));
 const VENDOR = join(DIST, "vendor", "geml");
 const FILES = [...OWN.map((f) => join(DIST, f)), ...readdirSync(VENDOR).filter((f) => f.endsWith(".js")).map((f) => join(VENDOR, f))];

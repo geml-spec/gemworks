@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { answerRequest } from "../../dist/bridge.js";
 import { forgetGitFacts } from "../../dist/host-git.js";
-import { decodeRequest } from "../../dist/hosts/claude-code/protocol.js";
+import { decodeRequest } from "../../dist/shell/protocol.js";
 
 export const BUNDLE = fileURLToPath(new URL("../../dist/gemworks.mjs", import.meta.url));
 

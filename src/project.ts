@@ -18,9 +18,9 @@ import { dictionaryPathOf, ensureGitignore, GITIGNORE, homeOf, installedWorkflow
 export { GITIGNORE };
 
 /** The package's own workflows, beside dist/ — the same path from dist/project.js and from the bundle. */
-const BUNDLED = fileURLToPath(new URL("../workflows/", import.meta.url));
+const BUNDLED = fileURLToPath(new URL("../flows/strict/", import.meta.url));
 
-/** The workflows this package ships: the directories under its `workflows/`. */
+/** The workflows this package ships: the directories under its `flows/strict/`. */
 export function bundledWorkflows(): string[] {
   return readdirSync(BUNDLED, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
 }

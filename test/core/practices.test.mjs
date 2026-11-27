@@ -6,10 +6,10 @@ import { tmpdir } from "node:os";
 import { closestPractices, isNew, likeness, newPractices, parsePractices, practicesAt, practicesText } from "../../dist/core/practices.js";
 import { changePractice, practicePaths, readPractices, writePractices } from "../../dist/store/practices.js";
 import { memoryMoveContext, practiceAnswer, practiceContext, practiceWords, WHY_SHOWN } from "../../dist/hosts/claude-code/practice.js";
-import { COACH_FLOWS, readCoachFlow } from "../../dist/hosts/claude-code/coach.js";
+import { COACH_FLOWS, readCoachFlow } from "../../dist/shell/coach.js";
 import { gitRepo, hook } from "../helpers/repo.mjs";
 
-const flows = COACH_FLOWS.map((name) => readCoachFlow(name, readFileSync(new URL(`../../coach/${name}.geml`, import.meta.url), "utf8")));
+const flows = COACH_FLOWS.map((name) => readCoachFlow(name, readFileSync(new URL(`../../flows/starter/${name}.geml`, import.meta.url), "utf8")));
 const steps = flows.map((f) => ({ name: f.name, steps: f.states.map((s) => s.id) }));
 const p = (over) => ({ id: "p1", flow: "bugfix", step: "fix", text: "同一现象再现，先回头读引擎契约", why: "10-22 页签连死四次", at: "2026-10-22T10:00:00Z", by: "model", layer: "project", ...over });
 

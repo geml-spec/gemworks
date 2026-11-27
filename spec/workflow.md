@@ -199,7 +199,7 @@ The starter dictionary, whose rows `gemworks init` adds to the project's
 `--env production` and one with no `--env` at all, which counts as production,
 and not `wrangler deployments list`;
 `wrangler deploy --env staging` goes to the key with the longer literal part.
-The bundled dictionary (`workflows/dev/tools.geml` in this repository)
+The bundled dictionary (`flows/strict/dev/tools.geml` in this repository)
 carries one row more per spelling: `npx`, `pnpm` and `bunx` in front of
 `wrangler`, and `pnpm test`, `yarn test`, `cargo test`, `pytest` and `go test`
 for `test`.

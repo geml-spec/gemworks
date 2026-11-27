@@ -13,7 +13,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import type { CallFacts } from "../claude-code/fastpath.js";
+import type { CallFacts } from "../../shell/fastpath.js";
 import { runHooked, type HookedEvent, type HostTools } from "../hooked.js";
 import { bareTool, contextFor, denyCall, exitCodeOf, pathOf, readEvent } from "../qwen/hook.js";
 import { readSettings } from "../cursor/adapter.js";

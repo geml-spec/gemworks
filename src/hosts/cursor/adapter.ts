@@ -40,9 +40,9 @@ import { currentTurn, decisionsContext, SESSIONS_PROMPT } from "../../core/sessi
 import { isOwnTool } from "../../core/verb-specs.js";
 import { WORK_REMINDER } from "../../core/work.js";
 import { exists, readText } from "../../host-fs.js";
-import { afterNeeded, beforeDecision, paramsToFill } from "../claude-code/fastpath.js";
-import type { BridgeOp, BridgeResponse } from "../claude-code/protocol.js";
-import { contextOf, normalised } from "../claude-code/readers.js";
+import { afterNeeded, beforeDecision, paramsToFill } from "../../shell/fastpath.js";
+import type { BridgeOp, BridgeResponse } from "../../shell/protocol.js";
+import { contextOf, normalised } from "../../shell/readers.js";
 import { isWrapped, unwrapCommand, wrapCommand } from "../codex/hook.js";
 import { bareTool, callOf, denyCall, exitCodeOf, pathOf, readEvent, rewriteCall, SHELL, writesFiles } from "./hook.js";
 import type { Status } from "../../workspace.js";

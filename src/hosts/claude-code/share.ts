@@ -1,9 +1,9 @@
 // The share dialog's texts (spec §8.2, 分享): where the work stands, in a few
 // lines a person pastes into a message or a PR comment. Pure and Node-free;
 // the journal, the session and the workflow are exported through the bridge.
-import type { InboxItem } from "./inbox.js";
-import type { Artifacts, ShellStatus } from "./protocol.js";
-import type { T } from "./text.js";
+import type { InboxItem } from "../../shell/inbox.js";
+import type { Artifacts, ShellStatus } from "../../shell/protocol.js";
+import type { T } from "../../shell/text.js";
 
 /** The most artifacts the text names. */
 const ARTIFACTS_NAMED = 3;

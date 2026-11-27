@@ -27,7 +27,7 @@ import { join, resolve } from "node:path";
 import { decisionsContext, SESSIONS_PROMPT } from "../../core/session-log.js";
 import { boardHasWork, openBoardOnce, writeBoard } from "../../store/board.js";
 import { coachFlowsAt, loopContext, loopPrompt } from "../../loop.js";
-import { normalised } from "../claude-code/readers.js";
+import { normalised } from "../../shell/readers.js";
 import { appendSession, commits, decisionsFor, hostLabel, recordAnswer, recordFile, recordPrompt } from "../../store/sessions.js";
 
 export const ANTIGRAVITY_HOST = "antigravity";

@@ -9,13 +9,13 @@ import {
   practiceCounts, promptId, readChecks, readFlowDraft, readLabels, readThemes, report, reportText, tally, themeRequest, typedWords, unchecked, unthemed,
 } from "../../dist/core/corrections.js";
 import { addLabelled, correctionsPath, labelledRows, readLedger, unlabelledPrompts, updateLedger } from "../../dist/store/corrections.js";
-import { cellWidth } from "../../dist/hosts/claude-code/band.js";
-import { COACH_FLOWS, ledgerCardRows, manualRows, readCoachFlow } from "../../dist/hosts/claude-code/coach.js";
-import { wordsFor } from "../../dist/hosts/claude-code/text.js";
+import { cellWidth } from "../../dist/shell/band.js";
+import { COACH_FLOWS, ledgerCardRows, manualRows, readCoachFlow } from "../../dist/shell/coach.js";
+import { wordsFor } from "../../dist/shell/text.js";
 import { BUNDLE, gitRepo, hook } from "../helpers/repo.mjs";
 
 const t = wordsFor("zh");
-const flows = COACH_FLOWS.map((name) => readCoachFlow(name, readFileSync(new URL(`../../coach/${name}.geml`, import.meta.url), "utf8")));
+const flows = COACH_FLOWS.map((name) => readCoachFlow(name, readFileSync(new URL(`../../flows/starter/${name}.geml`, import.meta.url), "utf8")));
 const row = (id, at, kind, over = {}) => ({ id, at, session: "s1aaaaaaaa", text: `words ${id}`, kind, by: "model", ...over });
 const fix = (id, at, sub, over = {}) => row(id, at, "correct", { sub, ...over });
 const practice = (id, at, over = {}) => ({ id, flow: "*", step: "*", text: `rule ${id}`, why: "", at, by: "model", layer: "personal", ...over });

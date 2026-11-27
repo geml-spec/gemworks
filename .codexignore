@@ -1,9 +1,8 @@
 # What a Codex install of this directory does not need: the plugin runs from
-# dist/gemworks.mjs (built by `npm run build`), skills/, workflows/ and codex/.
+# dist/gemworks.mjs (built by `npm run build`), skills/, flows/ and codex/.
 node_modules/
 src/
 test/
-examples/
 scripts/
 docs/
 hooks/

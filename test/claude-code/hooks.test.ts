@@ -126,7 +126,7 @@ function world(on: On) {
     practices: null as { list: Record<string, unknown>[]; memoryMoved: boolean } | null,
     /** When set, the person's ledger as the corrections op answers it (its cards, each practice's count); null, the op answers none. */
     corrections: null as Record<string, unknown> | null,
-    /** Files the plugin ships, by the end of their path (`/coach/bugfix.geml`): read where the project has none at that path. */
+    /** Files the plugin ships, by the end of their path (`/flows/starter/bugfix.geml`): read where the project has none at that path. */
     shipped: new Map<string, string>(),
     /** When set, the project dictionary's keys allowed everywhere, as the outward op keeps and answers them; null, the op answers none. */
     outward: null as string[] | null,
@@ -3145,7 +3145,7 @@ test('a step the project took out of the shipped flow stands crossed out where i
   w.sessionsDir = LOGS
   w.files.set(`${ROOT}/.geml/coach/bugfix.geml`, BUGFIX_JUDGED)
   // The flow the plugin ships, which this project's own took 找根因, 先写会失败的测试 and 验证 out of.
-  w.shipped.set('/coach/bugfix.geml', '=== meta\ntitle = "bugfix"\nprofile = "geml-statechart/v1"\n===\n\n=== diagram {#flow format=geml-statechart caption="bugfix"}\n{"initial":"reproduce","states":{"reproduce":{"title":"复现","description":"版本已确认","judge":"model"},"rootcause":{"title":"找根因","description":"说得出为什么坏","judge":"model"},"failtest":{"title":"先写会失败的测试","description":"有一个现在会失败、能复现问题的测试","judge":"model"},"fix":{"title":"修","description":"一个猜测一版","judge":"model"},"verify":{"title":"验证","description":"测试通过","judge":"fact"},"confirm":{"title":"你确认","description":"你按过说对","judge":"you"},"done":{"title":"完成","final":true}},"transitions":[{"from":"reproduce","to":"rootcause"},{"from":"rootcause","to":"failtest"},{"from":"failtest","to":"fix"},{"from":"fix","to":"verify"},{"from":"verify","to":"confirm"},{"from":"confirm","to":"done"},{"from":"confirm","to":"reproduce","guard":"你说没好"}]}\n===\n')
+  w.shipped.set('/flows/starter/bugfix.geml', '=== meta\ntitle = "bugfix"\nprofile = "geml-statechart/v1"\n===\n\n=== diagram {#flow format=geml-statechart caption="bugfix"}\n{"initial":"reproduce","states":{"reproduce":{"title":"复现","description":"版本已确认","judge":"model"},"rootcause":{"title":"找根因","description":"说得出为什么坏","judge":"model"},"failtest":{"title":"先写会失败的测试","description":"有一个现在会失败、能复现问题的测试","judge":"model"},"fix":{"title":"修","description":"一个猜测一版","judge":"model"},"verify":{"title":"验证","description":"测试通过","judge":"fact"},"confirm":{"title":"你确认","description":"你按过说对","judge":"you"},"done":{"title":"完成","final":true}},"transitions":[{"from":"reproduce","to":"rootcause"},{"from":"rootcause","to":"failtest"},{"from":"failtest","to":"fix"},{"from":"fix","to":"verify"},{"from":"verify","to":"confirm"},{"from":"confirm","to":"done"},{"from":"confirm","to":"reproduce","guard":"你说没好"}]}\n===\n')
   const asked: string[] = []
   on('tool.call', { tool: 'AskUserQuestion' }, ($, e) => {
     const q = (e.questions as { question: string }[])[0]!

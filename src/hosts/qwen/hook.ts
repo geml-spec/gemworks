@@ -14,7 +14,7 @@
 // bundled dictionaries speak Claude Code's names, so a call is handed over as
 // Claude Code would have made it. Pure: the CLI side (src/hosts/qwen/adapter.ts) does the
 // files and the workspace.
-import type { CallFacts } from "../claude-code/fastpath.js";
+import type { CallFacts } from "../../shell/fastpath.js";
 import { exitCodeIn } from "../codex/hook.js";
 
 export interface QwenEvent {

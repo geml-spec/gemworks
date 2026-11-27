@@ -10,7 +10,7 @@
 // status is read back from the output. Pure: the CLI side (src/hosts/codex/adapter.ts) does
 // the files and the workspace.
 import { CODEX_TOOLS } from "../../core/host-tools.js";
-import type { CallFacts } from "../claude-code/fastpath.js";
+import type { CallFacts } from "../../shell/fastpath.js";
 
 export interface CodexEvent {
   hook_event_name: string;

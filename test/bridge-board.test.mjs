@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { gitRepo, hook, withWorkflow } from "./helpers/repo.mjs";
 
 const WS_DEV = fileURLToPath(new URL("./fixtures/ws-dev/", import.meta.url));
-const MATTER = fileURLToPath(new URL("../workflows/matter/", import.meta.url));
+const MATTER = fileURLToPath(new URL("../flows/strict/matter/", import.meta.url));
 const NO_GH = { GEMWORKS_GH: "gh-definitely-not-installed" };
 const git = (root, args, env = {}) => spawnSync("git", ["-C", root, ...args], { encoding: "utf8", env: { ...process.env, ...env } });
 const commit = (root, file, text, subject, env = {}) => {

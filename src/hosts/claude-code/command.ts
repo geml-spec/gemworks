@@ -2,10 +2,10 @@
 // Pure and Node-free: the hooks module runs the intent through the bridge.
 // The words follow the language chosen (text.ts); the Chinese constants are
 // what the tests pin.
-import type { BoardTab } from "./actions.js";
-import type { BridgeResponse, ShellStatus } from "./protocol.js";
-import { nextText, SEP, varSegment } from "./band.js";
-import { ZH, type T } from "./text.js";
+import type { BoardTab } from "../../shell/actions.js";
+import type { BridgeResponse, ShellStatus } from "../../shell/protocol.js";
+import { nextText, SEP, varSegment } from "../../shell/band.js";
+import { ZH, type T } from "../../shell/text.js";
 
 export type CommandIntent =
   | { kind: "status" }

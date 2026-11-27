@@ -30,7 +30,7 @@ test("the flows: the shipped ten, a project's own copy of one in its place, and 
   assert.deepEqual(coachFlowsAt(root).map((f) => f.name), ["design", "feature", "bugfix", "optimize", "incident", "review", "research", "refactor", "docs", "analysis"]);
   const own = join(root, ".geml", "coach");
   mkdirSync(own, { recursive: true });
-  const shipped = readFileSync(new URL("../coach/feature.geml", import.meta.url), "utf8");
+  const shipped = readFileSync(new URL("../flows/starter/feature.geml", import.meta.url), "utf8");
   writeFileSync(join(own, "feature.geml"), shipped.replace(/"title":\s*"样稿"/, '"title": "画样稿"'));
   writeFileSync(join(own, "writing.geml"), shipped.replace(/^title\s*=.*$/m, 'title = "写文章"'));
   const flows = coachFlowsAt(root);
@@ -137,11 +137,11 @@ test("the flows beside an empty shipped folder: the project's own copy, else the
   assert.deepEqual(coachFlowsAt(root, none), [], "no shipped flow and none of the project's: no flows");
   assert.deepEqual(loopContext(root, "s1", []), [], "no flows: nothing beside the prompt");
   mkdirSync(join(root, ".gemworks", "flows"), { recursive: true });
-  const bugfix = readFileSync(new URL("../coach/bugfix.geml", import.meta.url), "utf8");
+  const bugfix = readFileSync(new URL("../flows/starter/bugfix.geml", import.meta.url), "utf8");
   writeFileSync(join(root, ".gemworks", "flows", "bugfix.geml"), bugfix.replace('"title": "复现"', '"title": "先复现"'));
   const own = join(root, ".geml", "coach");
   mkdirSync(join(own, "broken.geml"), { recursive: true });
-  writeFileSync(join(own, "feature.geml"), readFileSync(new URL("../coach/feature.geml", import.meta.url), "utf8"));
+  writeFileSync(join(own, "feature.geml"), readFileSync(new URL("../flows/starter/feature.geml", import.meta.url), "utf8"));
   assert.deepEqual(coachFlowsAt(root, none).map((f) => f.name), ["feature", "bugfix"]);
   assert.equal(coachFlowsAt(root).find((f) => f.name === "bugfix").states[0].title, "先复现", "the team's copy in the shipped one's place");
 });
@@ -194,7 +194,7 @@ test("answer: a yes to a step of a flow the project no longer has changes nothin
   const root = gitRepo();
   const own = join(gemlHome(root), "coach");
   mkdirSync(own, { recursive: true });
-  writeFileSync(join(own, "writing.geml"), readFileSync(new URL("../coach/feature.geml", import.meta.url), "utf8").replace(/^title\s*=.*$/m, 'title = "写文章"'));
+  writeFileSync(join(own, "writing.geml"), readFileSync(new URL("../flows/starter/feature.geml", import.meta.url), "utf8").replace(/^title\s*=.*$/m, 'title = "写文章"'));
   assert.equal(recordProposals(root, { proposals: [{ kind: "add-step", flow: "writing", after: "mockup", title: "列提纲", why: "x" }] }, AT).ok, true);
   const [p] = proposalsAt(root);
   rmSync(join(own, "writing.geml"));

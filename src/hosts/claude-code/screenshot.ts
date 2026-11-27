@@ -2,7 +2,7 @@
 // the picture on the clipboard, and the person pastes it into the prompt (a plugin cannot put a picture there). The
 // button and its words say which key pastes, so nobody has to remember the capture's shortcut. Pure and Node-free:
 // the hooks module runs the commands, one after another until one starts.
-import { ZH, type T } from "./text.js";
+import { ZH, type T } from "../../shell/text.js";
 
 /** A way to start a region capture that leaves the picture on the clipboard. */
 export interface Capture { argv: string[] }

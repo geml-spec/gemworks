@@ -19,7 +19,7 @@ const LIMIT = 256 * 1024;
 
 // Where gemworks' own code is cut into files of its own: the modules large enough that, left in one file with the
 // rest, they would take it past the limit.
-const SPLIT = ["src/hosts/claude-code/text.ts", "src/bridge.ts", "src/workspace.ts", "src/core/command-line.ts", "src/host-git.ts"];
+const SPLIT = ["src/shell/text.ts", "src/bridge.ts", "src/workspace.ts", "src/core/command-line.ts", "src/host-git.ts"];
 
 // The parser, copied: every module reachable from the ones gemworks imports, through the parser's own relative
 // imports. Its CLI (cli.js) is reached only by a hand-off that fires when geml.js itself is the script being run,

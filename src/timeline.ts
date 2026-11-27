@@ -5,7 +5,7 @@
 import type { Journal } from "./core/journal.js";
 import type { JsonValue } from "./core/schema.js";
 import { canonical, type Snapshot } from "./core/snapshot.js";
-import type { TimelineEntry } from "./hosts/claude-code/protocol.js";
+import type { TimelineEntry } from "./shell/protocol.js";
 
 const ORDER: Readonly<Record<TimelineEntry["kind"], number>> = { snapshot: 0, refused: 1 };
 

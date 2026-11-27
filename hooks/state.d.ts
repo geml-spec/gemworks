@@ -1,6 +1,6 @@
 // The values Gemworks's hooks module keeps in $.state. What the bridge answers
 // is kept as JSON; the module reads it as the protocol's types
-// (src/hosts/claude-code/protocol.ts) and the board's (actions.ts, inbox.ts,
+// (src/shell/protocol.ts) and the board's (actions.ts, inbox.ts,
 // sessions.ts, settings.ts).
 export type GemworksJson = null | boolean | number | string | readonly GemworksJson[] | { readonly [key: string]: GemworksJson }
 export type GemworksTab = 'sessions' | 'flow' | 'items' | 'made' | 'journal' | 'tools'

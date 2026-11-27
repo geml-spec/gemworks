@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { COMMAND_HINT, COMMAND_USAGE, addText, boardFailure, boardText, commandText, parseCommand, statusText, traceText, usageText } from "../../dist/hosts/claude-code/command.js";
-import { wordsFor } from "../../dist/hosts/claude-code/text.js";
+import { wordsFor } from "../../dist/shell/text.js";
 
 const status = {
   workflow: { name: "dev", path: ".geml/workflows/dev/flow.geml", title: "开发流程" },

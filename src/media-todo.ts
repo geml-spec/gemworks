@@ -8,7 +8,7 @@
 import { parse } from "@geml/geml";
 import { profileIoFor } from "@geml/geml/dist/host-fs.js";
 import { todo } from "@geml/geml/dist/media-verbs.js";
-import { TODO_CAP } from "./hosts/claude-code/protocol.js";
+import { TODO_CAP } from "./shell/protocol.js";
 
 /** The vocabulary whose entries have a to-do list. */
 export const MEDIA_PROFILE = "geml-media/v1";

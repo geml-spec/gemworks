@@ -9,8 +9,8 @@ import { commandsRun } from "../../dist/core/command-line.js";
 import { allowedOutward, isOutwardKey, mcpOutward, outwardAnswer, outwardOf, outwardQuestion } from "../../dist/core/outward.js";
 import { readDictionary } from "../../dist/core/dictionary-file.js";
 import { outwardAllowed, projectDictionaryPath } from "../../dist/store/dictionary.js";
-import { outwardRows } from "../../dist/hosts/claude-code/board.js";
-import { wordsFor } from "../../dist/hosts/claude-code/text.js";
+import { outwardRows } from "../../dist/shell/board.js";
+import { wordsFor } from "../../dist/shell/text.js";
 import { gitRepo, hook } from "../helpers/repo.mjs";
 
 const SHELLS = ["Bash", "PowerShell", "Monitor"];

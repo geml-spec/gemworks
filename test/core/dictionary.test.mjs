@@ -250,7 +250,7 @@ test("a forget lesson takes the row of exactly that key out, and numbers the res
 test("rules: only a use a state declares as a rule is kept to the states that declare it; a use declared only in `tools` runs anywhere, with no use named outside its states", async () => {
   const { readFileSync } = await import("node:fs");
   const { scopeIn } = await import("../../dist/core/policy.js");
-  const flow = (name) => loadStatechart(readFileSync(new URL(`../../workflows/${name}/flow.geml`, import.meta.url), "utf8"), `${name}.geml`).statechart;
+  const flow = (name) => loadStatechart(readFileSync(new URL(`../../flows/strict/${name}/flow.geml`, import.meta.url), "utf8"), `${name}.geml`).statechart;
   const dev = flow("dev");
   assert.deepEqual([...dev.rules].sort(), ["deploy-prod", "deploy-staging"], "发布: the two deploys are rules");
   assert.deepEqual(judgeKey(DICT, scopeIn(dev, "deploy"), "Edit"), { key: "Edit", kind: "allow" }, "edit is no rule: it runs in #deploy, no use named");

@@ -113,7 +113,7 @@ test("export --to md renders a revision table with per-step diffs", () => {
 
 // ---- the project verbs: init, use, status, mark, unmark, advance, rollback ----------
 
-const shipped = (name) => fileURLToPath(new URL(`../workflows/${name}/flow.geml`, import.meta.url));
+const shipped = (name) => fileURLToPath(new URL(`../flows/strict/${name}/flow.geml`, import.meta.url));
 const lf = (s) => s.replace(/\r\n/g, "\n");
 
 /** A git repository on branch feat/x with one commit on main: a work item exists. */
